@@ -1,0 +1,495 @@
+import {
+  ActionStatus,
+  ExecutionOperation,
+  PayoutStatus,
+  RecoveryStatus,
+  TransactionStatus,
+  Prisma,
+  AgentAction,
+  PrismaClient,
+} from "../../../generated/prisma/client";
+import { addDays } from "date-fns";
+import { createRecoveryPaymentLink } from "../razorpay/client";
+import { executeWithDurableIntent, ExecuteResult } from "./executor";
+import { validateRecoveryTransition } from "../engine/stateTransitions";
+import { formatLakhs } from "../format";
+import { FINANCIAL_CONFIG } from "../engine/financialConfig";
+
+export interface ActionExecutionOutcome {
+  status: ActionStatus;
+  result: string;
+  /** Intent ids touched by this action - the observability trail (PART 30). */
+  intentIds: string[];
+  externalRefs: string[];
+  unknownReason?: string;
+}
+
+/** Hooks used by crash-simulation tests to interrupt at a precise boundary. */
+export interface ExecutionHooks {
+  onIntentRecorded?: (intentId: string) => Promise<void> | void;
+}
+
+/**
+ * Maps a durable execution result onto the action status it justifies.
+ *
+ * The mapping is deliberately conservative: only SUCCEEDED yields a positive
+ * action state, and anything ambiguous yields EXECUTION_UNKNOWN rather than
+ * FAILED, because a FAILED action is retryable and retrying an operation that
+ * may already have landed is how duplicate payments happen.
+ */
+function statusForOutcome(outcome: ExecuteResult["outcome"], settledImmediately: boolean): ActionStatus {
+  switch (outcome) {
+    case "SUCCEEDED":
+    case "ALREADY_SUCCEEDED":
+      // A payment link is issued, not settled. COMPLETED is reserved for money
+      // we have actually observed arriving.
+      return settledImmediately ? ActionStatus.COMPLETED : ActionStatus.EXECUTING;
+    case "FAILED":
+    case "ALREADY_FAILED":
+      return ActionStatus.FAILED;
+    case "UNKNOWN":
+    case "BLOCKED_UNKNOWN":
+      return ActionStatus.EXECUTION_UNKNOWN;
+    default:
+      return ActionStatus.EXECUTION_UNKNOWN;
+  }
+}
+
+/**
+ * RECOVER_FAILED_PAYMENTS - issues one recovery payment link.
+ *
+ * The PaymentRecovery row is moved to RECOVERY_INITIATED before the external
+ * call and only to PAYMENT_PENDING once a link genuinely exists, so an
+ * interrupted run leaves an initiated-but-unlinked recovery rather than a
+ * recovery claiming a link it never received.
+ */
+export async function executeRecoverFailedPayments(
+  client: Prisma.TransactionClient,
+  ctx: { businessId: string; strategyId: string; action: AgentAction },
+  hooks: ExecutionHooks = {}
+): Promise<ActionExecutionOutcome> {
+  const recovery = await client.paymentRecovery.findFirst({
+    where: {
+      status: RecoveryStatus.RECOVERY_CANDIDATE,
+      transaction: { businessId: ctx.businessId },
+    },
+    include: { transaction: true },
+  });
+
+  if (!recovery) {
+    const activePending = await client.paymentRecovery.findFirst({
+      where: {
+        status: RecoveryStatus.PAYMENT_PENDING,
+        transaction: { businessId: ctx.businessId },
+      },
+    });
+    if (activePending) {
+      const url =
+        activePending.shortUrl && !activePending.shortUrl.includes("actionId=")
+          ? `${activePending.shortUrl}&actionId=${ctx.action.id}`
+          : activePending.shortUrl;
+      return {
+        status: ActionStatus.EXECUTING,
+        result: `Razorpay link generated: ${url}`,
+        intentIds: [],
+        externalRefs: activePending.paymentLinkId ? [activePending.paymentLinkId] : [],
+      };
+    }
+    return {
+      status: ActionStatus.FAILED,
+      result: "No candidate failed payment found to recover.",
+      intentIds: [],
+      externalRefs: [],
+    };
+  }
+
+  if (!validateRecoveryTransition(recovery.status, RecoveryStatus.RECOVERY_INITIATED)) {
+    return {
+      status: ActionStatus.FAILED,
+      result: `Invalid recovery transition from ${recovery.status} to RECOVERY_INITIATED`,
+      intentIds: [],
+      externalRefs: [],
+    };
+  }
+
+  await client.paymentRecovery.update({
+    where: { id: recovery.id },
+    data: { status: RecoveryStatus.RECOVERY_INITIATED },
+  });
+
+  const outcome = await executeWithDurableIntent(client, {
+    businessId: ctx.businessId,
+    strategyId: ctx.strategyId,
+    actionId: ctx.action.id,
+    operation: ExecutionOperation.CREATE_PAYMENT_LINK,
+    amount: ctx.action.amount,
+    targetType: "PAYMENT_RECOVERY",
+    targetId: recovery.id,
+    onIntentRecorded: hooks.onIntentRecorded,
+    dispatch: async (idempotencyKey) => {
+      const link = await createRecoveryPaymentLink(
+        ctx.action.amount,
+        recovery.transaction?.description || "Failed payment recovery",
+        idempotencyKey
+      );
+      return { externalRef: link.id, externalStatus: link.status };
+    },
+  });
+
+  if (outcome.outcome === "SUCCEEDED" || outcome.outcome === "ALREADY_SUCCEEDED") {
+    const linkId = outcome.externalRef as string;
+    const shortUrl = `/sandbox/checkout?paymentLinkId=${linkId}&actionId=${ctx.action.id}`;
+    await client.paymentRecovery.update({
+      where: { id: recovery.id },
+      data: {
+        status: RecoveryStatus.PAYMENT_PENDING,
+        paymentLinkId: linkId,
+        shortUrl,
+      },
+    });
+    return {
+      status: ActionStatus.EXECUTING,
+      result: `Razorpay link generated: ${shortUrl}`,
+      intentIds: [outcome.intentId],
+      externalRefs: [linkId],
+    };
+  }
+
+  return {
+    status: statusForOutcome(outcome.outcome, false),
+    result:
+      outcome.outcome === "FAILED" || outcome.outcome === "ALREADY_FAILED"
+        ? `Recovery link could not be created: ${outcome.error}`
+        : `Recovery link status is indeterminate: ${outcome.unknownReason}. Verify at the provider before retrying.`,
+    intentIds: [outcome.intentId],
+    externalRefs: [],
+    unknownReason: outcome.unknownReason,
+  };
+}
+
+/**
+ * PRIORITIZE_COLLECTIONS - one link per overdue invoice.
+ *
+ * Each invoice gets its OWN intent keyed by (action, invoice), so a crash
+ * partway through a five-invoice run resumes without re-issuing links for the
+ * invoices already done.
+ */
+export interface CollectionsLinkDetails {
+  invoiceId: string;
+  customerName: string;
+  paymentLinkId: string;
+  shortUrl: string;
+  amount: number;
+}
+
+export async function executePrioritizeCollections(
+  client: Prisma.TransactionClient,
+  ctx: { businessId: string; strategyId: string; action: AgentAction },
+  hooks: ExecutionHooks = {}
+): Promise<ActionExecutionOutcome> {
+  const overdueInvoices = await client.invoice.findMany({
+    where: { status: "OVERDUE", businessId: ctx.businessId },
+  });
+
+  if (!overdueInvoices || overdueInvoices.length === 0) {
+    return {
+      status: ActionStatus.FAILED,
+      result: "No overdue invoices found to prioritize.",
+      intentIds: [],
+      externalRefs: [],
+    };
+  }
+
+  const links: CollectionsLinkDetails[] = [];
+  const intentIds: string[] = [];
+  const externalRefs: string[] = [];
+  let anyUnknown: string | undefined;
+  let anyFailed: string | undefined;
+
+  for (const inv of overdueInvoices) {
+    const outcome = await executeWithDurableIntent(client, {
+      businessId: ctx.businessId,
+      strategyId: ctx.strategyId,
+      actionId: ctx.action.id,
+      operation: ExecutionOperation.CREATE_PAYMENT_LINK,
+      amount: inv.amount,
+      targetType: "INVOICE",
+      targetId: inv.id,
+      onIntentRecorded: hooks.onIntentRecorded,
+      dispatch: async (idempotencyKey) => {
+        const link = await createRecoveryPaymentLink(
+          inv.amount,
+          `Invoice Collection for ${inv.customerName}`,
+          idempotencyKey
+        );
+        return { externalRef: link.id, externalStatus: link.status };
+      },
+    });
+
+    intentIds.push(outcome.intentId);
+
+    if (outcome.outcome === "SUCCEEDED" || outcome.outcome === "ALREADY_SUCCEEDED") {
+      const linkId = outcome.externalRef as string;
+      externalRefs.push(linkId);
+      links.push({
+        invoiceId: inv.id,
+        customerName: inv.customerName,
+        paymentLinkId: linkId,
+        shortUrl: `/sandbox/checkout?paymentLinkId=${linkId}&actionId=${ctx.action.id}`,
+        amount: inv.amount,
+      });
+    } else if (outcome.outcome === "UNKNOWN" || outcome.outcome === "BLOCKED_UNKNOWN") {
+      anyUnknown = outcome.unknownReason;
+    } else {
+      anyFailed = outcome.error;
+    }
+  }
+
+  if (links.length > 0) {
+    await client.invoice.updateMany({
+      where: { status: "OVERDUE", businessId: ctx.businessId },
+      data: { priority: "HIGH" },
+    });
+  }
+
+  // Any ambiguity anywhere in the fan-out makes the whole action ambiguous.
+  const status = anyUnknown
+    ? ActionStatus.EXECUTION_UNKNOWN
+    : links.length === 0
+    ? ActionStatus.FAILED
+    : ActionStatus.EXECUTING;
+
+  return {
+    status,
+    result: JSON.stringify({
+      message: `Generated payment links for ${links.length} of ${overdueInvoices.length} overdue invoices.`,
+      links,
+      ...(anyUnknown ? { unknown: anyUnknown } : {}),
+      ...(anyFailed ? { failed: anyFailed } : {}),
+    }),
+    intentIds,
+    externalRefs,
+    unknownReason: anyUnknown,
+  };
+}
+
+/**
+ * RESCHEDULE_PAYOUT - a purely local ledger mutation.
+ *
+ * No external provider is involved, so this genuinely can be atomic. The intent
+ * is still recorded because it gives every action a uniform audit trail and a
+ * stable identity, but the operation runs inside a transaction and its outcome
+ * is never ambiguous.
+ */
+export async function executeReschedulePayout(
+  client: PrismaClient,
+  ctx: { businessId: string; strategyId: string; action: AgentAction },
+  hooks: ExecutionHooks = {}
+): Promise<ActionExecutionOutcome> {
+  // The post-condition is computed BEFORE the intent is recorded, so
+  // reconciliation has a concrete expectation to compare persisted state
+  // against rather than having to infer one (PART 3).
+  const rescheduledDate = addDays(new Date(), FINANCIAL_CONFIG.FORECAST_HORIZON_DAYS + 6);
+  const existingPayout = ctx.action.targetPayoutId
+    ? await client.payout.findFirst({
+        where: { id: ctx.action.targetPayoutId, businessId: ctx.businessId },
+      })
+    : null;
+
+  const outcome = await executeWithDurableIntent(client, {
+    expectedState: {
+      kind: "PAYOUT_RESCHEDULE",
+      originalDueDate: existingPayout
+        ? new Date(existingPayout.scheduledDate).toISOString().split("T")[0]
+        : "unknown",
+      expectedDueDate: rescheduledDate.toISOString().split("T")[0],
+      expectedStatus: PayoutStatus.RESCHEDULED,
+    },
+    businessId: ctx.businessId,
+    strategyId: ctx.strategyId,
+    actionId: ctx.action.id,
+    operation: ExecutionOperation.RESCHEDULE_PAYOUT,
+    amount: ctx.action.amount,
+    targetType: "PAYOUT",
+    targetId: ctx.action.targetPayoutId ?? null,
+    onIntentRecorded: hooks.onIntentRecorded,
+    dispatch: async () => {
+      return await client.$transaction(async (tx: Prisma.TransactionClient) => {
+        const lowPayout = ctx.action.targetPayoutId
+          ? await tx.payout.findFirst({
+              where: { id: ctx.action.targetPayoutId, businessId: ctx.businessId },
+            })
+          : await tx.payout.findFirst({
+              where: {
+                vendor: "Packaging Co",
+                status: PayoutStatus.SCHEDULED,
+                businessId: ctx.businessId,
+              },
+            });
+
+        if (!lowPayout) {
+          // A definite negative: there is nothing to move.
+          const err = new Error("No scheduled payout found to reschedule.") as Error & { statusCode?: number };
+          err.statusCode = 404;
+          throw err;
+        }
+
+        await tx.payout.update({
+          where: { id: lowPayout.id },
+          data: { scheduledDate: rescheduledDate, status: PayoutStatus.RESCHEDULED },
+        });
+
+        const transactionRecord = ctx.action.targetTransactionId
+          ? await tx.transaction.findFirst({
+              where: { id: ctx.action.targetTransactionId, businessId: ctx.businessId },
+            })
+          : await tx.transaction.findFirst({
+              where: {
+                businessId: ctx.businessId,
+                type: "OUTFLOW",
+                amount: lowPayout.amount,
+                description: { contains: "Packaging" },
+              },
+            });
+
+        if (transactionRecord) {
+          await tx.transaction.update({
+            where: { id: transactionRecord.id },
+            data: { expectedDate: rescheduledDate },
+          });
+        }
+
+        return {
+          externalRef: `payout:${lowPayout.id}`,
+          externalStatus: `RESCHEDULED:${formatLakhs(lowPayout.amount)}`,
+        };
+      });
+    },
+  });
+
+  if (outcome.outcome === "SUCCEEDED" || outcome.outcome === "ALREADY_SUCCEEDED") {
+    return {
+      status: ActionStatus.COMPLETED,
+      result: `Rescheduled vendor payout (${outcome.externalStatus ?? "done"}).`,
+      intentIds: [outcome.intentId],
+      externalRefs: outcome.externalRef ? [outcome.externalRef] : [],
+    };
+  }
+
+  return {
+    status: statusForOutcome(outcome.outcome, true),
+    result:
+      outcome.outcome === "FAILED" || outcome.outcome === "ALREADY_FAILED"
+        ? outcome.error ?? "Reschedule failed."
+        : `Reschedule outcome indeterminate: ${outcome.unknownReason}`,
+    intentIds: [outcome.intentId],
+    externalRefs: [],
+    unknownReason: outcome.unknownReason,
+  };
+}
+
+/** PAUSE_EXPENSE - local ledger mutation, same shape as reschedule. */
+export async function executePauseExpense(
+  client: PrismaClient,
+  ctx: { businessId: string; strategyId: string; action: AgentAction },
+  hooks: ExecutionHooks = {}
+): Promise<ActionExecutionOutcome> {
+  const existingTx = ctx.action.targetTransactionId
+    ? await client.transaction.findFirst({
+        where: { id: ctx.action.targetTransactionId, businessId: ctx.businessId },
+      })
+    : null;
+
+  const outcome = await executeWithDurableIntent(client, {
+    expectedState: {
+      kind: "EXPENSE_PAUSE",
+      originalStatus: existingTx?.status ?? "unknown",
+      expectedStatus: TransactionStatus.FAILED,
+    },
+    businessId: ctx.businessId,
+    strategyId: ctx.strategyId,
+    actionId: ctx.action.id,
+    operation: ExecutionOperation.PAUSE_EXPENSE,
+    amount: ctx.action.amount,
+    targetType: "TRANSACTION",
+    targetId: ctx.action.targetTransactionId ?? null,
+    onIntentRecorded: hooks.onIntentRecorded,
+    dispatch: async () => {
+      return await client.$transaction(async (tx: Prisma.TransactionClient) => {
+        const saasTx = ctx.action.targetTransactionId
+          ? await tx.transaction.findFirst({
+              where: { id: ctx.action.targetTransactionId, businessId: ctx.businessId },
+            })
+          : await tx.transaction.findFirst({
+              where: {
+                businessId: ctx.businessId,
+                type: "OUTFLOW",
+                description: { contains: "SaaS" },
+                status: TransactionStatus.PENDING,
+              },
+            });
+
+        if (!saasTx) {
+          const err = new Error("No pending subscription found to pause.") as Error & { statusCode?: number };
+          err.statusCode = 404;
+          throw err;
+        }
+
+        await tx.transaction.update({
+          where: { id: saasTx.id },
+          data: { status: TransactionStatus.FAILED },
+        });
+
+        return {
+          externalRef: `transaction:${saasTx.id}`,
+          externalStatus: `PAUSED:${formatLakhs(saasTx.amount)}`,
+        };
+      });
+    },
+  });
+
+  if (outcome.outcome === "SUCCEEDED" || outcome.outcome === "ALREADY_SUCCEEDED") {
+    return {
+      status: ActionStatus.COMPLETED,
+      result: `Paused recurring subscription (${outcome.externalStatus ?? "done"}).`,
+      intentIds: [outcome.intentId],
+      externalRefs: outcome.externalRef ? [outcome.externalRef] : [],
+    };
+  }
+
+  return {
+    status: statusForOutcome(outcome.outcome, true),
+    result:
+      outcome.outcome === "FAILED" || outcome.outcome === "ALREADY_FAILED"
+        ? outcome.error ?? "Pause failed."
+        : `Pause outcome indeterminate: ${outcome.unknownReason}`,
+    intentIds: [outcome.intentId],
+    externalRefs: [],
+    unknownReason: outcome.unknownReason,
+  };
+}
+
+/** Dispatches to the executor for an action type. */
+export async function executeAction(
+  client: PrismaClient,
+  ctx: { businessId: string; strategyId: string; action: AgentAction },
+  hooks: ExecutionHooks = {}
+): Promise<ActionExecutionOutcome> {
+  switch (ctx.action.actionType) {
+    case "RECOVER_FAILED_PAYMENTS":
+      return executeRecoverFailedPayments(client, ctx, hooks);
+    case "PRIORITIZE_COLLECTIONS":
+      return executePrioritizeCollections(client, ctx, hooks);
+    case "RESCHEDULE_PAYOUT":
+      return executeReschedulePayout(client, ctx, hooks);
+    case "PAUSE_EXPENSE":
+      return executePauseExpense(client, ctx, hooks);
+    default:
+      return {
+        status: ActionStatus.FAILED,
+        result: `Unsupported action type ${ctx.action.actionType}`,
+        intentIds: [],
+        externalRefs: [],
+      };
+  }
+}

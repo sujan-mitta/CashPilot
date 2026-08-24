@@ -1,0 +1,59 @@
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { getSession } from "@/lib/auth";
+
+export async function GET(
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> | { id: string } }
+) {
+  try {
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const resolvedParams = "then" in context.params ? await context.params : context.params;
+    const { id } = resolvedParams;
+
+    const business = await prisma.business.findUnique({
+      where: { id: session.businessId },
+    });
+    if (!business) {
+      return NextResponse.json({ error: "Business not found" }, { status: 404 });
+    }
+
+    const strategy = await prisma.strategy.findFirst({
+      where: { id, businessId: business.id },
+      include: {
+        agentActions: true,
+      },
+    });
+
+    if (!strategy) {
+      return NextResponse.json({ error: "Strategy not found" }, { status: 404 });
+    }
+
+    // The stored `actions` JSON is the raw engine output, which carries no id —
+    // ids live on the AgentAction rows. POST /api/strategies returns actions with
+    // ids attached, so do the same here to keep both paths on one shape.
+    const storedActions = Array.isArray(strategy.actions) ? (strategy.actions as any[]) : [];
+    const claimed = new Set<string>();
+    const actions = storedActions.map((a, idx) => {
+      const match = strategy.agentActions.find(
+        (dbA) => dbA.actionType === a.type && !claimed.has(dbA.id)
+      );
+      if (match) claimed.add(match.id);
+
+      return {
+        ...a,
+        id: match ? match.id : `${strategy.id}-action-${idx}`,
+        status: match ? match.status : "SIMULATED",
+      };
+    });
+
+    return NextResponse.json({ ...strategy, actions });
+  } catch (error: any) {
+    console.error("API error in get strategy:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}

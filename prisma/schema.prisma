@@ -1,0 +1,418 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Business {
+  id           String        @id @default(cuid())
+  name         String
+  currentCash  Int           // Stored in paise/cents to avoid float errors
+  createdAt    DateTime      @default(now())
+  transactions Transaction[]
+  invoices     Invoice[]
+  payouts      Payout[]
+  forecasts    CashForecast[]
+  strategies   Strategy[]
+  users        User[]
+  decisions    Decision[]
+}
+
+enum TransactionType {
+  INFLOW
+  OUTFLOW
+}
+
+enum TransactionStatus {
+  SUCCESS
+  FAILED
+  PENDING
+}
+
+model Transaction {
+  id               String            @id @default(cuid())
+  business         Business          @relation(fields: [businessId], references: [id])
+  businessId       String
+  amount           Int               // in paise
+  type             TransactionType
+  status           TransactionStatus
+  description      String?
+  expectedDate     DateTime
+  paymentRecovery  PaymentRecovery?
+  createdAt        DateTime          @default(now())
+
+  @@index([businessId])
+}
+
+enum InvoiceStatus {
+  PAID
+  OVERDUE
+  PENDING
+}
+
+enum Priority {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+model Invoice {
+  id           String        @id @default(cuid())
+  business     Business      @relation(fields: [businessId], references: [id])
+  businessId   String
+  customerName String
+  amount       Int           // in paise
+  dueDate      DateTime
+  status       InvoiceStatus
+  priority     Priority
+
+  @@index([businessId])
+}
+
+enum PayoutCriticality {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum PayoutStatus {
+  SCHEDULED
+  PAID
+  RESCHEDULED
+  PAUSED
+}
+
+model Payout {
+  id            String             @id @default(cuid())
+  business      Business           @relation(fields: [businessId], references: [id])
+  businessId    String
+  vendor        String
+  amount        Int                // in paise
+  scheduledDate DateTime
+  criticality   PayoutCriticality
+  status        PayoutStatus       @default(SCHEDULED)
+
+  @@index([businessId])
+}
+
+model CashForecast {
+  id               String    @id @default(cuid())
+  business         Business  @relation(fields: [businessId], references: [id])
+  businessId       String
+  date             DateTime
+  openingBalance   Int
+  expectedInflows  Int
+  expectedOutflows Int
+  projectedBalance Int
+  createdAt        DateTime  @default(now())
+
+  @@index([businessId])
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum RecoveryStatus {
+  RECOVERY_CANDIDATE
+  RECOVERY_INITIATED
+  PAYMENT_LINK_CREATED
+  PAYMENT_PENDING
+  RECOVERED
+  EXPIRED
+  FAILED
+}
+
+model PaymentRecovery {
+  id            String         @id @default(cuid())
+  transaction   Transaction    @relation(fields: [transactionId], references: [id])
+  transactionId String         @unique
+  status        RecoveryStatus @default(RECOVERY_CANDIDATE)
+  paymentLinkId String?        // Razorpay payment link ID
+  shortUrl      String?        // Razorpay payment link URL
+  amount        Int
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+}
+
+model Strategy {
+  id               String        @id @default(cuid())
+  business         Business      @relation(fields: [businessId], references: [id])
+  businessId       String
+  name             String        // "DO_NOTHING" | "RECOVER_ONLY" | "RECOVER_AND_COLLECT" | "FULL_INTERVENTION"
+  actions          Json          // Array of ActionDefinition
+  projectedBalance Int
+  riskLevel        RiskLevel
+  score            Float
+  recommended      Boolean       @default(false)
+  createdAt        DateTime      @default(now())
+  agentActions     AgentAction[]
+  actualOutcome    Json?         // Stores { actualBalance: Int, actualDeficitDays: Int, actualCoverage: Float, error: Json }
+  startingCash     Int           @default(0)
+  scoring          Json?
+  decision         Decision?
+
+  @@index([businessId])
+}
+
+enum ActionType {
+  RECOVER_FAILED_PAYMENTS
+  PRIORITIZE_COLLECTIONS
+  RESCHEDULE_PAYOUT
+  PAUSE_EXPENSE
+}
+
+enum ActionStatus {
+  PENDING
+  APPROVED
+  EXECUTING
+  COMPLETED
+  FAILED
+  REJECTED
+  STALE
+  EXECUTION_REQUESTED
+  EXECUTION_UNKNOWN
+  EXECUTED
+  RECONCILING
+  RECONCILIATION_FAILED
+  RECONCILIATION_MISMATCH
+}
+
+/// Durable record of the INTENT to perform an external financial operation.
+///
+/// Phase 15 P0. A database transaction cannot make a Razorpay API call atomic,
+/// so the intent is committed BEFORE the side effect. Crash semantics:
+///   RECORDED    - committed, no external effect yet  -> safe to dispatch
+///   DISPATCHING - external call in flight            -> NEVER auto-redispatch
+///   SUCCEEDED / FAILED / UNKNOWN - resolved
+/// A crash while DISPATCHING is swept to UNKNOWN and must be reconciled against
+/// the provider, never blindly retried.
+model ExecutionIntent {
+  id             String                @id @default(cuid())
+  businessId     String
+  strategyId     String
+  actionId       String
+  action         AgentAction           @relation(fields: [actionId], references: [id])
+
+  /// Stable per (action, target). Never regenerated on retry.
+  idempotencyKey String                @unique
+
+  /// Identity of the UNDERLYING FINANCIAL OBLIGATION, e.g. "INVOICE:<id>".
+  ///
+  /// Deliberately NOT derived from actionId. Actions are disposable - a
+  /// regenerated strategy mints new ones - so an action-scoped key silently
+  /// stops protecting the obligation the moment a strategy is regenerated.
+  /// The obligation outlives every attempt against it, so duplicate protection
+  /// must be anchored here.
+  obligationKey  String?
+  operation      ExecutionOperation
+  targetType     String?
+  targetId       String?
+  amount         Int
+
+  status         ExecutionIntentStatus @default(RECORDED)
+  attempts       Int                   @default(0)
+
+  externalRef    String?
+  externalStatus String?
+  lastError      String?
+  unknownReason  String?
+
+  /// ---- Phase 16 ----
+  /// The post-condition this operation is expected to leave behind, captured
+  /// BEFORE the side effect. Reconciliation compares persisted reality against
+  /// this rather than inferring success from a returned value.
+  expectedState       Json?
+  /// What reconciliation actually observed, for operator display.
+  observedState       Json?
+  lastReconciledAt    DateTime?
+  /// Full ReconciliationResult from the last attempt.
+  reconciliationResult Json?
+  /// Set ONLY when the system has positive evidence the operation did not
+  /// occur. The single gate on any operator retry.
+  retrySafe           Boolean   @default(false)
+
+  recordedAt     DateTime              @default(now())
+  dispatchedAt   DateTime?
+  resolvedAt     DateTime?
+  updatedAt      DateTime              @updatedAt
+
+  @@index([businessId])
+  @@index([actionId])
+  @@index([strategyId])
+  @@index([status])
+  @@index([status, dispatchedAt])
+  @@index([businessId, obligationKey, status])
+}
+
+enum ExecutionOperation {
+  CREATE_PAYMENT_LINK
+  RESCHEDULE_PAYOUT
+  PAUSE_EXPENSE
+}
+
+enum ExecutionIntentStatus {
+  RECORDED
+  DISPATCHING
+  SUCCEEDED
+  FAILED
+  UNKNOWN
+}
+
+model AgentAction {
+  id                  String       @id @default(cuid())
+  strategy            Strategy     @relation(fields: [strategyId], references: [id])
+  strategyId          String
+  actionType          ActionType
+  amount              Int
+  status              ActionStatus @default(PENDING)
+  result              String?
+  targetTransactionId String?
+  targetPayoutId      String?
+  createdAt           DateTime     @default(now())
+  
+  executionIntents    ExecutionIntent[]
+
+  predictionActual    Json?        // Stores { prediction: ScoredStrategy["scoring"], actual: ScoredStrategy["scoring"] or similar, error: any }
+  auditLog            Json?        // Stores array of AuditEntry { who: string, what: string, when: DateTime, why: string, result: string }
+
+  @@index([strategyId])
+  @@index([targetTransactionId])
+  @@index([targetPayoutId])
+}
+
+model User {
+  id         String     @id @default(cuid())
+  email      String     @unique
+  name       String
+  password   String     @default("mock-password-hash")
+  createdAt  DateTime   @default(now())
+  businesses Business[]
+}
+
+model ProcessedEvent {
+  id        String   @id
+  createdAt DateTime @default(now())
+}
+
+enum DecisionStatus {
+  GENERATED
+  PRESENTED
+  APPROVED
+  REJECTED
+  EXECUTED
+  NOT_EXECUTED
+  RECONCILED
+  NOT_RECONCILED
+  RECONCILIATION_MISMATCH
+  OUTCOME_MEASURED
+}
+
+model Decision {
+  id                     String         @id @default(cuid())
+  businessId             String
+  business               Business       @relation(fields: [businessId], references: [id])
+  strategyId             String         @unique
+  strategy               Strategy       @relation(fields: [strategyId], references: [id])
+  createdAt              DateTime       @default(now())
+  status                 DecisionStatus @default(GENERATED)
+  
+  engineVersion          String         @default("13.0.0")
+  
+  baselineSnapshot       Json
+  recommendedSnapshot    Json
+  approvalSnapshot       Json?
+  executionSnapshot      Json?
+  reconciliationSnapshot Json?
+  
+  actualOutcome          Json?
+  outcomeMeasuredAt      DateTime?
+
+  /// ---- Phase 15 ----
+
+  /// Deterministic hash of the financial facts the recommendation rests on.
+  /// Recomputed at approval/execution and compared; a material difference makes
+  /// the strategy STALE. Write-once, like every other historical field.
+  contextFingerprint     String?
+  /// Per-component hashes + raw values, so a diff can say WHAT changed.
+  fingerprintDetail      Json?
+
+  /// The exact critical obligations this recommendation was meant to protect,
+  /// with stable identity. Replaces aggregate-count-only storage so actual
+  /// protection can be derived from evidence rather than copied from prediction.
+  obligationSnapshot     Json?
+
+  /// Outcome measurement runs on its own clock. The forecast horizon stays 14
+  /// days; the outcome horizon extends to cover deferred obligations.
+  outcomeMeasurementHorizonDays Int          @default(14)
+  outcomePhase           OutcomePhase        @default(NOT_STARTED)
+  finalOutcomeMeasuredAt DateTime?
+
+  /// Configuration identity at decision time (PART 27).
+  scoringConfigVersion   String              @default("14.0.0")
+  liquidityConfigVersion String              @default("14.0.0")
+  outcomeRulesVersion    String              @default("14.0.0")
+
+  events                 DecisionEvent[]
+
+  @@index([businessId])
+  @@index([businessId, createdAt])
+  @@index([outcomePhase])
+}
+
+/// Outcome measurement lifecycle. Deliberately separate from DecisionStatus:
+/// "what did we decide" and "how far has measurement got" are different facts,
+/// and Phase 14 established one authoritative state per concept.
+enum OutcomePhase {
+  NOT_STARTED
+  WINDOW_OPEN
+  WINDOW_COMPLETE
+  POST_HORIZON_PENDING
+  FINAL_MEASURED
+  UNRESOLVED_AFTER_WINDOW
+}
+
+enum DecisionEventType {
+  GENERATED
+  PRESENTED
+  APPROVED
+  REJECTED
+  STALE_BLOCKED
+  EXECUTION_STARTED
+  EXECUTION_UNKNOWN
+  EXECUTED
+  NOT_EXECUTED
+  RECONCILED
+  NOT_RECONCILED
+  RECONCILIATION_MISMATCH
+  OUTCOME_MEASURED
+  POST_HORIZON_PENDING
+  FINAL_OUTCOME_MEASURED
+}
+
+/// Append-only audit trail. Rows are never updated or deleted; the event is
+/// written in the SAME transaction as the status change it describes, so state
+/// and audit history can never disagree.
+model DecisionEvent {
+  id         String            @id @default(cuid())
+  decisionId String
+  decision   Decision          @relation(fields: [decisionId], references: [id])
+  businessId String
+  eventType  DecisionEventType
+  fromStatus DecisionStatus?
+  toStatus   DecisionStatus?
+  /// HUMAN | SYSTEM | WEBHOOK
+  actorType  String
+  actorId    String?
+  metadata   Json?
+  createdAt  DateTime          @default(now())
+
+  @@index([decisionId, createdAt])
+  @@index([businessId, createdAt])
+  @@index([eventType])
+}

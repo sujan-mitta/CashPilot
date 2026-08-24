@@ -1,0 +1,224 @@
+"use client";
+
+import React, { createContext, useContext, useState, ReactNode, useEffect } from "react";
+
+export interface Action {
+  id: string;
+  actionType: string;
+  amount: number;
+  status: string;
+  result: string | null;
+  label?: string;
+}
+
+export interface Strategy {
+  id: string;
+  name: string;
+  actions: {
+    id: string;
+    type: string;
+    sourceEntityId: string;
+    amount: number;
+    effectiveDate: string;
+    status: string;
+    label: string;
+  }[];
+  forecast: {
+    date: string;
+    openingBalance: number;
+    expectedInflows: number;
+    expectedOutflows: number;
+    projectedBalance: number;
+  }[];
+  result: {
+    projectedBalance: number;
+    minimumProjectedBalance: number;
+    crisisDay: number | null;
+    riskLevel: "LOW" | "MEDIUM" | "HIGH";
+  };
+  scoring: {
+    liquiditySafety: number;
+    deficitElimination: number;
+    criticalObligationProtection: number;
+    lowDisruption: number;
+    executionConfidence: number;
+    finalScore: number;
+  };
+  recommended: boolean;
+  agentActions?: Action[];
+}
+
+export interface ForecastResponse {
+  status: "SUCCESS" | "NO_DATA" | "ERROR";
+  business: {
+    id: string;
+    name: string;
+    currentCash: number;
+  } | null;
+  forecast: {
+    horizonDays: number;
+    safetyThreshold: number;
+    days: {
+      date: string;
+      openingBalance: number;
+      expectedInflows: number;
+      expectedOutflows: number;
+      projectedBalance: number;
+    }[];
+    runway: {
+      firstBelowSafetyThreshold: string | null;
+      firstNegativeDay: string | null;
+      minimumProjectedBalance: number;
+    };
+    riskLevel: "LOW" | "MEDIUM" | "HIGH";
+  } | null;
+}
+
+export interface InvestigationResponse {
+  status: "SUCCESS";
+  summary: {
+    projectedDeficit: number;
+    crisisDay: number | null;
+    riskLevel: "LOW" | "MEDIUM" | "HIGH";
+  };
+  causes: {
+    id: string;
+    rank: number;
+    type: "TIMING_MISMATCH" | "FAILED_PAYMENT" | "OVERDUE_RECEIVABLE";
+    severity: "LOW" | "MEDIUM" | "HIGH";
+    amount: number;
+    classification: "ROOT_CAUSE" | "INTERVENTION_OPPORTUNITY";
+    title: string;
+    deterministicExplanation: string;
+    evidence: {
+      events?: { description: string; amount: number; expectedDate: string }[];
+      transactions?: { id: string; description: string | null; amount: number; expectedDate: string }[];
+      invoices?: { id: string; customerName: string; amount: number; dueDate: string }[];
+    };
+  }[];
+  opportunities: {
+    failedPaymentRecovery: number;
+    overdueReceivables: number;
+    totalPotentialLiquidity: number;
+  };
+  aiNarrative: string;
+}
+
+interface UserSession {
+  userId: string;
+  name: string;
+  email: string;
+  businessId: string;
+  businessName: string;
+}
+
+interface CashPilotState {
+  user: UserSession | null;
+  login: (session: UserSession) => void;
+  logout: () => void;
+  selectedStrategyId: string | null;
+  setSelectedStrategyId: (id: string | null) => void;
+  cachedForecast: ForecastResponse | null;
+  setCachedForecast: (f: ForecastResponse | null) => void;
+  cachedStrategies: Strategy[] | null;
+  setCachedStrategies: (s: Strategy[] | null) => void;
+  cachedRecommendationNarration: string | null;
+  setCachedRecommendationNarration: (n: string | null) => void;
+  cachedInvestigation: InvestigationResponse | null;
+  setCachedInvestigation: (i: InvestigationResponse | null) => void;
+  executionResult: {
+    steps: { action: string; status: string; result: string; narration: string }[];
+    before: number;
+    after: number;
+  } | null;
+  setExecutionResult: (r: {
+    steps: { action: string; status: string; result: string; narration: string }[];
+    before: number;
+    after: number;
+  } | null) => void;
+}
+
+const CashPilotContext = createContext<CashPilotState | null>(null);
+
+export function CashPilotProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<UserSession | null>(null);
+  const [selectedStrategyId, setSelectedStrategyId] = useState<string | null>(null);
+  const [cachedForecast, setCachedForecast] = useState<ForecastResponse | null>(null);
+  const [cachedStrategies, setCachedStrategies] = useState<Strategy[] | null>(null);
+  const [cachedRecommendationNarration, setCachedRecommendationNarration] = useState<string | null>(null);
+  const [cachedInvestigation, setCachedInvestigation] = useState<InvestigationResponse | null>(null);
+  const [executionResult, setExecutionResult] = useState<{
+    steps: { action: string; status: string; result: string; narration: string }[];
+    before: number;
+    after: number;
+  } | null>(null);
+
+  // Load session from localStorage on client-side mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("cashpilot_user");
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          setTimeout(() => {
+            setUser(parsed);
+          }, 0);
+        } catch {
+          localStorage.removeItem("cashpilot_user");
+        }
+      }
+    }
+  }, []);
+
+  const login = (session: UserSession) => {
+    setUser(session);
+    localStorage.setItem("cashpilot_user", JSON.stringify(session));
+  };
+
+  const logout = () => {
+    setUser(null);
+    localStorage.removeItem("cashpilot_user");
+    // Securely trigger server-side logout to clear httpOnly cookie
+    fetch("/api/auth/logout", { method: "POST" }).catch((err) => {
+      console.error("Failed to execute logout on server:", err);
+    });
+    // Clear other caches too
+    setCachedForecast(null);
+    setCachedStrategies(null);
+    setCachedRecommendationNarration(null);
+    setCachedInvestigation(null);
+    setExecutionResult(null);
+  };
+
+  return (
+    <CashPilotContext.Provider
+      value={{
+        user,
+        login,
+        logout,
+        selectedStrategyId,
+        setSelectedStrategyId,
+        cachedForecast,
+        setCachedForecast,
+        cachedStrategies,
+        setCachedStrategies,
+        cachedRecommendationNarration,
+        setCachedRecommendationNarration,
+        cachedInvestigation,
+        setCachedInvestigation,
+        executionResult,
+        setExecutionResult,
+      }}
+    >
+      {children}
+    </CashPilotContext.Provider>
+  );
+}
+
+export function useCashPilot() {
+  const ctx = useContext(CashPilotContext);
+  if (!ctx) {
+    throw new Error("useCashPilot must be used within CashPilotProvider");
+  }
+  return ctx;
+}

@@ -1,0 +1,67 @@
+import React from "react";
+import { RiskBadge } from "./RiskBadge";
+import { Strategy } from "@/context/CashPilotContext";
+
+export function StrategyComparisonTable({ strategies }: { strategies: Strategy[] }) {
+  const getStrategyDisplayName = (name: string) => {
+    switch (name) {
+      case "DO_NOTHING":
+        return "Baseline (Do Nothing)";
+      case "RECOVER_ONLY":
+        return "Failed Payment Recovery";
+      case "RECOVER_AND_COLLECT":
+        return "Recovery & Collections";
+      case "FULL_INTERVENTION":
+        return "Full Intervention";
+      default:
+        return name;
+    }
+  };
+
+  return (
+    <div className="overflow-hidden border border-slate-200 rounded-xl bg-white shadow-sm">
+      <table className="min-w-full divide-y divide-slate-200 text-left text-sm text-slate-600">
+        <thead className="bg-slate-50 font-semibold text-slate-700">
+          <tr>
+            <th className="px-6 py-4">Strategy</th>
+            <th className="px-6 py-4">Projected Balance</th>
+            <th className="px-6 py-4">Runway Crisis</th>
+            <th className="px-6 py-4">Risk Level</th>
+            <th className="px-6 py-4">Dynamic Score</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100 font-medium">
+          {strategies.map((s) => (
+            <tr
+              key={s.id}
+              className={s.recommended ? "bg-indigo-50/40 font-semibold text-slate-900" : ""}
+            >
+              <td className="px-6 py-4 flex items-center gap-1.5">
+                {getStrategyDisplayName(s.name)}
+                {s.recommended && (
+                  <span className="bg-indigo-100 text-indigo-800 text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider">
+                    Recommended
+                  </span>
+                )}
+              </td>
+              <td className="px-6 py-4">
+                ₹{(s.result.projectedBalance / 10000000).toFixed(2)}L
+              </td>
+              <td className="px-6 py-4">
+                {s.result.crisisDay ? (
+                  <span className="text-red-600 font-semibold">Day {s.result.crisisDay}</span>
+                ) : (
+                  <span className="text-green-600">Resolved</span>
+                )}
+              </td>
+              <td className="px-6 py-4">
+                <RiskBadge level={s.result.riskLevel} />
+              </td>
+              <td className="px-6 py-4 text-slate-800 font-bold">{s.scoring.finalScore}/100</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
