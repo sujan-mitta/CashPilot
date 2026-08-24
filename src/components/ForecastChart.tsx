@@ -44,8 +44,10 @@ export function ForecastChart({
       basePoint?.projectedBalance !== undefined ? basePoint.projectedBalance / 100 : null;
 
     // Support both schema parameters (projectedBalance or closingBalance). A
-    // point carrying neither is plotted as a gap rather than as NaN, which
-    // recharts renders as a silent drop to zero.
+    // point carrying neither previously produced `undefined / 100` -> NaN.
+    // recharts already breaks the line at a NaN, so the chart LOOKED right;
+    // the defect was the NaN sitting in the data, which anything else reading
+    // it (tooltip, export, aggregation) would have had to cope with.
     const rawStrategy = d.projectedBalance ?? d.closingBalance;
     const strategyVal = rawStrategy !== undefined ? rawStrategy / 100 : null;
 
