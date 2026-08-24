@@ -338,7 +338,7 @@ export async function settlePayment(
           await tx.executionIntent.updateMany({
             where: {
               id: intent.id,
-              status: { in: [ExecutionIntentStatus.DISPATCHING, ExecutionIntentStatus.UNKNOWN, ExecutionIntentStatus.RECORDED] as any },
+              status: { in: [ExecutionIntentStatus.DISPATCHING, ExecutionIntentStatus.UNKNOWN, ExecutionIntentStatus.RECORDED] },
             },
             data: {
               status: ExecutionIntentStatus.SUCCEEDED,
@@ -512,7 +512,7 @@ export async function settlePayment(
               await tx.executionIntent.updateMany({
                 where: {
                   id: intent.id,
-                  status: { in: [ExecutionIntentStatus.DISPATCHING, ExecutionIntentStatus.UNKNOWN, ExecutionIntentStatus.RECORDED] as any },
+                  status: { in: [ExecutionIntentStatus.DISPATCHING, ExecutionIntentStatus.UNKNOWN, ExecutionIntentStatus.RECORDED] },
                 },
                 data: {
                   status: ExecutionIntentStatus.SUCCEEDED,

@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth";
 import { isRetryPermitted } from "@/lib/execution/executor";
 import { FINANCIAL_CONFIG } from "@/lib/engine/financialConfig";
 import { errorMessage } from "@/lib/errors";
+import { ExecutionIntentStatus } from "../../../../generated/prisma/client";
 
 /**
  * Operator view of unresolved execution intents (Phase 16 PART 5/6).
@@ -34,7 +35,7 @@ export async function GET(req: NextRequest) {
         // Tenant scoping lives in the query, never in a post-filter.
         businessId: session.businessId,
         ...(strategyId ? { strategyId } : {}),
-        ...(unresolvedOnly ? { status: { in: ["UNKNOWN", "DISPATCHING"] as any } } : {}),
+        ...(unresolvedOnly ? { status: { in: [ExecutionIntentStatus.UNKNOWN, ExecutionIntentStatus.DISPATCHING] } } : {}),
       },
       orderBy: [{ recordedAt: "desc" }, { id: "desc" }],
       take: limit,

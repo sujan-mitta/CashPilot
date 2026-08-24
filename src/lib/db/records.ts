@@ -1,3 +1,5 @@
+import type { DecisionStatus } from "../../../generated/prisma/client";
+
 /**
  * Structural shapes for the records the engine reads.
  *
@@ -71,4 +73,35 @@ export interface DecisionContextReader extends FinancialRecordReader {
   business: {
     findUnique(args: { where: { id: string } }): Promise<BusinessRecord | null>;
   };
+}
+
+/** The decision fields the state machine reads before deciding a transition. */
+export interface DecisionRow {
+  id: string;
+  businessId: string;
+  status: DecisionStatus;
+  approvalSnapshot?: unknown;
+  executionSnapshot?: unknown;
+  [field: string]: unknown;
+}
+
+/**
+ * The write surface the decision state machine needs.
+ *
+ * `$transaction` is optional on purpose. A transaction client does not have it,
+ * and that absence is exactly how transitionDecision detects that it is already
+ * inside someone else's transaction and should not open a second one.
+ */
+export interface DecisionWriter {
+  decision?: {
+    findFirst(args: { where: Record<string, unknown> }): Promise<DecisionRow | null>;
+    updateMany(args: {
+      where: Record<string, unknown>;
+      data: Record<string, unknown>;
+    }): Promise<{ count: number }>;
+  };
+  decisionEvent?: {
+    create(args: { data: Record<string, unknown> }): Promise<unknown>;
+  };
+  $transaction?: <T>(fn: (tx: DecisionWriter) => Promise<T>) => Promise<T>;
 }

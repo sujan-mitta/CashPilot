@@ -1,4 +1,5 @@
 import { DecisionStatus, DecisionEventType } from "../../../generated/prisma/client";
+import { DecisionRow, DecisionWriter } from "../db/records";
 
 /**
  * ============================================================================
@@ -169,7 +170,7 @@ const STATUS_EVENT: Partial<Record<DecisionStatus, DecisionEventType>> = {
  * transition rolls back with it, and the log can never disagree with state.
  */
 export async function appendDecisionEvent(
-  client: any,
+  client: DecisionWriter,
   decision: { id: string; businessId: string },
   event: {
     eventType: DecisionEventType;
@@ -190,18 +191,18 @@ export async function appendDecisionEvent(
       toStatus: event.toStatus ?? null,
       actorType: event.actorType,
       actorId: event.actorId ?? null,
-      metadata: (event.metadata ?? null) as any,
+      metadata: event.metadata ?? null,
     },
   });
 }
 
 export async function transitionDecision(
-  client: any,
+  client: DecisionWriter,
   where: { id?: string; strategyId?: string },
   next: DecisionStatus,
   data: Record<string, unknown> = {},
   options: { allowSnapshotOverwrite?: boolean; audit?: TransitionAudit } = {}
-): Promise<any | null> {
+): Promise<DecisionRow | null> {
   if (!client?.decision) return null;
 
   // PART 24 - atomicity, applied centrally.
@@ -212,7 +213,7 @@ export async function transitionDecision(
   // `$transaction` method, so an already-transactional caller falls straight
   // through and still participates in the caller's transaction.
   if (typeof client.$transaction === "function") {
-    return await client.$transaction((tx: any) =>
+    return await client.$transaction((tx) =>
       transitionDecisionInner(tx, where, next, data, options)
     );
   }
@@ -221,12 +222,12 @@ export async function transitionDecision(
 }
 
 async function transitionDecisionInner(
-  client: any,
+  client: DecisionWriter,
   where: { id?: string; strategyId?: string },
   next: DecisionStatus,
   data: Record<string, unknown> = {},
   options: { allowSnapshotOverwrite?: boolean; audit?: TransitionAudit } = {}
-): Promise<any | null> {
+): Promise<DecisionRow | null> {
   if (!client?.decision) return null;
 
   const current = await client.decision.findFirst({ where });

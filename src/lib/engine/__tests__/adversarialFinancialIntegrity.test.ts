@@ -792,7 +792,8 @@ describe("PART 5/6 - Concurrent approval and execution", () => {
     const result = await transitionDecision(prisma, { id: "dec-1" }, "EXECUTED" as any, {
       executionSnapshot: { outcome: "EXECUTED" },
     });
-    expect(result.status).toBe("EXECUTED");
+    expect(result).not.toBeNull();
+    expect(result?.status).toBe("EXECUTED");
   });
 
   it("a compare-and-set miss with a divergent final state raises rather than guessing", async () => {

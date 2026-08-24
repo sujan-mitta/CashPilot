@@ -14,6 +14,7 @@ import { appendDecisionEvent } from "@/lib/engine/decisionStateMachine";
 import { FINANCIAL_CONFIG } from "@/lib/engine/financialConfig";
 import { DecisionEventType, DecisionStatus } from "../../../../generated/prisma/client";
 import { errorMessage } from "@/lib/errors";
+import type { Prisma } from "../../../../generated/prisma/client";
 
 export async function POST() {
   try {
@@ -184,7 +185,7 @@ export async function POST() {
           recommendedStrategyId = created.id;
         }
 
-        if ((tx as any).decision) {
+        if (tx.decision) {
           // Computed above, outside the transaction.
           const fingerprint = fingerprintByStrategy.get(s.name)!;
 
@@ -198,7 +199,7 @@ export async function POST() {
           const outcomeHorizonDays =
             FINANCIAL_CONFIG.OUTCOME_WINDOW_DAYS + Math.max(0, deferredDaysBeyond);
 
-          const createdDecision = await (tx as any).decision.create({
+          const createdDecision = await tx.decision.create({
             data: {
               businessId: business.id,
               strategyId: created.id,
@@ -208,8 +209,10 @@ export async function POST() {
               liquidityConfigVersion: FINANCIAL_CONFIG.LIQUIDITY_CONFIG_VERSION,
               outcomeRulesVersion: FINANCIAL_CONFIG.OUTCOME_RULES_VERSION,
               contextFingerprint: fingerprint.fingerprint,
-              fingerprintDetail: fingerprint as any,
-              obligationSnapshot: buildObligationSnapshot(fingerprint.context) as any,
+              fingerprintDetail: fingerprint as unknown as Prisma.InputJsonValue,
+              obligationSnapshot: buildObligationSnapshot(
+                fingerprint.context
+              ) as unknown as Prisma.InputJsonValue,
               outcomeMeasurementHorizonDays: outcomeHorizonDays,
               outcomePhase: "WINDOW_OPEN",
               baselineSnapshot: {
@@ -229,7 +232,8 @@ export async function POST() {
                 coverageRatio: s.scoring?.bufferCoverageRatio || 0,
                 criticalObligationProtection: s.scoring?.criticalObligations?.protected || 0,
                 effectiveness: s.scoring?.counterfactual?.effectiveness || "NO_MATERIAL_IMPROVEMENT",
-                deferredObligations: s.deferredObligations || [],
+                deferredObligations: (s.deferredObligations ||
+                  []) as unknown as Prisma.InputJsonValue,
                 strategyType: s.name,
               },
             },
