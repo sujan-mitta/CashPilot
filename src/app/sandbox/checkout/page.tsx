@@ -14,17 +14,22 @@ function CheckoutContent() {
   const paymentLinkId = searchParams.get("paymentLinkId");
   const actionId = searchParams.get("actionId");
 
-  const [loading, setLoading] = useState(true);
+  // Whether the parameters are usable is knowable during render, so it is
+  // derived rather than assigned from an effect. Setting it in the effect made
+  // the page show a spinner for one frame before an error it already had.
+  const paramError =
+    !paymentLinkId || !actionId
+      ? "Invalid session params. paymentLinkId and actionId are required."
+      : null;
+
+  const [loading, setLoading] = useState(!paramError);
   const [paying, setPaying] = useState(false);
   const [success, setSuccess] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const error = paramError ?? fetchError;
 
   useEffect(() => {
-    if (!paymentLinkId || !actionId) {
-      setError("Invalid session params. paymentLinkId and actionId are required.");
-      setLoading(false);
-      return;
-    }
+    if (paramError) return;
 
     // Check if already paid
     async function checkCurrentStatus() {
@@ -42,12 +47,12 @@ function CheckoutContent() {
       }
     }
     checkCurrentStatus();
-  }, [paymentLinkId, actionId]);
+  }, [paymentLinkId, actionId, paramError]);
 
   const handleSimulatePayment = async () => {
     if (!paymentLinkId || !actionId || paying) return;
     setPaying(true);
-    setError(null);
+    setFetchError(null);
 
     try {
       const res = await fetch(
@@ -62,7 +67,7 @@ function CheckoutContent() {
         throw new Error("Unable to authorize checkout simulation.");
       }
     } catch (err) {
-      setError(errorMessage(err));
+      setFetchError(errorMessage(err));
     } finally {
       setPaying(false);
     }

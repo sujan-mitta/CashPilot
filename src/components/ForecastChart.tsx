@@ -1,24 +1,33 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useSyncExternalStore } from "react";
 import { formatLakhs } from "@/lib/format";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ReferenceLine, ResponsiveContainer, CartesianGrid } from "recharts";
+
+/** Hydration never changes after it happens, so there is nothing to subscribe to. */
+const subscribeToNothing = () => () => {};
+
+/** One point on the runway line. Balances are in paise, as everywhere else. */
+export interface ForecastPoint {
+  date: string | Date;
+  projectedBalance?: number;
+  closingBalance?: number;
+}
 
 export function ForecastChart({
   data,
   baselineData,
   safetyThreshold,
 }: {
-  data: any[];
-  baselineData?: any[];
+  data: ForecastPoint[];
+  baselineData?: ForecastPoint[];
   /** Adaptive safety buffer in paise for THIS business. */
   safetyThreshold?: number;
 }) {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  // recharts measures the DOM, so the chart cannot be rendered on the server.
+  // This reports false through hydration and true afterwards, which is the same
+  // guard the mounted flag provided without the setState-in-effect cascade.
+  const mounted = useSyncExternalStore(subscribeToNothing, () => true, () => false);
 
   if (!mounted) {
     return (
@@ -30,12 +39,15 @@ export function ForecastChart({
 
   // Map data to coordinate date indices
   const formattedData = data.map((d, idx) => {
-    const baseVal = baselineData && baselineData[idx]
-      ? baselineData[idx].projectedBalance / 100
-      : null;
+    const basePoint = baselineData?.[idx];
+    const baseVal =
+      basePoint?.projectedBalance !== undefined ? basePoint.projectedBalance / 100 : null;
 
-    // Support both schema parameters (projectedBalance or closingBalance)
-    const strategyVal = (d.projectedBalance !== undefined ? d.projectedBalance : d.closingBalance) / 100;
+    // Support both schema parameters (projectedBalance or closingBalance). A
+    // point carrying neither is plotted as a gap rather than as NaN, which
+    // recharts renders as a silent drop to zero.
+    const rawStrategy = d.projectedBalance ?? d.closingBalance;
+    const strategyVal = rawStrategy !== undefined ? rawStrategy / 100 : null;
 
     return {
       dateStr: new Date(d.date).toLocaleDateString("en-IN", { day: "numeric", month: "short" }),
@@ -63,7 +75,7 @@ export function ForecastChart({
           width={56}
         />
         <Tooltip
-          formatter={(v: any, name: any) => [
+          formatter={(v, name) => [
             `₹${Number(v).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`,
             name === "balance" ? "Selected Strategy" : "Baseline (Do Nothing)"
           ]}
