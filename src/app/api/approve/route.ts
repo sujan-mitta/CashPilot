@@ -5,6 +5,7 @@ import { validateActionTransition } from "@/lib/engine/stateTransitions";
 import { transitionDecision, InvalidDecisionTransitionError } from "@/lib/engine/decisionStateMachine";
 import { checkStrategyFreshness, recordStaleBlock, describeStaleness } from "@/lib/engine/freshnessGate";
 import { DecisionStatus } from "../../../../generated/prisma/client";
+import { errorMessage } from "@/lib/errors";
 
 export async function POST(req: Request) {
   let strategyId: string | undefined = undefined;
@@ -208,8 +209,8 @@ export async function POST(req: Request) {
         status: a.status,
       })),
     });
-  } catch (error: any) {
-    if (error.message === "STRATEGY_STALE") {
+  } catch (error) {
+    if (errorMessage(error) === "STRATEGY_STALE") {
       return NextResponse.json(
         { 
           error: "STRATEGY_STALE", 
@@ -218,7 +219,7 @@ export async function POST(req: Request) {
         { status: 409 }
       );
     }
-    if (error.message === "INVALID_STRATEGY") {
+    if (errorMessage(error) === "INVALID_STRATEGY") {
       return NextResponse.json(
         { error: "INVALID_STRATEGY", message: "This strategy contains no executable actions." },
         { status: 400 }
@@ -226,20 +227,20 @@ export async function POST(req: Request) {
     }
     if (error instanceof InvalidDecisionTransitionError) {
       return NextResponse.json(
-        { error: "INVALID_TRANSITION", message: error.message },
+        { error: "INVALID_TRANSITION", message: errorMessage(error) },
         { status: 409 }
       );
     }
-    if (/^Cannot (approve|reject) action/.test(error.message || "")) {
+    if (/^Cannot (approve|reject) action/.test(errorMessage(error) || "")) {
       return NextResponse.json(
         {
           error: "INVALID_TRANSITION",
-          message: error.message,
+          message: errorMessage(error),
         },
         { status: 400 }
       );
     }
-    if (error.message.includes("Concurrency check failure")) {
+    if (errorMessage(error).includes("Concurrency check failure")) {
       try {
         const freshActions = await prisma.agentAction.findMany({
           where: { strategyId },
@@ -261,11 +262,11 @@ export async function POST(req: Request) {
         console.error("Refetch check error in approve catch block:", refetchError);
       }
       return NextResponse.json(
-        { error: "CONCURRENT_MODIFICATION", message: error.message },
+        { error: "CONCURRENT_MODIFICATION", message: errorMessage(error) },
         { status: 409 }
       );
     }
     console.error("API error in approve:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: errorMessage(error) }, { status: 500 });
   }
 }

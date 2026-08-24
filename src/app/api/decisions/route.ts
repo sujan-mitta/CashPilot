@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth";
 import { measureDecisionOutcome } from "@/lib/engine/outcomeMeasurer";
 import { InvalidDecisionTransitionError } from "@/lib/engine/decisionStateMachine";
 import { FINANCIAL_CONFIG } from "@/lib/engine/financialConfig";
+import { errorMessage } from "@/lib/errors";
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -96,8 +97,8 @@ export async function GET(req: NextRequest) {
         hasMore: offset + decisions.length < total,
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error("API error in decisions list:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: errorMessage(error) }, { status: 500 });
   }
 }

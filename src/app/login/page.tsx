@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/Button";
 import { Reveal, Stagger, StaggerItem } from "@/components/ui/Reveal";
 import { EASE_OUT_EXPO } from "@/components/ui/motion";
 import clsx from "clsx";
+import { errorMessage } from "@/lib/errors";
 
 const highlights = [
   "Deterministic Financial Runway Models",
@@ -118,7 +119,7 @@ export default function Login() {
       login(data.user);
       setIsLoading(false);
       router.push("/dashboard");
-    } catch (err: any) {
+    } catch (err) {
       setError("Unable to connect to auth server.");
       setIsLoading(false);
     }

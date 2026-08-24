@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { settlePayment } from "@/lib/razorpay/settlement";
 import { inspectConfiguration } from "@/lib/config/productionConfig";
 import { logger, withCorrelationId } from "@/lib/observability";
+import { errorMessage } from "@/lib/errors";
 
 export interface RazorpayWebhookPaymentLinkEntity {
   id?: string;
@@ -202,8 +203,8 @@ export const POST = withCorrelationId(async (req: Request) => {
     }
 
     return NextResponse.json({ status: "EVENT_IGNORED" });
-  } catch (error: any) {
-    logger.error("Webhook processing error", { error: error.message });
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error) {
+    logger.error("Webhook processing error", { error: errorMessage(error) });
+    return NextResponse.json({ error: errorMessage(error) }, { status: 500 });
   }
 });

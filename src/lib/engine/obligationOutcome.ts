@@ -68,16 +68,41 @@ function dateOnly(value: Date | string): string {
  * checked before any verdict about payment, because a verdict reached without
  * evidence is worse than no verdict at all.
  */
+/** One obligation as captured at decision time. */
+export interface ObligationSnapshotEntry {
+  id: string;
+  sourceType: string;
+  sourceId: string;
+  amount: number;
+  originalDueDate: string;
+  expectedAction: string;
+  criticality: string;
+}
+
+/**
+ * The only database surface obligation measurement needs.
+ *
+ * Declared structurally rather than as PrismaClient so a transaction client, the
+ * base client, and a test fake are all equally valid - and so it is obvious at a
+ * glance that measurement READS and never writes.
+ */
+export interface ObligationRecordReader {
+  payout?: {
+    findFirst(args: { where: { id: string } }): Promise<{
+      scheduledDate: Date | string;
+      status: string;
+    } | null>;
+  };
+  transaction?: {
+    findFirst(args: { where: { id: string } }): Promise<{
+      expectedDate: Date | string;
+      status: string;
+    } | null>;
+  };
+}
+
 export function classifyObligation(
-  snapshot: {
-    id: string;
-    sourceType: string;
-    sourceId: string;
-    amount: number;
-    originalDueDate: string;
-    expectedAction: string;
-    criticality: string;
-  },
+  snapshot: ObligationSnapshotEntry,
   record: { dueDate: Date | string; status: string } | null,
   windowEnd: Date
 ): ObligationOutcome {
@@ -159,13 +184,14 @@ export function classifyObligation(
  * Anything it cannot resolve is UNVERIFIABLE, never assumed good.
  */
 export async function measureObligationSnapshot(
-  client: any,
-  snapshot: any[],
+  client: ObligationRecordReader,
+  snapshot: unknown[],
   windowEnd: Date
 ): Promise<ObligationOutcome[]> {
   const results: ObligationOutcome[] = [];
 
-  for (const entry of snapshot ?? []) {
+  for (const raw of snapshot ?? []) {
+    const entry = raw as ObligationSnapshotEntry;
     let record: { dueDate: Date | string; status: string } | null = null;
     try {
       if (entry.sourceType === "PAYOUT" && client?.payout?.findFirst) {

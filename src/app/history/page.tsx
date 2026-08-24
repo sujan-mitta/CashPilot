@@ -10,6 +10,7 @@ import { Reveal, Stagger, StaggerItem } from "@/components/ui/Reveal";
 import { EASE_OUT_EXPO } from "@/components/ui/motion";
 import { BarChart2, Clock, ChevronRight, X, ShieldAlert, ArrowLeft } from "lucide-react";
 import clsx from "clsx";
+import { errorMessage } from "@/lib/errors";
 
 function strategyPrettyName(name: string) {
   if (name === "DO_NOTHING") return "Do Nothing (Control)";
@@ -61,8 +62,8 @@ export default function DecisionHistoryPage() {
         const perfData = await perfRes.json();
         setPerformance(perfData.performance || null);
       }
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(errorMessage(err));
     } finally {
       setLoading(false);
     }

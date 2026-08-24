@@ -4,6 +4,7 @@ import { buildForecast, transactionsToMovements, calculateRunway } from "@/lib/e
 import { calculateRisk } from "@/lib/engine/riskDetector";
 import { getSession } from "@/lib/auth";
 import { calculateLiquiditySafetyRequirement, extractObligations, calculateTemporalRequiredLiquidity } from "@/lib/engine/liquiditySafety";
+import { errorMessage } from "@/lib/errors";
 
 export async function GET() {
   try {
@@ -101,13 +102,13 @@ export async function GET() {
         },
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error("API error in forecast:", error);
     return NextResponse.json(
       {
         status: "ERROR",
         error: "Unable to generate the latest forecast.",
-        detail: error.message,
+        detail: errorMessage(error),
       },
       { status: 500 }
     );

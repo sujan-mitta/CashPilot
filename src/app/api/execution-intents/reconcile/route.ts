@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { reconcileUnknownIntent, isRetryPermitted } from "@/lib/execution/executor";
 import { assertFinanciallySafeConfiguration, ConfigurationError } from "@/lib/config/productionConfig";
+import { errorMessage } from "@/lib/errors";
 
 /**
  * Operator-triggered reconciliation of one unresolved execution intent
@@ -65,8 +66,8 @@ export async function POST(req: Request) {
       // Server-decided, from stored evidence.
       retryPermitted: after ? isRetryPermitted(after as any) : false,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error("API error in reconcile:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: errorMessage(error) }, { status: 500 });
   }
 }

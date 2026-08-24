@@ -15,6 +15,7 @@ import { Reveal, Stagger, StaggerItem } from "@/components/ui/Reveal";
 import { EASE_OUT_EXPO } from "@/components/ui/motion";
 import { ArrowRight, Sparkles, AlertTriangle, Info, TrendingUp, TrendingDown, ShieldCheck, Lock, X } from "lucide-react";
 import clsx from "clsx";
+import { errorMessage } from "@/lib/errors";
 
 const scenarioLabel: Record<string, string> = {
   DO_NOTHING: "Scenario A",
@@ -117,8 +118,8 @@ export default function Strategies() {
           const rec = data.strategies.find((s: any) => s.recommended);
           if (rec) setSelectedStrategyId(rec.id);
         }
-      } catch (err: any) {
-        setError(err.message);
+      } catch (err) {
+        setError(errorMessage(err));
       } finally {
         setLoading(false);
       }

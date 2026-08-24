@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { errorMessage } from "@/lib/errors";
 
 export async function GET() {
   try {
@@ -26,8 +27,8 @@ export async function GET() {
     }
 
     return NextResponse.json({ businesses: user.businesses });
-  } catch (error: any) {
+  } catch (error) {
     console.error("Fetch user businesses API error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: errorMessage(error) }, { status: 500 });
   }
 }

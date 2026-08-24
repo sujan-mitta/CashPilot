@@ -25,6 +25,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import clsx from "clsx";
+import { errorMessage } from "@/lib/errors";
 
 export default function Dashboard() {
   const router = useRouter();
@@ -57,8 +58,8 @@ export default function Dashboard() {
       setCachedForecast(data);
       setPageState("SUCCESS");
       setMonitoringState(data.status === "SUCCESS" ? "ACTIVE" : "ERROR");
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(errorMessage(err));
       setPageState("ERROR");
       setMonitoringState("ERROR");
     } finally {
@@ -99,8 +100,8 @@ export default function Dashboard() {
       const data = await investigatePromise;
       setCachedInvestigation(data);
       router.push("/investigation");
-    } catch (err: any) {
-      alert("Diagnostics failed: " + err.message);
+    } catch (err) {
+      alert("Diagnostics failed: " + errorMessage(err));
       setPageState("SUCCESS");
     }
   };

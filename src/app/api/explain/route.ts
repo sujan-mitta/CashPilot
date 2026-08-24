@@ -7,6 +7,7 @@ import { buildForecast, transactionsToMovements, calculateRunway } from "@/lib/e
 import { calculateRisk } from "@/lib/engine/riskDetector";
 import { identifyRootCauses } from "@/lib/engine/rootCause";
 import { calculateLiquiditySafetyRequirement } from "@/lib/engine/liquiditySafety";
+import { errorMessage } from "@/lib/errors";
 
 interface ActionDefinition {
   label: string;
@@ -152,8 +153,8 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ error: "Unknown type" }, { status: 400 });
-  } catch (error: any) {
+  } catch (error) {
     console.error("AI explain endpoint error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: errorMessage(error) }, { status: 500 });
   }
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { errorMessage } from "@/lib/errors";
 
 export async function GET(
   req: NextRequest,
@@ -52,8 +53,8 @@ export async function GET(
     });
 
     return NextResponse.json({ ...strategy, actions });
-  } catch (error: any) {
+  } catch (error) {
     console.error("API error in get strategy:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: errorMessage(error) }, { status: 500 });
   }
 }

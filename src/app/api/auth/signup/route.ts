@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { signSession } from "@/lib/auth";
 import { cookies } from "next/headers";
+import { errorMessage } from "@/lib/errors";
 
 export async function POST(req: Request) {
   try {
@@ -77,8 +78,8 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json({ success: true, user: sessionPayload });
-  } catch (error: any) {
+  } catch (error) {
     console.error("Signup API error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: errorMessage(error) }, { status: 500 });
   }
 }

@@ -4,6 +4,7 @@ import Razorpay from "razorpay";
 import { getSession } from "@/lib/auth";
 import { ActionStatus, RecoveryStatus } from "../../../../generated/prisma/client";
 import { settlePayment, reconcileDecisionForStrategy } from "@/lib/razorpay/settlement";
+import { errorMessage } from "@/lib/errors";
 
 export async function GET(req: Request) {
   let paymentLinkId: string | null = null;
@@ -79,7 +80,7 @@ export async function GET(req: Request) {
         });
         const link = await razorpay.paymentLink.fetch(paymentLinkId);
         status = link.status; // e.g. "paid", "created", "cancelled"
-      } catch (err: any) {
+      } catch (err) {
         console.error("Razorpay fetch error, returning current database status:", err);
         // Safe connection error handling: read status from database
         const dbRecovery = recovery || await prisma.paymentRecovery.findFirst({
@@ -195,7 +196,7 @@ export async function GET(req: Request) {
     }
 
     return NextResponse.json({ status });
-  } catch (error: any) {
+  } catch (error) {
     // Check if the resource was actually completed concurrently by another request
     try {
       const recovery = await prisma.paymentRecovery.findFirst({
@@ -216,17 +217,17 @@ export async function GET(req: Request) {
       console.error("Refetch check error in payment-status catch block:", refetchError);
     }
 
-    if (error.message.includes("Invalid recovery transition") || 
-        error.message.includes("Invalid action transition") ||
-        error.message.includes("concurrency check failure") ||
-        error.message.includes("Action concurrently modified")) {
+    if (errorMessage(error).includes("Invalid recovery transition") || 
+        errorMessage(error).includes("Invalid action transition") ||
+        errorMessage(error).includes("concurrency check failure") ||
+        errorMessage(error).includes("Action concurrently modified")) {
       return NextResponse.json(
-        { error: "INVALID_TRANSITION", message: error.message },
+        { error: "INVALID_TRANSITION", message: errorMessage(error) },
         { status: 400 }
       );
     }
 
     console.error("API error in payment-status:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: errorMessage(error) }, { status: 500 });
   }
 }

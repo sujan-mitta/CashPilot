@@ -18,6 +18,7 @@ import { ExecutionIntentStatus } from "../../../../generated/prisma/client";
 import { checkStrategyFreshness, recordStaleBlock, describeStaleness } from "@/lib/engine/freshnessGate";
 import { formatINR } from "@/lib/format";
 import { logger, withCorrelationId } from "@/lib/observability";
+import { errorMessage } from "@/lib/errors";
 
 export const POST = withCorrelationId(async (req: Request) => {
   try {
@@ -539,8 +540,8 @@ export const POST = withCorrelationId(async (req: Request) => {
       requiresManualVerification: anyUnknown,
       executionIntentIds,
     });
-  } catch (error: any) {
-    logger.error("API error in execute", { error: error.message });
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error) {
+    logger.error("API error in execute", { error: errorMessage(error) });
+    return NextResponse.json({ error: errorMessage(error) }, { status: 500 });
   }
 });

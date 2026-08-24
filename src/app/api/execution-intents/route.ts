@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { isRetryPermitted } from "@/lib/execution/executor";
 import { FINANCIAL_CONFIG } from "@/lib/engine/financialConfig";
+import { errorMessage } from "@/lib/errors";
 
 /**
  * Operator view of unresolved execution intents (Phase 16 PART 5/6).
@@ -87,9 +88,9 @@ export async function GET(req: NextRequest) {
         };
       }),
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error("API error in execution-intents:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: errorMessage(error) }, { status: 500 });
   }
 }
 

@@ -13,6 +13,7 @@ import { Reveal, Stagger, StaggerItem } from "@/components/ui/Reveal";
 import { EASE_OUT_EXPO } from "@/components/ui/motion";
 import { ShieldCheck, ShieldAlert, ArrowRight, CheckCircle2, XCircle, Lock } from "lucide-react";
 import clsx from "clsx";
+import { errorMessage } from "@/lib/errors";
 
 const actionCategory = (type: string) =>
   type === "RECOVER_FAILED_PAYMENTS"
@@ -79,8 +80,8 @@ function ApprovalContent() {
           }
           const data = await res.json();
           setStrategy(data);
-        } catch (err: any) {
-          setError(err.message);
+        } catch (err) {
+          setError(errorMessage(err));
         } finally {
           setLoading(false);
         }
@@ -113,8 +114,8 @@ function ApprovalContent() {
 
       // Navigate to Screen 5 (Execution)
       router.push(`/execution?strategyId=${strategyId}`);
-    } catch (err: any) {
-      alert("Authorization error: " + err.message);
+    } catch (err) {
+      alert("Authorization error: " + errorMessage(err));
       setApproving(false);
     }
   };

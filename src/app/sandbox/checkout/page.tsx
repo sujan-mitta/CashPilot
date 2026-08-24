@@ -7,6 +7,7 @@ import { CreditCard, CheckCircle2, ShieldCheck, AlertTriangle, ArrowRight } from
 import { PilotIcon } from "@/components/PilotIcon";
 import { Button } from "@/components/ui/Button";
 import { EASE_OUT_EXPO } from "@/components/ui/motion";
+import { errorMessage } from "@/lib/errors";
 
 function CheckoutContent() {
   const searchParams = useSearchParams();
@@ -34,7 +35,7 @@ function CheckoutContent() {
         if (data.status === "paid") {
           setSuccess(true);
         }
-      } catch (err: any) {
+      } catch (err) {
         console.error("Error checking initial status:", err);
       } finally {
         setLoading(false);
@@ -60,8 +61,8 @@ function CheckoutContent() {
       } else {
         throw new Error("Unable to authorize checkout simulation.");
       }
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(errorMessage(err));
     } finally {
       setPaying(false);
     }

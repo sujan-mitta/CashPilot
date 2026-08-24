@@ -6,13 +6,48 @@ import {
   validateDecisionTransition,
   InvalidDecisionTransitionError,
 } from "./decisionStateMachine";
-import { DecisionStatus } from "../../../generated/prisma/client";
+import { DecisionStatus, OutcomePhase, Prisma } from "../../../generated/prisma/client";
 import {
   measureObligationSnapshot,
   summariseObligationOutcomes,
+  ObligationRecordReader,
   ObligationOutcome,
   ObligationSummary,
 } from "./obligationOutcome";
+
+/**
+ * Shapes of the Json snapshot columns.
+ *
+ * Prisma types a Json column as JsonValue, which carries no structure. These
+ * interfaces record what the engine actually writes into those columns, so that
+ * reading a snapshot back is checked rather than assumed. They are intentionally
+ * tolerant (every field optional): a snapshot written by an older engine version
+ * may be missing fields, and measurement must degrade to "unknown", never crash.
+ */
+export interface DeferredObligationItem {
+  sourceId?: string;
+  amount?: number;
+  originalDueDate?: string | Date | null;
+  newDueDate?: string | Date | null;
+}
+
+interface ForecastSnapshot {
+  startingCash?: number;
+  minimumBalance?: number;
+  deficitDays?: number;
+  requiredLiquidity?: number;
+  deferredObligations?: DeferredObligationItem[] | { items?: DeferredObligationItem[] };
+}
+
+interface ExecutionSnapshotShape {
+  outcome?: string;
+  requiresManualVerification?: boolean;
+}
+
+/** Narrows a Json column to a snapshot. An absent or non-object value reads as empty. */
+function readSnapshot<T extends object>(value: unknown): T {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as T) : ({} as T);
+}
 
 /**
  * Outcome status.
@@ -180,8 +215,8 @@ export function verifiedMovements(
  * implementation does - measures nothing at all.
  */
 export async function measureDeferredObligations(
-  client: any,
-  predictedDeferred: any[],
+  client: ObligationRecordReader,
+  predictedDeferred: DeferredObligationItem[],
   windowEnd: Date
 ): Promise<DeferredObligationOutcome[]> {
   const results: DeferredObligationOutcome[] = [];
@@ -290,9 +325,9 @@ export async function measureDecisionOutcome(
   // pushed an obligation to day 20 needs day 20 measured, even though the
   // forecast itself remains a 14-day document.
   const outcomeHorizonDays =
-    typeof (decision as any).outcomeMeasurementHorizonDays === "number" &&
-    (decision as any).outcomeMeasurementHorizonDays > 0
-      ? (decision as any).outcomeMeasurementHorizonDays
+    typeof decision.outcomeMeasurementHorizonDays === "number" &&
+    decision.outcomeMeasurementHorizonDays > 0
+      ? decision.outcomeMeasurementHorizonDays
       : FINANCIAL_CONFIG.OUTCOME_WINDOW_DAYS;
 
   const forecastWindowEnd = new Date(
@@ -341,7 +376,10 @@ export async function measureDecisionOutcome(
 
     await prisma.decision.update({
       where: { id: decisionId },
-      data: { actualOutcome: interim as any, outcomePhase: "POST_HORIZON_PENDING" as any },
+      data: {
+        actualOutcome: interim as unknown as Prisma.InputJsonValue,
+        outcomePhase: OutcomePhase.POST_HORIZON_PENDING,
+      },
     });
     return await prisma.decision.findUnique({
       where: { id: decisionId },
@@ -380,7 +418,10 @@ export async function measureDecisionOutcome(
 
     await prisma.decision.update({
       where: { id: decisionId },
-      data: { actualOutcome: pendingOutcome as any, outcomePhase: "WINDOW_OPEN" as any },
+      data: {
+        actualOutcome: pendingOutcome as unknown as Prisma.InputJsonValue,
+        outcomePhase: OutcomePhase.WINDOW_OPEN,
+      },
     });
     return await prisma.decision.findUnique({
       where: { id: decisionId },
@@ -397,8 +438,8 @@ export async function measureDecisionOutcome(
     );
   }
 
-  const baseline = (decision.baselineSnapshot as any) || {};
-  const recommended = (decision.recommendedSnapshot as any) || {};
+  const baseline = readSnapshot<ForecastSnapshot>(decision.baselineSnapshot);
+  const recommended = readSnapshot<ForecastSnapshot>(decision.recommendedSnapshot);
   const dataWarnings: string[] = [];
 
   const transactions = await prisma.transaction.findMany({
@@ -412,7 +453,7 @@ export async function measureDecisionOutcome(
     dataWarnings.push("No transaction history found within the outcome window.");
   }
 
-  const { movements, ignoredUnsettledInflows } = verifiedMovements(transactions as any);
+  const { movements, ignoredUnsettledInflows } = verifiedMovements(transactions);
   if (ignoredUnsettledInflows > 0) {
     dataWarnings.push(
       `${ignoredUnsettledInflows} inflow(s) were still unsettled at measurement time and were excluded from actuals.`
@@ -445,7 +486,10 @@ export async function measureDecisionOutcome(
   // -------------------------------------------------------------------------
   // Deferred obligations: verified against live records (PART 13).
   // -------------------------------------------------------------------------
-  const predictedDeferred: any[] = Array.isArray(recommended.deferredObligations)
+  // Two shapes are in the wild: a bare array (older engine) and { items } (current).
+  const predictedDeferred: DeferredObligationItem[] = Array.isArray(
+    recommended.deferredObligations
+  )
     ? recommended.deferredObligations
     : Array.isArray(recommended.deferredObligations?.items)
     ? recommended.deferredObligations.items
@@ -536,8 +580,8 @@ export async function measureDecisionOutcome(
   // PART 16-17: each snapshotted obligation is checked against its live record
   // and the aggregate DERIVED from those verdicts. Nothing is copied from the
   // prediction.
-  const obligationSnapshot: any[] = Array.isArray((decision as any).obligationSnapshot)
-    ? (decision as any).obligationSnapshot
+  const obligationSnapshot: unknown[] = Array.isArray(decision.obligationSnapshot)
+    ? decision.obligationSnapshot
     : [];
 
   const obligationOutcomes = await measureObligationSnapshot(
@@ -591,8 +635,10 @@ export async function measureDecisionOutcome(
   let status: OutcomeStatus;
 
   const executionUnresolved =
-    (decision.executionSnapshot as any)?.outcome === "EXECUTION_UNKNOWN" ||
-    (decision.executionSnapshot as any)?.requiresManualVerification === true;
+    readSnapshot<ExecutionSnapshotShape>(decision.executionSnapshot).outcome ===
+      "EXECUTION_UNKNOWN" ||
+    readSnapshot<ExecutionSnapshotShape>(decision.executionSnapshot)
+      .requiresManualVerification === true;
 
   if (decision.status === "REJECTED") {
     status = "REJECTED";
@@ -682,10 +728,10 @@ export async function measureDecisionOutcome(
     { id: decisionId },
     DecisionStatus.OUTCOME_MEASURED,
     {
-      actualOutcome: outcomePayload as any,
+      actualOutcome: outcomePayload as unknown as Prisma.InputJsonValue,
       outcomeMeasuredAt: today,
       finalOutcomeMeasuredAt: today,
-      outcomePhase: outcomePhase as any,
+      outcomePhase: outcomePhase as OutcomePhase,
     },
     {
       audit: {

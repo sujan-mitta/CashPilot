@@ -13,6 +13,7 @@ import { buildDecisionContext, buildObligationSnapshot } from "@/lib/engine/deci
 import { appendDecisionEvent } from "@/lib/engine/decisionStateMachine";
 import { FINANCIAL_CONFIG } from "@/lib/engine/financialConfig";
 import { DecisionEventType, DecisionStatus } from "../../../../generated/prisma/client";
+import { errorMessage } from "@/lib/errors";
 
 export async function POST() {
   try {
@@ -360,8 +361,8 @@ export async function POST() {
       recommendationNarration,
       safetyRequirement: safetyReq,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error("API error in strategies:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: errorMessage(error) }, { status: 500 });
   }
 }

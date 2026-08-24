@@ -13,6 +13,7 @@ import { Reveal, Stagger, StaggerItem } from "@/components/ui/Reveal";
 import { EASE_OUT_EXPO } from "@/components/ui/motion";
 import { ChevronDown, ArrowLeft, ArrowRight, ShieldCheck, Lightbulb, AlertTriangle } from "lucide-react";
 import clsx from "clsx";
+import { errorMessage } from "@/lib/errors";
 
 export default function Investigation() {
   const router = useRouter();
@@ -33,8 +34,8 @@ export default function Investigation() {
       }
       const data = await res.json();
       setCachedInvestigation(data);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(errorMessage(err));
     } finally {
       setLoading(false);
     }

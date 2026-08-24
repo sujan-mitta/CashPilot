@@ -6,6 +6,7 @@ import { buildForecast, transactionsToMovements, calculateRunway } from "@/lib/e
 import { calculateRisk } from "@/lib/engine/riskDetector";
 import { getSession } from "@/lib/auth";
 import { calculateLiquiditySafetyRequirement } from "@/lib/engine/liquiditySafety";
+import { errorMessage } from "@/lib/errors";
 
 export async function POST() {
   try {
@@ -173,8 +174,8 @@ export async function POST() {
       },
       aiNarrative,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error("API error in investigate:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: errorMessage(error) }, { status: 500 });
   }
 }

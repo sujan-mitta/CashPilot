@@ -14,6 +14,7 @@ import { Reveal, Stagger, StaggerItem } from "@/components/ui/Reveal";
 import { EASE_OUT_EXPO } from "@/components/ui/motion";
 import { CheckCircle2, RefreshCw, ArrowRight, ExternalLink, Sparkles, ShieldAlert, AlertTriangle } from "lucide-react";
 import clsx from "clsx";
+import { errorMessage } from "@/lib/errors";
 
 interface ActionStepLog {
   id: string;
@@ -108,8 +109,8 @@ function ExecutionContent() {
           if (!res.ok) throw new Error("Failed to load strategy details.");
           const data = await res.json();
           setStrategy(data);
-        } catch (err: any) {
-          setError(err.message);
+        } catch (err) {
+          setError(errorMessage(err));
         } finally {
           setLoading(false);
         }
@@ -157,8 +158,8 @@ function ExecutionContent() {
           addTimelineEvent("Recurring SaaS subscription payout paused successfully.");
         }
       });
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(errorMessage(err));
     } finally {
       setExecuting(false);
     }
@@ -190,10 +191,10 @@ function ExecutionContent() {
           },
         }));
       }
-    } catch (err: any) {
+    } catch (err) {
       setStatusNotice((prev) => ({
         ...prev,
-        [paymentLinkId]: { tone: "error", message: `Could not verify payment: ${err.message}` },
+        [paymentLinkId]: { tone: "error", message: `Could not verify payment: ${errorMessage(err)}` },
       }));
     } finally {
       setCheckingStatusId(null);

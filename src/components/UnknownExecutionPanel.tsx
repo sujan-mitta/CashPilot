@@ -5,6 +5,7 @@ import { AlertTriangle, RefreshCw, Search, ShieldAlert } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { formatINR, formatDateTime } from "@/lib/format";
+import { errorMessage } from "@/lib/errors";
 
 /**
  * Operator panel for execution intents whose outcome is undetermined
@@ -76,8 +77,8 @@ export function UnknownExecutionPanel({
       if (!res.ok) throw new Error("Unable to load execution status.");
       const data = await res.json();
       setIntents(data.intents ?? []);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(errorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -101,8 +102,8 @@ export function UnknownExecutionPanel({
         throw new Error(body.message || "Reconciliation could not be completed.");
       }
       await load();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(errorMessage(err));
     } finally {
       setReconcilingId(null);
     }

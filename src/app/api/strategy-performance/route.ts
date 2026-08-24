@@ -3,6 +3,46 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { FINANCIAL_CONFIG } from "@/lib/engine/financialConfig";
 import { STRATEGY_NAMES, StrategyName } from "@/lib/engine/strategyEngine";
+import { DecisionStatus, Prisma } from "../../../../generated/prisma/client";
+
+/** The measured-outcome payload, as written by outcomeMeasurer into Json. */
+interface MeasuredOutcome {
+  status?: string;
+  actualMinimumBalance?: number | null;
+  predictionError?: { minimumBalance?: number | null };
+}
+
+/** The forecast snapshot fields this endpoint reads. */
+interface SnapshotMinimum {
+  minimumBalance?: number | null;
+}
+
+/** Narrows a Json column. A non-object value reads as empty rather than throwing. */
+function readJson<T extends object>(value: unknown): T {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as T) : ({} as T);
+}
+
+interface StrategyPerformance {
+  strategyType: StrategyName;
+  sampleConfidence: "NONE" | "LOW" | "SUFFICIENT";
+  minimumSampleSize: number;
+  statisticallyMeaningful: boolean;
+  timesRecommended: number;
+  timesApproved: number;
+  timesRejected: number;
+  timesExecuted: number;
+  timesReconciled: number;
+  timesMeasured: number;
+  successCount: number;
+  partialCount: number;
+  failedCount: number;
+  partiallyMeasuredCount: number;
+  sampleSize: number;
+  avgPredictedImprovement: number | null;
+  avgActualImprovement: number | null;
+  avgPredictionError: number | null;
+  medianPredictionError: number | null;
+}
 
 function calculateMedian(values: number[]): number | null {
   if (values.length === 0) return null;
@@ -13,9 +53,24 @@ function calculateMedian(values: number[]): number | null {
 }
 
 /** Statuses that mean the operator said yes. */
-const APPROVED_STATES = ["APPROVED", "EXECUTED", "RECONCILED", "RECONCILIATION_MISMATCH", "OUTCOME_MEASURED"];
-const EXECUTED_STATES = ["EXECUTED", "RECONCILED", "RECONCILIATION_MISMATCH", "OUTCOME_MEASURED"];
-const RECONCILED_STATES = ["RECONCILED", "RECONCILIATION_MISMATCH", "OUTCOME_MEASURED"];
+const APPROVED_STATES: DecisionStatus[] = [
+  DecisionStatus.APPROVED,
+  DecisionStatus.EXECUTED,
+  DecisionStatus.RECONCILED,
+  DecisionStatus.RECONCILIATION_MISMATCH,
+  DecisionStatus.OUTCOME_MEASURED,
+];
+const EXECUTED_STATES: DecisionStatus[] = [
+  DecisionStatus.EXECUTED,
+  DecisionStatus.RECONCILED,
+  DecisionStatus.RECONCILIATION_MISMATCH,
+  DecisionStatus.OUTCOME_MEASURED,
+];
+const RECONCILED_STATES: DecisionStatus[] = [
+  DecisionStatus.RECONCILED,
+  DecisionStatus.RECONCILIATION_MISMATCH,
+  DecisionStatus.OUTCOME_MEASURED,
+];
 
 /**
  * Per-strategy performance aggregates.
@@ -52,7 +107,7 @@ export async function GET(req?: NextRequest) {
     const page = Number.isFinite(rawPage) && rawPage > 0 ? rawPage : 1;
     const skip = (page - 1) * pageSize;
 
-    const performance: Record<string, any> = {};
+    const performance: Record<string, StrategyPerformance> = {};
 
     for (const type of STRATEGY_NAMES as readonly StrategyName[]) {
       // Tenant filter and strategy-type filter both live in the WHERE clause.
@@ -60,23 +115,23 @@ export async function GET(req?: NextRequest) {
       const typeWhere = {
         businessId: session.businessId,
         recommendedSnapshot: { path: ["strategyType"], equals: type },
-      } as any;
+      } satisfies Prisma.DecisionWhereInput;
 
       const [timesRecommended, timesApproved, timesRejected, timesExecuted, timesReconciled, timesMeasured] =
         await Promise.all([
           prisma.decision.count({ where: typeWhere }),
-          prisma.decision.count({ where: { ...typeWhere, status: { in: APPROVED_STATES as any } } }),
-          prisma.decision.count({ where: { ...typeWhere, status: "REJECTED" as any } }),
-          prisma.decision.count({ where: { ...typeWhere, status: { in: EXECUTED_STATES as any } } }),
-          prisma.decision.count({ where: { ...typeWhere, status: { in: RECONCILED_STATES as any } } }),
-          prisma.decision.count({ where: { ...typeWhere, status: "OUTCOME_MEASURED" as any } }),
+          prisma.decision.count({ where: { ...typeWhere, status: { in: APPROVED_STATES } } }),
+          prisma.decision.count({ where: { ...typeWhere, status: DecisionStatus.REJECTED } }),
+          prisma.decision.count({ where: { ...typeWhere, status: { in: EXECUTED_STATES } } }),
+          prisma.decision.count({ where: { ...typeWhere, status: { in: RECONCILED_STATES } } }),
+          prisma.decision.count({ where: { ...typeWhere, status: DecisionStatus.OUTCOME_MEASURED } }),
         ]);
 
       // Only measured decisions carry an outcome worth averaging, and only three
       // of their fields are needed. Deterministic ordering so pages cannot
       // repeat or skip rows.
       const measuredDecisions = await prisma.decision.findMany({
-        where: { ...typeWhere, status: "OUTCOME_MEASURED" as any },
+        where: { ...typeWhere, status: DecisionStatus.OUTCOME_MEASURED },
         select: {
           id: true,
           actualOutcome: true,
@@ -90,17 +145,17 @@ export async function GET(req?: NextRequest) {
 
       const withOutcome = measuredDecisions.filter((d) => d.actualOutcome);
 
-      const successCount = withOutcome.filter((d) => (d.actualOutcome as any).status === "SUCCESS").length;
-      const partialCount = withOutcome.filter((d) => (d.actualOutcome as any).status === "PARTIAL_SUCCESS").length;
-      const failedCount = withOutcome.filter((d) => (d.actualOutcome as any).status === "FAILED").length;
+      const successCount = withOutcome.filter((d) => readJson<MeasuredOutcome>(d.actualOutcome).status === "SUCCESS").length;
+      const partialCount = withOutcome.filter((d) => readJson<MeasuredOutcome>(d.actualOutcome).status === "PARTIAL_SUCCESS").length;
+      const failedCount = withOutcome.filter((d) => readJson<MeasuredOutcome>(d.actualOutcome).status === "FAILED").length;
       const partiallyMeasuredCount = withOutcome.filter(
-        (d) => (d.actualOutcome as any).status === "PARTIALLY_MEASURED"
+        (d) => readJson<MeasuredOutcome>(d.actualOutcome).status === "PARTIALLY_MEASURED"
       ).length;
 
       const predictedImprovements = withOutcome
         .map((d) => {
-          const rec = d.recommendedSnapshot as any;
-          const base = d.baselineSnapshot as any;
+          const rec = readJson<SnapshotMinimum>(d.recommendedSnapshot);
+          const base = readJson<SnapshotMinimum>(d.baselineSnapshot);
           if (typeof rec?.minimumBalance !== "number" || typeof base?.minimumBalance !== "number") return null;
           return rec.minimumBalance - base.minimumBalance;
         })
@@ -108,8 +163,8 @@ export async function GET(req?: NextRequest) {
 
       const actualImprovements = withOutcome
         .map((d) => {
-          const act = d.actualOutcome as any;
-          const base = d.baselineSnapshot as any;
+          const act = readJson<MeasuredOutcome>(d.actualOutcome);
+          const base = readJson<SnapshotMinimum>(d.baselineSnapshot);
           // actualMinimumBalance is null when the outcome was never measurable.
           if (typeof act?.actualMinimumBalance !== "number" || typeof base?.minimumBalance !== "number") return null;
           return act.actualMinimumBalance - base.minimumBalance;
@@ -117,7 +172,7 @@ export async function GET(req?: NextRequest) {
         .filter((v): v is number => v !== null);
 
       const predictionErrors = withOutcome
-        .map((d) => (d.actualOutcome as any)?.predictionError?.minimumBalance)
+        .map((d) => readJson<MeasuredOutcome>(d.actualOutcome).predictionError?.minimumBalance)
         .filter((v: unknown): v is number => typeof v === "number");
 
       const sampleSize = withOutcome.length;
@@ -164,8 +219,9 @@ export async function GET(req?: NextRequest) {
         note: "Counts span the full history; averages are computed over this page of measured decisions.",
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error("API error in strategy-performance GET:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const message = error instanceof Error ? error.message : "Unexpected error";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

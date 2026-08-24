@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession, signSession, requireBusinessAccess } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { cookies } from "next/headers";
+import { errorMessage } from "@/lib/errors";
 
 export async function POST(req: Request) {
   try {
@@ -50,8 +51,8 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json({ success: true, user: newSessionPayload });
-  } catch (error: any) {
+  } catch (error) {
     console.error("Switch business API error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: errorMessage(error) }, { status: 500 });
   }
 }
