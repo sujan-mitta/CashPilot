@@ -139,7 +139,7 @@ export function Navbar({ activeStep }: { activeStep: number }) {
                             "bg-white text-brand-600": isCurrent,
                             "bg-safe-500/20 text-safe-400 ring-1 ring-inset ring-safe-500/40":
                               isPast,
-                            "bg-ground-200 text-ink-500": !isCurrent && !isPast,
+                            "bg-ground-200 text-ink-400": !isCurrent && !isPast,
                           }
                         )}
                       >
@@ -151,7 +151,7 @@ export function Navbar({ activeStep }: { activeStep: number }) {
                           {
                             "text-white": isCurrent,
                             "text-safe-400": isPast,
-                            "text-ink-500": !isCurrent && !isPast,
+                            "text-ink-400": !isCurrent && !isPast,
                           }
                         )}
                       >
@@ -182,7 +182,7 @@ export function Navbar({ activeStep }: { activeStep: number }) {
                 {initials}
               </div>
               <div className="text-right hidden sm:block">
-                <span className="text-[9px] uppercase font-semibold text-ink-500 block tracking-[0.09em] leading-none">
+                <span className="text-[9px] uppercase font-semibold text-ink-400 block tracking-[0.09em] leading-none">
                   {operatorName}
                 </span>
                 {businesses.length > 1 ? (

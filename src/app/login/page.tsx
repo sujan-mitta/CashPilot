@@ -22,7 +22,7 @@ const highlights = [
 const fieldClass = clsx(
   "w-full pl-10 pr-4 py-3 rounded-xl text-sm outline-none",
   "bg-ground-200/70 border border-line-soft text-ink-100 font-medium",
-  "placeholder:text-ink-500 placeholder:font-normal",
+  "placeholder:text-ink-400 placeholder:font-normal",
   "transition-[border-color,background,box-shadow] duration-200",
   "hover:border-line-firm",
   "focus:border-brand-500 focus:bg-ground-200 focus:shadow-[0_0_0_3px_rgb(99_102_241/0.18)]"
@@ -209,7 +209,7 @@ export default function Login() {
           </StaggerItem>
         </Stagger>
 
-        <div className="text-[11.5px] text-ink-500">
+        <div className="text-[11.5px] text-ink-400">
           © 2026 CashPilot. Every execution passes a human gate.
         </div>
       </div>

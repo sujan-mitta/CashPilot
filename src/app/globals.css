@@ -32,10 +32,13 @@
   /* ── Ink ────────────────────────────────────────────────────────────────
      Deliberately not pure white. #F8FAFF at full strength keeps large
      numerals from blooming against the dark ground. */
+  /* ink-400 is measured, not picked: it labels every figure on screen, and at
+     11px that is small text needing 4.5:1. #6b7799 landed at 3.98-4.24 against
+     the card grounds - close enough to look fine and still fail. */
   --ink-100: #f8faff;      /* primary — figures, headings */
   --ink-200: #d5dcec;      /* body copy */
   --ink-300: #9aa6c2;      /* secondary, labels */
-  --ink-400: #6b7799;      /* tertiary, captions */
+  --ink-400: #8492ad;      /* tertiary, captions, labels */
   --ink-500: #4a5470;      /* disabled */
 
   /* ── Lines ─────────────────────────────────────────────────────────────── */
