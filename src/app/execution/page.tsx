@@ -44,12 +44,12 @@ function statusTone(status: string, resolved: boolean): BadgeTone {
 
 function LifecycleTrack({ status }: { status: string }) {
   return (
-    <div className="flex items-center gap-1.5 text-[8px] font-black text-slate-400 uppercase tracking-wider mt-1.5">
+    <div className="flex items-center gap-1.5 text-[8px] font-black text-ink-400 uppercase tracking-wider mt-1.5">
       {LIFECYCLE_STATES.map((sName, sIdx) => {
         const isPastOrCurrent = getStatusOrder(status) >= sIdx + 1;
         return (
           <div key={sName} className="flex items-center gap-1">
-            <span className={clsx("px-1.5 py-0.5 rounded transition-colors duration-300", isPastOrCurrent ? "bg-indigo-100 text-indigo-900 font-black" : "bg-slate-100 text-slate-400")}>
+            <span className={clsx("px-1.5 py-0.5 rounded transition-colors duration-300", isPastOrCurrent ? "bg-brand-500/15 text-brand-300 font-black" : "bg-ground-200 text-ink-400")}>
               {sName === "EXECUTION_REQUESTED" ? "REQ" : sName === "RECONCILING" ? "RECON" : sName}
             </span>
             {sIdx < 4 && <span>→</span>}
@@ -222,10 +222,10 @@ function ExecutionContent() {
   if (error || !strategy) {
     return (
       <main className="flex-1 flex items-center justify-center py-16">
-        <Card className="max-w-md text-center border-red-200 bg-red-50/60">
-          <ShieldAlert className="w-12 h-12 text-red-600 mx-auto mb-4" />
-          <h2 className="text-lg font-bold text-slate-800">Execution Interrupted</h2>
-          <p className="text-slate-500 text-xs mt-2 font-semibold">{error || "Strategy details not found."}</p>
+        <Card className="max-w-md text-center border-risk-500/25 bg-risk-500/10">
+          <ShieldAlert className="w-12 h-12 text-risk-400 mx-auto mb-4" />
+          <h2 className="text-lg font-bold text-ink-100">Execution Interrupted</h2>
+          <p className="text-ink-300 text-xs mt-2 font-semibold">{error || "Strategy details not found."}</p>
           <Button variant="primary" size="lg" onClick={() => router.push("/strategies")} className="mt-6 w-full">
             Return to Simulator
           </Button>
@@ -302,7 +302,7 @@ function ExecutionContent() {
     <main className="flex-1 max-w-4xl mx-auto px-6 py-10 w-full space-y-8">
       {/* Header breadcrumb */}
       <Reveal className="flex items-center justify-between">
-        <span className="text-xs font-extrabold text-slate-500">
+        <span className="text-xs font-extrabold text-ink-300">
           Intervention Controller Console
         </span>
         <Badge tone="brand">Strategy Approved</Badge>
@@ -315,12 +315,12 @@ function ExecutionContent() {
         >
           <Card className="!rounded-3xl text-center space-y-6 py-10">
             <div className="relative w-14 h-14 mx-auto">
-              <div className="absolute inset-0 rounded-full bg-emerald-100 animate-pulse-ring" />
-              <CheckCircle2 className="w-14 h-14 text-emerald-500 relative" />
+              <div className="absolute inset-0 rounded-full bg-safe-500/15 animate-pulse-ring" />
+              <CheckCircle2 className="w-14 h-14 text-safe-400 relative" />
             </div>
             <div className="max-w-md mx-auto space-y-2">
-              <h2 className="text-xl font-black text-slate-800">Plan Approved &amp; Awaiting Execution</h2>
-              <p className="text-xs text-slate-500 leading-relaxed font-semibold">
+              <h2 className="text-xl font-black text-ink-100">Plan Approved &amp; Awaiting Execution</h2>
+              <p className="text-xs text-ink-300 leading-relaxed font-semibold">
                 This strategy is fully authorized by human review.
                 Clicking the button below will generate test-mode payment links via the Razorpay API.
               </p>
@@ -341,7 +341,7 @@ function ExecutionContent() {
           {/* Progress bar */}
           <StaggerItem>
             <Card className="!rounded-3xl space-y-3">
-              <div className="flex justify-between items-center text-xs font-bold text-slate-600">
+              <div className="flex justify-between items-center text-xs font-bold text-ink-300">
                 <span>Intervention Progress</span>
                 <span>
                   {isEverythingCleared
@@ -351,9 +351,9 @@ function ExecutionContent() {
                     : "PAYMENT LINKS DISPATCHED"}
                 </span>
               </div>
-              <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
+              <div className="h-3 bg-ground-200 rounded-full overflow-hidden">
                 <motion.div
-                  className="h-full bg-emerald-500 rounded-full"
+                  className="h-full bg-safe-500 rounded-full"
                   initial={{ width: 0 }}
                   animate={{
                     width: `${totalExecutableAmount > 0 ? (confirmedRecovery / totalExecutableAmount) * 100 : 100}%`,
@@ -371,9 +371,9 @@ function ExecutionContent() {
             return (
               <StaggerItem>
                 <Card className="!rounded-3xl space-y-4">
-                  <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                  <div className="flex justify-between items-center border-b border-line-faint pb-3">
                     <div>
-                      <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest block">
+                      <span className="text-[10px] font-extrabold text-ink-400 uppercase tracking-widest block">
                         Action 1: Failed Card Recovery
                       </span>
                       <LifecycleTrack status={stepStatus} />
@@ -383,48 +383,48 @@ function ExecutionContent() {
 
                   <div className="flex justify-between items-center flex-wrap gap-4 text-xs">
                     <div>
-                      <h4 className="font-extrabold text-slate-800 text-sm">ABC Industries</h4>
-                      <span className="text-[9px] text-slate-400 block mt-0.5">
+                      <h4 className="font-extrabold text-ink-100 text-sm">ABC Industries</h4>
+                      <span className="text-[9px] text-ink-400 block mt-0.5">
                         Original failure: 2 days ago • Method: Razorpay Payment Link
                       </span>
                     </div>
-                    <span className="font-black text-slate-700 text-base">{formatINR(failedActionAmount)}</span>
+                    <span className="font-black text-ink-200 text-base">{formatINR(failedActionAmount)}</span>
                   </div>
 
                   {/* Structured Failure Output */}
                   {(stepStatus === "FAILED" || stepStatus === "RECONCILIATION_FAILED") && stepObj?.result && (
-                    <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-xs font-semibold text-red-700">
-                      <span className="font-black block uppercase text-red-800 flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5" /> Execution Failure Detail:</span>
+                    <div className="bg-risk-500/10 border border-risk-500/25 rounded-2xl p-4 text-xs font-semibold text-risk-400">
+                      <span className="font-black block uppercase text-risk-400 flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5" /> Execution Failure Detail:</span>
                       <p className="mt-1 font-medium">{stepObj.result}</p>
                     </div>
                   )}
 
                   {/* Reconciliation Mismatch Panel */}
                   {stepStatus === "RECONCILIATION_MISMATCH" && (
-                    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-xs font-semibold space-y-2">
-                      <span className="font-black text-amber-800 block">⚠ Reconciliation Mismatch Detected</span>
+                    <div className="bg-warn-500/10 border border-warn-500/25 rounded-2xl p-4 text-xs font-semibold space-y-2">
+                      <span className="font-black text-warn-400 block">⚠ Reconciliation Mismatch Detected</span>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <span className="text-slate-400 block font-normal text-[10px] uppercase">Expected Ledger Balance</span>
-                          <span className="text-slate-800 font-extrabold text-sm">{formatINR(failedActionAmount)}</span>
+                          <span className="text-ink-400 block font-normal text-[10px] uppercase">Expected Ledger Balance</span>
+                          <span className="text-ink-100 font-extrabold text-sm">{formatINR(failedActionAmount)}</span>
                         </div>
                         <div>
-                          <span className="text-slate-400 block font-normal text-[10px] uppercase">Actual Ledger Balance</span>
-                          <span className="text-red-600 font-black text-sm">{formatINR(0)}</span>
+                          <span className="text-ink-400 block font-normal text-[10px] uppercase">Actual Ledger Balance</span>
+                          <span className="text-risk-400 font-black text-sm">{formatINR(0)}</span>
                         </div>
                       </div>
-                      <p className="text-[10px] text-slate-500 font-medium">Expected recovery was not found in the latest ledger bank feed reconciliation.</p>
+                      <p className="text-[10px] text-ink-300 font-medium">Expected recovery was not found in the latest ledger bank feed reconciliation.</p>
                     </div>
                   )}
 
                   {failedPaymentLinkId && (
-                    <div className="pt-2 flex items-center gap-3 border-t border-slate-50 flex-wrap">
+                    <div className="pt-2 flex items-center gap-3 border-t border-line-faint flex-wrap">
                       {!isFailedCardPaid && stepStatus !== "COMPLETED" && (
                         <a
                           href={failedPaymentLinkId}
                           target="_blank"
                           rel="noreferrer"
-                          className="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-4 py-2 rounded-xl transition-colors shadow-sm outline-none"
+                          className="inline-flex items-center gap-1.5 bg-brand-500 hover:bg-brand-600 text-white font-bold text-xs px-4 py-2 rounded-xl transition-colors shadow-sm outline-none"
                         >
                           Open Test Checkout <ExternalLink className="w-3.5 h-3.5" />
                         </a>
@@ -447,8 +447,8 @@ function ExecutionContent() {
                           className={clsx(
                             "text-xs font-semibold leading-relaxed rounded-lg px-3 py-2 border",
                             statusNotice[failedPaymentLinkId].tone === "error"
-                              ? "text-red-700 bg-red-50 border-red-200"
-                              : "text-amber-800 bg-amber-50 border-amber-200"
+                              ? "text-risk-400 bg-risk-500/10 border-risk-500/25"
+                              : "text-warn-400 bg-warn-500/10 border-warn-500/25"
                           )}
                         >
                           {statusNotice[failedPaymentLinkId].message}
@@ -456,7 +456,7 @@ function ExecutionContent() {
                       )}
 
                       {(isFailedCardPaid || stepStatus === "COMPLETED") && (
-                        <span className="text-xs text-emerald-600 font-bold flex items-center gap-1.5">
+                        <span className="text-xs text-safe-400 font-bold flex items-center gap-1.5">
                           <CheckCircle2 className="w-4 h-4" /> Cash settled &amp; resolved in ledger.
                         </span>
                       )}
@@ -474,9 +474,9 @@ function ExecutionContent() {
             return (
               <StaggerItem>
                 <Card className="!rounded-3xl space-y-5">
-                  <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                  <div className="flex justify-between items-center border-b border-line-faint pb-3">
                     <div>
-                      <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">
+                      <span className="text-[10px] font-extrabold text-ink-400 uppercase tracking-widest">
                         Action 2: Prioritize Collections
                       </span>
                       <LifecycleTrack status={stepStatus} />
@@ -485,32 +485,32 @@ function ExecutionContent() {
                   </div>
 
                   {(stepStatus === "FAILED" || stepStatus === "RECONCILIATION_FAILED") && stepObj?.result && (
-                    <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-xs font-semibold text-red-700">
-                      <span className="font-black block uppercase text-red-800 flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5" /> Execution Failure Detail:</span>
+                    <div className="bg-risk-500/10 border border-risk-500/25 rounded-2xl p-4 text-xs font-semibold text-risk-400">
+                      <span className="font-black block uppercase text-risk-400 flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5" /> Execution Failure Detail:</span>
                       <p className="mt-1 font-medium">{stepObj.result}</p>
                     </div>
                   )}
 
                   {stepStatus === "RECONCILIATION_MISMATCH" && (
-                    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-xs font-semibold space-y-2">
-                      <span className="font-black text-amber-800 block">⚠ Reconciliation Mismatch Detected</span>
+                    <div className="bg-warn-500/10 border border-warn-500/25 rounded-2xl p-4 text-xs font-semibold space-y-2">
+                      <span className="font-black text-warn-400 block">⚠ Reconciliation Mismatch Detected</span>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <span className="text-slate-400 block font-normal text-[10px] uppercase">Expected Ledger Balance</span>
-                          <span className="text-slate-800 font-extrabold text-sm">{formatINR(collectionsAction.amount)}</span>
+                          <span className="text-ink-400 block font-normal text-[10px] uppercase">Expected Ledger Balance</span>
+                          <span className="text-ink-100 font-extrabold text-sm">{formatINR(collectionsAction.amount)}</span>
                         </div>
                         <div>
-                          <span className="text-slate-400 block font-normal text-[10px] uppercase">Actual Ledger Balance</span>
-                          <span className="text-red-600 font-black text-sm">{formatINR(confirmedRecovery - (isFailedCardPaid ? failedActionAmount : 0))}</span>
+                          <span className="text-ink-400 block font-normal text-[10px] uppercase">Actual Ledger Balance</span>
+                          <span className="text-risk-400 font-black text-sm">{formatINR(confirmedRecovery - (isFailedCardPaid ? failedActionAmount : 0))}</span>
                         </div>
                       </div>
-                      <p className="text-[10px] text-slate-500 font-medium">Reconciled invoice payments do not match simulated collections value.</p>
+                      <p className="text-[10px] text-ink-300 font-medium">Reconciled invoice payments do not match simulated collections value.</p>
                     </div>
                   )}
 
                   {collectionsInvoices.length === 0 ? (
-                    <div className="flex items-center gap-3 text-xs text-slate-400 font-semibold py-2">
-                      <RefreshCw className="w-4 h-4 animate-spin text-indigo-600" />
+                    <div className="flex items-center gap-3 text-xs text-ink-400 font-semibold py-2">
+                      <RefreshCw className="w-4 h-4 animate-spin text-brand-300" />
                       Generating invoice payment recovery links...
                     </div>
                   ) : (
@@ -519,24 +519,24 @@ function ExecutionContent() {
                         const isPaid = paymentStatusMap[inv.paymentLinkId] === "paid";
 
                         return (
-                          <div key={inv.invoiceId} className="bg-slate-50/60 p-4 border border-slate-200 rounded-2xl space-y-3">
+                          <div key={inv.invoiceId} className="bg-ground-200/60 p-4 border border-line-soft rounded-2xl space-y-3">
                             <div className="flex justify-between items-center text-xs">
                               <div>
-                                <span className="font-extrabold text-slate-800 block">{inv.customerName}</span>
-                                <span className="text-[9px] text-slate-400 block mt-0.5">
+                                <span className="font-extrabold text-ink-100 block">{inv.customerName}</span>
+                                <span className="text-[9px] text-ink-400 block mt-0.5">
                                   Overdue Invoice: {inv.invoiceId} • Method: Razorpay Payment Link
                                 </span>
                               </div>
-                              <span className="font-black text-slate-700">{formatINR(inv.amount)}</span>
+                              <span className="font-black text-ink-200">{formatINR(inv.amount)}</span>
                             </div>
 
-                            <div className="flex items-center gap-3 pt-2 border-t border-slate-100 flex-wrap">
+                            <div className="flex items-center gap-3 pt-2 border-t border-line-faint flex-wrap">
                               {!isPaid && (
                                 <a
                                   href={inv.shortUrl}
                                   target="_blank"
                                   rel="noreferrer"
-                                  className="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-3.5 py-2 rounded-xl transition-colors shadow-sm outline-none"
+                                  className="inline-flex items-center gap-1.5 bg-brand-500 hover:bg-brand-600 text-white font-bold text-xs px-3.5 py-2 rounded-xl transition-colors shadow-sm outline-none"
                                 >
                                   Open Test Checkout <ExternalLink className="w-3.5 h-3.5" />
                                 </a>
@@ -559,8 +559,8 @@ function ExecutionContent() {
                                   className={clsx(
                                     "text-xs font-semibold leading-relaxed rounded-lg px-3 py-2 border",
                                     statusNotice[inv.paymentLinkId].tone === "error"
-                                      ? "text-red-700 bg-red-50 border-red-200"
-                                      : "text-amber-800 bg-amber-50 border-amber-200"
+                                      ? "text-risk-400 bg-risk-500/10 border-risk-500/25"
+                                      : "text-warn-400 bg-warn-500/10 border-warn-500/25"
                                   )}
                                 >
                                   {statusNotice[inv.paymentLinkId].message}
@@ -568,7 +568,7 @@ function ExecutionContent() {
                               )}
 
                               {isPaid && (
-                                <span className="text-xs text-emerald-600 font-bold flex items-center gap-1.5">
+                                <span className="text-xs text-safe-400 font-bold flex items-center gap-1.5">
                                   <CheckCircle2 className="w-4 h-4" /> Invoice collected &amp; verified.
                                 </span>
                               )}
@@ -586,34 +586,34 @@ function ExecutionContent() {
           {/* SECTION I — Live Cash Impact progress panel */}
           <StaggerItem>
             <Card className="!rounded-3xl space-y-4">
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest block border-b border-slate-100 pb-3">
+              <h3 className="text-xs font-bold text-ink-400 uppercase tracking-widest block border-b border-line-faint pb-3">
                 Live Cash Impact Matrix
               </h3>
 
               <div className="space-y-3.5 text-xs font-semibold">
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Baseline Deficit Outlook</span>
-                  <span className="text-red-600 font-extrabold">{hasBaseline ? formatINR(baselineShortfall as number) : "Unavailable"}</span>
+                  <span className="text-ink-400">Baseline Deficit Outlook</span>
+                  <span className="text-risk-400 font-extrabold">{hasBaseline ? formatINR(baselineShortfall as number) : "Unavailable"}</span>
                 </div>
 
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Confirmed Cash Recovered</span>
-                  <span className="text-emerald-600 font-extrabold">+{formatINR(confirmedRecovery)}</span>
+                  <span className="text-ink-400">Confirmed Cash Recovered</span>
+                  <span className="text-safe-400 font-extrabold">+{formatINR(confirmedRecovery)}</span>
                 </div>
 
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Pending Potential Recovery</span>
-                  <span className="text-indigo-600 font-extrabold">+{formatINR(pendingRecovery)}</span>
+                  <span className="text-ink-400">Pending Potential Recovery</span>
+                  <span className="text-brand-300 font-extrabold">+{formatINR(pendingRecovery)}</span>
                 </div>
 
-                <div className="border-t border-slate-100 pt-3 flex justify-between">
-                  <span className="text-slate-800 font-bold">Current Confirmed Ledger Balance</span>
-                  <span className={clsx("font-black text-sm", (currentConfirmedPosition ?? 0) < 0 ? "text-red-600" : "text-slate-800")}>
+                <div className="border-t border-line-faint pt-3 flex justify-between">
+                  <span className="text-ink-100 font-bold">Current Confirmed Ledger Balance</span>
+                  <span className={clsx("font-black text-sm", (currentConfirmedPosition ?? 0) < 0 ? "text-risk-400" : "text-ink-100")}>
                     {currentConfirmedPosition === null ? "Unavailable" : formatINR(currentConfirmedPosition)}
                   </span>
                 </div>
 
-                <div className="flex justify-between text-[11px] text-slate-400 font-bold italic">
+                <div className="flex justify-between text-[11px] text-ink-400 font-bold italic">
                   <span>Projected Balance If All Pending Clear</span>
                   <span>{formatINR(potentialPosition)}</span>
                 </div>
@@ -624,10 +624,10 @@ function ExecutionContent() {
           {/* Chronological Timeline */}
           <StaggerItem>
             <Card className="!rounded-3xl space-y-4">
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest block border-b border-slate-100 pb-3">
+              <h3 className="text-xs font-bold text-ink-400 uppercase tracking-widest block border-b border-line-faint pb-3">
                 Execution Timeline Logs
               </h3>
-              <div className="space-y-2 max-h-40 overflow-y-auto font-mono text-[10px] text-slate-500">
+              <div className="space-y-2 max-h-40 overflow-y-auto font-mono text-[10px] text-ink-300">
                 <AnimatePresence initial={false}>
                   {timeline.map((event, idx) => (
                     <motion.div
@@ -636,13 +636,13 @@ function ExecutionContent() {
                       animate={{ opacity: 1, x: 0 }}
                       className="flex items-center gap-2"
                     >
-                      <span className="text-indigo-500 font-bold">●</span>
+                      <span className="text-brand-400 font-bold">●</span>
                       <span>{event}</span>
                     </motion.div>
                   ))}
                 </AnimatePresence>
                 {timeline.length === 0 && (
-                  <span className="italic text-slate-400 block py-2">
+                  <span className="italic text-ink-400 block py-2">
                     Awaiting execution sequences to populate logs...
                   </span>
                 )}
@@ -658,12 +658,12 @@ function ExecutionContent() {
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ duration: 0.4, ease: EASE_OUT_EXPO }}
               >
-                <Card tone="raised" className="!rounded-3xl bg-gradient-to-br from-indigo-600 to-indigo-800 border-indigo-700 text-center flex flex-col items-center justify-center space-y-2">
-                  <Sparkles className="w-8 h-8 text-amber-300" />
+                <Card tone="raised" className="!rounded-3xl bg-gradient-to-br from-brand-500 to-violet-500 border-brand-500/30 text-center flex flex-col items-center justify-center space-y-2">
+                  <Sparkles className="w-8 h-8 text-warn-400" />
                   <h2 className="text-lg font-black tracking-tight">
                     All Obligations Secured &amp; Resolved
                   </h2>
-                  <p className="text-xs text-indigo-100 max-w-md leading-relaxed font-semibold">
+                  <p className="text-xs text-brand-300 max-w-md leading-relaxed font-semibold">
                     All payment links successfully cleared. Dynamic cash ledger balance increased to{" "}
                     <strong>{currentConfirmedPosition === null ? "an unavailable amount" : formatINR(currentConfirmedPosition)}</strong>. Runway risk resolved (LOW Risk).
                   </p>

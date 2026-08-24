@@ -31,7 +31,7 @@ export function ForecastChart({
 
   if (!mounted) {
     return (
-      <div className="h-[280px] skeleton rounded-2xl border border-slate-100 flex items-center justify-center text-slate-400 text-xs font-semibold">
+      <div className="h-[280px] skeleton rounded-2xl border border-line-faint flex items-center justify-center text-ink-400 text-xs font-semibold">
         Constructing runway timeline comparison...
       </div>
     );

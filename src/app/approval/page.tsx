@@ -139,10 +139,10 @@ function ApprovalContent() {
   if (error || !strategy) {
     return (
       <main className="flex-1 flex items-center justify-center py-16">
-        <Card className="max-w-md text-center border-red-200 bg-red-50/60">
-          <ShieldAlert className="w-12 h-12 text-red-600 mx-auto mb-4" />
-          <h2 className="text-lg font-bold text-slate-800">Session Expired</h2>
-          <p className="text-slate-500 text-xs mt-2 font-semibold">
+        <Card className="max-w-md text-center border-risk-500/25 bg-risk-500/10">
+          <ShieldAlert className="w-12 h-12 text-risk-400 mx-auto mb-4" />
+          <h2 className="text-lg font-bold text-ink-100">Session Expired</h2>
+          <p className="text-ink-300 text-xs mt-2 font-semibold">
             {error || "Selected strategy snapshot could not be found."}
           </p>
           <Button variant="primary" size="lg" onClick={() => router.push("/strategies")} className="mt-6 w-full">
@@ -187,7 +187,7 @@ function ApprovalContent() {
       <Reveal className="flex items-center justify-between">
         <button
           onClick={() => router.push("/strategies")}
-          className="text-xs font-bold text-slate-500 hover:text-slate-700 transition outline-none"
+          className="text-xs font-bold text-ink-300 hover:text-ink-200 transition outline-none"
         >
           ← Back to Simulator
         </button>
@@ -199,29 +199,29 @@ function ApprovalContent() {
         <StaggerItem>
           <Card className="!rounded-3xl space-y-4">
             <div>
-              <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest block">
+              <span className="text-[9px] font-extrabold text-ink-400 uppercase tracking-widest block">
                 Plan Selected for Review
               </span>
-              <h2 className="text-xl font-black text-slate-800 mt-1 leading-tight">
+              <h2 className="text-xl font-black text-ink-100 mt-1 leading-tight">
                 {strategyTitle}
               </h2>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-100 items-center">
+            <div className="grid grid-cols-2 gap-4 pt-4 border-t border-line-faint items-center">
               <div>
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
+                <span className="text-[9px] font-bold text-ink-400 uppercase tracking-wider block">
                   Baseline Deficit (Before)
                 </span>
-                <span className="text-lg font-extrabold text-red-600 block mt-0.5">
+                <span className="text-lg font-extrabold text-risk-400 block mt-0.5">
                   {baselineClosing === null ? "Unavailable" : formatINR(baselineClosing)}
                 </span>
               </div>
 
               <div>
-                <span className="text-[9px] font-bold text-indigo-600 uppercase tracking-wider block">
+                <span className="text-[9px] font-bold text-brand-300 uppercase tracking-wider block">
                   Expected Outcome (After)
                 </span>
-                <span className="text-lg font-black text-indigo-600 block mt-0.5">
+                <span className="text-lg font-black text-brand-300 block mt-0.5">
                   {formatINR(strategy.result?.projectedBalance ?? strategy.projectedBalance)}
                 </span>
               </div>
@@ -231,20 +231,20 @@ function ApprovalContent() {
 
         {/* SECTION B — Detailed Execution Plan */}
         <StaggerItem className="space-y-4">
-          <span className="text-xs font-bold text-slate-400 uppercase tracking-widest block pl-1">
+          <span className="text-xs font-bold text-ink-400 uppercase tracking-widest block pl-1">
             Detailed Action Steps Plan
           </span>
 
           {strategy.actions.length === 0 ? (
-            <Card className="!rounded-3xl text-center text-xs text-slate-400 font-semibold italic">
+            <Card className="!rounded-3xl text-center text-xs text-ink-400 font-semibold italic">
               This strategy requires zero active interventions. No payment links will be created.
             </Card>
           ) : (
             <div className="space-y-4">
               {strategy.actions.map((act: any, idx: number) => (
                 <Card key={act.id ?? `action-${idx}`} className="!rounded-3xl space-y-4">
-                  <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-                    <span className="text-[10px] font-extrabold text-indigo-600 uppercase tracking-widest block">
+                  <div className="flex justify-between items-center border-b border-line-faint pb-3">
+                    <span className="text-[10px] font-extrabold text-brand-300 uppercase tracking-widest block">
                       Action {idx + 1} of {strategy.actions.length}
                     </span>
                     <Badge tone="neutral">Awaiting Approval</Badge>
@@ -252,23 +252,23 @@ function ApprovalContent() {
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs font-semibold">
                     <div>
-                      <span className="text-[9px] text-slate-400 uppercase tracking-wider block">Intervention Category</span>
-                      <span className="text-slate-800 font-extrabold block mt-0.5">{actionCategory(act.type)}</span>
+                      <span className="text-[9px] text-ink-400 uppercase tracking-wider block">Intervention Category</span>
+                      <span className="text-ink-100 font-extrabold block mt-0.5">{actionCategory(act.type)}</span>
                     </div>
 
                     <div>
-                      <span className="text-[9px] text-slate-400 uppercase tracking-wider block">Impact Amount</span>
-                      <span className="text-emerald-600 font-extrabold block mt-0.5">+{formatINR(act.amount)}</span>
+                      <span className="text-[9px] text-ink-400 uppercase tracking-wider block">Impact Amount</span>
+                      <span className="text-safe-400 font-extrabold block mt-0.5">+{formatINR(act.amount)}</span>
                     </div>
 
                     <div>
-                      <span className="text-[9px] text-slate-400 uppercase tracking-wider block">Execution Method</span>
-                      <span className="text-slate-800 block mt-0.5">{executionMethod(act.type)}</span>
+                      <span className="text-[9px] text-ink-400 uppercase tracking-wider block">Execution Method</span>
+                      <span className="text-ink-100 block mt-0.5">{executionMethod(act.type)}</span>
                     </div>
 
                     <div>
-                      <span className="text-[9px] text-slate-400 uppercase tracking-wider block">Impact Realization</span>
-                      <span className="text-slate-500 block mt-0.5 leading-relaxed font-semibold">{impactRealization(act.type)}</span>
+                      <span className="text-[9px] text-ink-400 uppercase tracking-wider block">Impact Realization</span>
+                      <span className="text-ink-300 block mt-0.5 leading-relaxed font-semibold">{impactRealization(act.type)}</span>
                     </div>
                   </div>
                 </Card>
@@ -280,7 +280,7 @@ function ApprovalContent() {
         {/* SECTION C — Pre-Execution Checks */}
         <StaggerItem>
           <Card className="!rounded-3xl space-y-4">
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest block">
+            <h3 className="text-xs font-bold text-ink-400 uppercase tracking-widest block">
               Pre-Execution System Checks
             </h3>
 
@@ -288,11 +288,11 @@ function ApprovalContent() {
               {preExecutionChecks.map((check, idx) => (
                 <div key={idx} className="flex items-center gap-3 text-xs">
                   {check.ok ? (
-                    <CheckCircle2 className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+                    <CheckCircle2 className="w-5 h-5 text-safe-400 flex-shrink-0" />
                   ) : (
-                    <XCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
+                    <XCircle className="w-5 h-5 text-risk-400 flex-shrink-0" />
                   )}
-                  <span className={clsx("font-semibold", check.ok ? "text-slate-600" : "text-red-700")}>{check.label}</span>
+                  <span className={clsx("font-semibold", check.ok ? "text-ink-300" : "text-risk-400")}>{check.label}</span>
                 </div>
               ))}
             </div>
@@ -301,25 +301,25 @@ function ApprovalContent() {
 
         {/* SECTION D — Visual Human Control Boundary Separator */}
         <StaggerItem className="py-2 text-center space-y-3">
-          <div className="border-t-2 border-dashed border-slate-300 w-full" />
-          <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest bg-[var(--background)] px-4 inline-flex items-center gap-1.5 -mt-6 relative">
+          <div className="border-t-2 border-dashed border-line-firm w-full" />
+          <span className="text-[10px] font-black uppercase text-ink-400 tracking-widest bg-[var(--background)] px-4 inline-flex items-center gap-1.5 -mt-6 relative">
             <Lock className="w-3 h-3" /> CashPilot Human Authorization Boundary
           </span>
-          <div className="max-w-md mx-auto text-[10px] text-slate-400 leading-relaxed font-semibold">
+          <div className="max-w-md mx-auto text-[10px] text-ink-400 leading-relaxed font-semibold">
             AI agents and calculation engines are strictly read-only.
             No payments can be processed, links generated, or invoices updated without explicit approval.
           </div>
-          <div className="border-b-2 border-dashed border-slate-300 w-full pt-1" />
+          <div className="border-b-2 border-dashed border-line-firm w-full pt-1" />
         </StaggerItem>
 
         {/* Stale recalculation notice */}
         {isStale && (
           <StaggerItem>
-            <Card className="!rounded-3xl bg-red-50/60 border-red-200 flex items-start gap-4">
-              <ShieldAlert className="w-6 h-6 text-red-600 flex-shrink-0 mt-0.5" />
+            <Card className="!rounded-3xl bg-risk-500/10 border-risk-500/25 flex items-start gap-4">
+              <ShieldAlert className="w-6 h-6 text-risk-400 flex-shrink-0 mt-0.5" />
               <div>
-                <h4 className="text-sm font-bold text-red-800">Ledger Snapshot Outdated</h4>
-                <p className="text-xs text-red-700 leading-relaxed mt-1 font-semibold">
+                <h4 className="text-sm font-bold text-risk-400">Ledger Snapshot Outdated</h4>
+                <p className="text-xs text-risk-400 leading-relaxed mt-1 font-semibold">
                   A transaction or invoice recovery state changed after this simulation was generated.
                   To protect from double-billing or overdraft, this strategy must be recompiled.
                 </p>
@@ -343,7 +343,7 @@ function ApprovalContent() {
         <StaggerItem className="flex justify-between items-center pt-2">
           <button
             onClick={handleReject}
-            className="text-xs font-bold text-red-500 hover:text-red-700 outline-none hover:bg-red-50 px-4 py-2 rounded-lg transition-colors"
+            className="text-xs font-bold text-risk-400 hover:text-risk-400 outline-none hover:bg-risk-500/10 px-4 py-2 rounded-lg transition-colors"
           >
             Reject Plan
           </button>
@@ -369,7 +369,7 @@ function ApprovalContent() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[999] flex items-center justify-center p-4"
+            className="fixed inset-0 bg-ground-000/60 backdrop-blur-sm z-[999] flex items-center justify-center p-4"
             onClick={() => setShowConfirmModal(false)}
           >
             <motion.div
@@ -378,31 +378,31 @@ function ApprovalContent() {
               exit={{ opacity: 0, scale: 0.94, y: 10 }}
               transition={{ duration: 0.25, ease: EASE_OUT_EXPO }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-3xl p-6 max-w-sm w-full border border-slate-100 shadow-2xl space-y-4"
+              className="bg-ground-100 rounded-3xl p-6 max-w-sm w-full border border-line-faint shadow-2xl space-y-4"
             >
-              <div className="flex items-center gap-2.5 text-indigo-600">
+              <div className="flex items-center gap-2.5 text-brand-300">
                 <ShieldCheck className="w-6 h-6" />
-                <h3 className="text-md font-black tracking-tight text-slate-800">
+                <h3 className="text-md font-black tracking-tight text-ink-100">
                   Confirm Human Authorization
                 </h3>
               </div>
 
-              <p className="text-xs text-slate-500 font-semibold leading-relaxed">
+              <p className="text-xs text-ink-300 font-semibold leading-relaxed">
                 You are authorizing a financial intervention.
               </p>
 
-              <div className="text-xs font-semibold text-slate-700 space-y-2">
+              <div className="text-xs font-semibold text-ink-200 space-y-2">
                 <p>✓ Expected to: <strong>Eliminate {strategy.scoring?.counterfactual?.deficitDaysDelta ?? 0} projected deficit days</strong>.</p>
                 {(() => {
                   const deferredAmount = strategy.scoring?.deferredObligations?.amount ?? 0;
                   if (deferredAmount > 0) {
                     return (
-                      <p className="text-red-600">
+                      <p className="text-risk-400">
                         ⚠️ Note: <strong>{formatINR(deferredAmount)} remains payable</strong> after the current forecast horizon.
                       </p>
                     );
                   }
-                  return <p className="text-slate-400 font-normal">No deferred liabilities outside the forecast window.</p>;
+                  return <p className="text-ink-400 font-normal">No deferred liabilities outside the forecast window.</p>;
                 })()}
               </div>
 

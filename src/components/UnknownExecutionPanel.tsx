@@ -113,15 +113,15 @@ export function UnknownExecutionPanel({
   if (intents.length === 0 && !error) return null;
 
   return (
-    <Card className="!rounded-3xl border-amber-200 bg-amber-50/40 space-y-4">
+    <Card className="!rounded-3xl border-warn-500/25 bg-warn-500/10 space-y-4">
       <div className="flex items-center gap-2.5">
-        <ShieldAlert className="w-5 h-5 text-amber-600 flex-shrink-0" />
-        <h3 className="text-sm font-black text-amber-900 uppercase tracking-tight">
+        <ShieldAlert className="w-5 h-5 text-warn-400 flex-shrink-0" />
+        <h3 className="text-sm font-black text-warn-400 uppercase tracking-tight">
           Execution status could not be determined
         </h3>
       </div>
 
-      <p className="text-xs text-amber-800 font-semibold leading-relaxed">
+      <p className="text-xs text-warn-400 font-semibold leading-relaxed">
         The operations below were sent, but CashPilot did not receive a conclusive
         answer. They are <strong>not</strong> confirmed as completed and
         <strong> not</strong> confirmed as failed. Reconcile each one to establish
@@ -129,7 +129,7 @@ export function UnknownExecutionPanel({
       </p>
 
       {error && (
-        <p className="text-xs font-bold text-red-700 flex items-center gap-1.5">
+        <p className="text-xs font-bold text-risk-400 flex items-center gap-1.5">
           <AlertTriangle className="w-3.5 h-3.5" /> {error}
         </p>
       )}
@@ -138,18 +138,18 @@ export function UnknownExecutionPanel({
         {intents.map((intent) => (
           <div
             key={intent.intentId}
-            className="rounded-2xl border border-amber-200 bg-white p-4 space-y-3"
+            className="rounded-2xl border border-warn-500/25 bg-ground-100 p-4 space-y-3"
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <span className="text-[10px] font-extrabold text-amber-700 uppercase tracking-widest block">
+                <span className="text-[10px] font-extrabold text-warn-400 uppercase tracking-widest block">
                   {ACTION_LABEL[intent.actionType ?? ""] ?? intent.operation}
                 </span>
-                <span className="text-slate-800 font-extrabold block mt-0.5">
+                <span className="text-ink-100 font-extrabold block mt-0.5">
                   {formatINR(intent.amount)}
                 </span>
               </div>
-              <span className="text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-full bg-amber-100 text-amber-800">
+              <span className="text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-full bg-warn-500/15 text-warn-400">
                 {intent.status === "UNKNOWN" ? "Undetermined" : intent.status}
               </span>
             </div>
@@ -167,30 +167,30 @@ export function UnknownExecutionPanel({
             </dl>
 
             {intent.lastReconciliation ? (
-              <div className="rounded-xl bg-slate-50 border border-slate-200 p-3 space-y-1.5 text-[11px]">
-                <p className="font-black text-slate-700 uppercase tracking-widest text-[9px]">
+              <div className="rounded-xl bg-ground-200 border border-line-soft p-3 space-y-1.5 text-[11px]">
+                <p className="font-black text-ink-200 uppercase tracking-widest text-[9px]">
                   Last reconciliation — {intent.lastReconciliation.status}
                 </p>
-                <p className="text-slate-600 font-semibold">{intent.lastReconciliation.reason}</p>
-                <p className="text-slate-500">
+                <p className="text-ink-300 font-semibold">{intent.lastReconciliation.reason}</p>
+                <p className="text-ink-300">
                   <span className="font-bold">Expected:</span> {intent.lastReconciliation.expectedEvidence}
                 </p>
-                <p className="text-slate-500">
+                <p className="text-ink-300">
                   <span className="font-bold">Found:</span> {intent.lastReconciliation.observedEvidence}
                 </p>
                 {!intent.lastReconciliation.searchExhaustive && (
-                  <p className="text-amber-700 font-bold">
+                  <p className="text-warn-400 font-bold">
                     The search did not complete, so absence has not been established.
                   </p>
                 )}
               </div>
             ) : (
-              <p className="text-[11px] text-slate-500 font-semibold">
+              <p className="text-[11px] text-ink-300 font-semibold">
                 {intent.unknownReason ?? "No reconciliation has been attempted yet."}
               </p>
             )}
 
-            <p className="text-[11px] font-bold text-slate-700">{intent.nextSafeAction}</p>
+            <p className="text-[11px] font-bold text-ink-200">{intent.nextSafeAction}</p>
 
             <div className="flex gap-2 pt-1">
               <Button
@@ -230,8 +230,8 @@ export function UnknownExecutionPanel({
 function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div>
-      <dt className="text-slate-400 font-bold uppercase tracking-wider text-[9px]">{label}</dt>
-      <dd className={`text-slate-700 ${mono ? "font-mono text-[10px] break-all" : ""}`}>{value}</dd>
+      <dt className="text-ink-400 font-bold uppercase tracking-wider text-[9px]">{label}</dt>
+      <dd className={`text-ink-200 ${mono ? "font-mono text-[10px] break-all" : ""}`}>{value}</dd>
     </div>
   );
 }

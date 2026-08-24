@@ -145,10 +145,10 @@ export default function Strategies() {
   if (error || !cachedStrategies || !cachedForecast) {
     return (
       <main className="flex-1 flex flex-col items-center justify-center p-6 text-center">
-        <Card className="max-w-md border-red-200 bg-red-50/60 shadow-sm">
-          <AlertTriangle className="w-12 h-12 text-red-600 mx-auto mb-4" />
-          <h2 className="text-lg font-bold text-red-800">Simulation failed</h2>
-          <p className="text-red-700 text-xs mt-2 leading-relaxed font-semibold">
+        <Card className="max-w-md border-risk-500/25 bg-risk-500/10 shadow-sm">
+          <AlertTriangle className="w-12 h-12 text-risk-400 mx-auto mb-4" />
+          <h2 className="text-lg font-bold text-risk-400">Simulation failed</h2>
+          <p className="text-risk-400 text-xs mt-2 leading-relaxed font-semibold">
             {error || "Database or calculation error in strategy engine."}
           </p>
           <Button variant="danger" size="lg" onClick={() => window.location.reload()} className="mt-6 w-full">
@@ -179,11 +179,11 @@ export default function Strategies() {
       <Reveal className="flex items-center justify-between">
         <button
           onClick={() => router.push("/investigation")}
-          className="text-xs font-bold text-slate-500 hover:text-slate-700 transition outline-none"
+          className="text-xs font-bold text-ink-300 hover:text-ink-200 transition outline-none"
         >
           ← Back to Investigation
         </button>
-        <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">
+        <span className="text-[10px] uppercase font-bold text-ink-400 block tracking-wider">
           {cachedStrategies.length} Scenarios Analyzed • Intervention Simulator
         </span>
       </Reveal>
@@ -193,24 +193,24 @@ export default function Strategies() {
         <StaggerItem>
           <Card tone="raised" className="!rounded-3xl grid grid-cols-1 sm:grid-cols-4 gap-6 items-center">
             <div>
-              <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest block mb-0.5">
+              <span className="text-[9px] font-extrabold text-ink-400 uppercase tracking-widest block mb-0.5">
                 Baseline Status (Do Nothing)
               </span>
-              <span className="text-sm font-black text-slate-800 uppercase tracking-tight block">
+              <span className="text-sm font-black text-ink-100 uppercase tracking-tight block">
                 Committed Outlook
               </span>
             </div>
             <div>
-              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
+              <span className="text-[9px] font-bold text-ink-400 uppercase tracking-wider block">
                 Projected Crisis
               </span>
-              <span className="text-sm font-extrabold text-red-600 block">{baselineCrisisText}</span>
+              <span className="text-sm font-extrabold text-risk-400 block">{baselineCrisisText}</span>
             </div>
             <div>
-              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
+              <span className="text-[9px] font-bold text-ink-400 uppercase tracking-wider block">
                 Projected Closing
               </span>
-              <span className="text-sm font-extrabold text-slate-700 block">{formatINR(baselineClosing)}</span>
+              <span className="text-sm font-extrabold text-ink-200 block">{formatINR(baselineClosing)}</span>
             </div>
             <div className="flex sm:justify-end">
               <Badge tone="danger">High Runway Risk</Badge>
@@ -220,7 +220,7 @@ export default function Strategies() {
 
         {/* SECTION B — Clickable Strategy Overview Cards */}
         <StaggerItem className="space-y-3">
-          <span className="text-xs font-bold text-slate-400 uppercase tracking-widest block pl-1">
+          <span className="text-xs font-bold text-ink-400 uppercase tracking-widest block pl-1">
             Select a Strategy to Explore
           </span>
 
@@ -239,8 +239,8 @@ export default function Strategies() {
                   className={clsx(
                     "text-left p-4 rounded-2xl border transition-colors duration-200 outline-none flex flex-col justify-between h-40 shadow-sm relative",
                     {
-                      "bg-indigo-600 border-indigo-600 text-white ring-4 ring-indigo-100": isSelected,
-                      "bg-white border-slate-200 hover:border-indigo-300 text-slate-700": !isSelected,
+                      "bg-brand-500 border-brand-500 text-white ring-4 ring-brand-500/25": isSelected,
+                      "bg-ground-100 border-line-soft hover:border-brand-500/40 text-ink-200": !isSelected,
                     }
                   )}
                 >
@@ -248,7 +248,7 @@ export default function Strategies() {
                     <span
                       className={clsx(
                         "absolute top-3 right-3 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-full",
-                        isSelected ? "bg-white text-indigo-700" : "bg-indigo-600 text-white"
+                        isSelected ? "bg-ground-100 text-brand-300" : "bg-brand-500 text-white"
                       )}
                     >
                       ★ Recommended
@@ -256,7 +256,7 @@ export default function Strategies() {
                   )}
 
                   <div>
-                    <span className={clsx("text-xs font-black uppercase tracking-widest", isSelected ? "text-indigo-200" : "text-slate-400")}>
+                    <span className={clsx("text-xs font-black uppercase tracking-widest", isSelected ? "text-brand-300" : "text-ink-400")}>
                       {scenarioLabel[s.name] ?? s.name}
                     </span>
                     <h3 className="text-sm font-black tracking-tight mt-1 leading-snug">
@@ -273,15 +273,18 @@ export default function Strategies() {
                     </div>
 
                     <div className="flex justify-between items-center w-full mt-1.5 pt-1.5 border-t border-white/10 text-[10px] font-bold">
-                      <span className={isSelected ? "text-indigo-100" : "text-slate-400"}>
+                      <span className={isSelected ? "text-brand-300" : "text-ink-400"}>
                         Score: <span className="font-black">{s.scoring.finalScore}</span>
                       </span>
                       <span
+                        // The selected card used to need a lighter shade because
+                        // it sat on saturated indigo. On the dark ground both
+                        // states share a surface, so risk reads the same either
+                        // way - and one colour per risk level is the point.
                         className={clsx("uppercase tracking-wider", {
-                          "text-red-200": s.result.riskLevel === "HIGH" && isSelected,
-                          "text-red-600": s.result.riskLevel === "HIGH" && !isSelected,
-                          "text-emerald-200": s.result.riskLevel === "LOW" && isSelected,
-                          "text-emerald-600": s.result.riskLevel === "LOW" && !isSelected,
+                          "text-risk-400": s.result.riskLevel === "HIGH",
+                          "text-warn-400": s.result.riskLevel === "MEDIUM",
+                          "text-safe-400": s.result.riskLevel === "LOW",
                         })}
                       >
                         {s.result.riskLevel} Risk
@@ -299,34 +302,34 @@ export default function Strategies() {
           {/* Before vs After accumulation panel */}
           <Card className="!rounded-3xl space-y-6 flex flex-col justify-between">
             <div>
-              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest block mb-4">
+              <span className="text-[10px] font-extrabold text-ink-400 uppercase tracking-widest block mb-4">
                 Intervention Cash Impact
               </span>
 
               <div className="space-y-4">
                 {/* Before */}
                 <div>
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
+                  <span className="text-[9px] font-bold text-ink-400 uppercase tracking-wider block">
                     Committed Outlook (Before)
                   </span>
-                  <span className="text-lg font-extrabold text-slate-400 block mt-0.5">
+                  <span className="text-lg font-extrabold text-ink-400 block mt-0.5">
                     {formatINR(baselineClosing)}
                   </span>
                 </div>
 
                 {/* Adjustments trace flow */}
-                <div className="pl-3 border-l-2 border-indigo-200 space-y-3.5 my-2">
+                <div className="pl-3 border-l-2 border-brand-500/30 space-y-3.5 my-2">
                   {selectedStrategy.actions.length === 0 ? (
-                    <span className="text-xs text-slate-400 font-semibold italic">
+                    <span className="text-xs text-ink-400 font-semibold italic">
                       No adjustments applied.
                     </span>
                   ) : (
                     selectedStrategy.actions.map((act: any) => (
                       <div key={act.id} className="text-xs">
-                        <span className="text-emerald-600 font-bold block">
+                        <span className="text-safe-400 font-bold block">
                           +{formatINR(act.amount)}
                         </span>
-                        <span className="text-[10px] text-slate-400 font-semibold block leading-tight">
+                        <span className="text-[10px] text-ink-400 font-semibold block leading-tight">
                           {actionDescription(act.type)}
                         </span>
                       </div>
@@ -335,14 +338,14 @@ export default function Strategies() {
                 </div>
 
                 {/* After */}
-                <div className="pt-3 border-t border-slate-100">
-                  <span className="text-[9px] font-bold text-indigo-600 uppercase tracking-wider block">
+                <div className="pt-3 border-t border-line-faint">
+                  <span className="text-[9px] font-bold text-brand-300 uppercase tracking-wider block">
                     Simulated Closing Balance (After)
                   </span>
-                  <span className="text-2xl font-black text-indigo-600 block mt-0.5">
+                  <span className="text-2xl font-black text-brand-300 block mt-0.5">
                     {formatINR(strategyResult.projectedBalance)}
                   </span>
-                  <span className="text-[10px] text-slate-400 font-semibold block mt-1">
+                  <span className="text-[10px] text-ink-400 font-semibold block mt-1">
                     {strategyResult.crisisDay
                       ? `Crisis projected on Day ${strategyResult.crisisDay}`
                       : "✓ Cash runway deficit eliminated"}
@@ -356,10 +359,10 @@ export default function Strategies() {
           <Card className="!rounded-3xl md:col-span-2">
             <div className="flex justify-between items-center mb-6">
               <div>
-                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest block">
+                <h3 className="text-xs font-bold text-ink-400 uppercase tracking-widest block">
                   Simulated Runway Comparison Chart
                 </h3>
-                <span className="text-[11px] text-slate-400 font-semibold">
+                <span className="text-[11px] text-ink-400 font-semibold">
                   Plotting strategy curve (solid) overlaid on baseline deficit (dashed).
                 </span>
               </div>
@@ -375,43 +378,43 @@ export default function Strategies() {
         {/* DO NOTHING VS SELECTED COMPARISON TABLE */}
         <StaggerItem>
           <Card className="!rounded-3xl space-y-4">
-            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-3">
+            <h3 className="text-xs font-black text-ink-400 uppercase tracking-widest border-b border-line-faint pb-3">
               Doing Nothing vs Recommended Comparison
             </h3>
             <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left font-semibold text-slate-700">
+              <table className="w-full text-xs text-left font-semibold text-ink-200">
                 <thead>
-                  <tr className="border-b border-slate-100 text-[10px] text-slate-400 uppercase tracking-wider">
+                  <tr className="border-b border-line-faint text-[10px] text-ink-400 uppercase tracking-wider">
                     <th className="py-2">Metric</th>
                     <th className="py-2">Do Nothing</th>
                     <th className="py-2">{strategyPrettyName(selectedStrategy.name)}</th>
-                    <th className="py-2 text-indigo-600">Expected Improvement</th>
+                    <th className="py-2 text-brand-300">Expected Improvement</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr className="border-b border-slate-50">
+                  <tr className="border-b border-line-faint">
                     <td className="py-3">Minimum Balance</td>
                     <td className="py-3 font-mono">{formatINR(selectedStrategy.scoring?.counterfactual?.baselineMinimumBalance ?? baselineCash)}</td>
                     <td className="py-3 font-mono">{formatINR(selectedStrategy.scoring?.counterfactual?.strategyMinimumBalance ?? strategyResult.minimumProjectedBalance)}</td>
-                    <td className="py-3 font-mono text-emerald-600">+{formatINR(selectedStrategy.scoring?.counterfactual?.minimumBalanceDelta ?? (strategyResult.minimumProjectedBalance - baselineCash))}</td>
+                    <td className="py-3 font-mono text-safe-400">+{formatINR(selectedStrategy.scoring?.counterfactual?.minimumBalanceDelta ?? (strategyResult.minimumProjectedBalance - baselineCash))}</td>
                   </tr>
-                  <tr className="border-b border-slate-50">
+                  <tr className="border-b border-line-faint">
                     <td className="py-3">Deficit Days</td>
                     <td className="py-3">{selectedStrategy.scoring?.counterfactual?.baselineDeficitDays ?? (baselineCrisisIndex >= 0 ? 14 - baselineCrisisIndex : 0)} days</td>
                     <td className="py-3">{selectedStrategy.scoring?.counterfactual?.strategyDeficitDays ?? (strategyResult.crisisDay ? 14 - strategyResult.crisisDay : 0)} days</td>
-                    <td className="py-3 text-emerald-600">-{selectedStrategy.scoring?.counterfactual?.deficitDaysDelta ?? ((baselineCrisisIndex >= 0 ? 14 - baselineCrisisIndex : 0) - (strategyResult.crisisDay ? 14 - strategyResult.crisisDay : 0))} days</td>
+                    <td className="py-3 text-safe-400">-{selectedStrategy.scoring?.counterfactual?.deficitDaysDelta ?? ((baselineCrisisIndex >= 0 ? 14 - baselineCrisisIndex : 0) - (strategyResult.crisisDay ? 14 - strategyResult.crisisDay : 0))} days</td>
                   </tr>
-                  <tr className="border-b border-slate-50">
+                  <tr className="border-b border-line-faint">
                     <td className="py-3">Buffer Coverage Ratio</td>
                     <td className="py-3 font-mono">{(selectedStrategy.scoring?.counterfactual?.baselineCoverageRatio ?? 0.42).toFixed(2)}</td>
                     <td className="py-3 font-mono">{(selectedStrategy.scoring?.counterfactual?.strategyCoverageRatio ?? 1.0).toFixed(2)}</td>
-                    <td className="py-3 font-mono text-emerald-600">+{((selectedStrategy.scoring?.counterfactual?.coverageRatioDelta ?? 0.58) * 100).toFixed(0)}% points</td>
+                    <td className="py-3 font-mono text-safe-400">+{((selectedStrategy.scoring?.counterfactual?.coverageRatioDelta ?? 0.58) * 100).toFixed(0)}% points</td>
                   </tr>
                   <tr>
                     <td className="py-3">Critical Obligations Protected</td>
                     <td className="py-3">{selectedStrategy.scoring?.counterfactual?.baselineCriticalObligationsProtected ?? 0} / 2</td>
                     <td className="py-3">{selectedStrategy.scoring?.counterfactual?.strategyCriticalObligationsProtected ?? 2} / 2</td>
-                    <td className="py-3 text-emerald-600">+{selectedStrategy.scoring?.counterfactual?.criticalObligationsProtectedDelta ?? 2} secured</td>
+                    <td className="py-3 text-safe-400">+{selectedStrategy.scoring?.counterfactual?.criticalObligationsProtectedDelta ?? 2} secured</td>
                   </tr>
                 </tbody>
               </table>
@@ -422,14 +425,14 @@ export default function Strategies() {
         {/* COUNTERFACTUAL IMPACT & EFFECTIVENESS */}
         {selectedStrategy.scoring?.counterfactual && (
           <StaggerItem>
-            <Card className="!rounded-3xl bg-indigo-50/60 border-indigo-100 border-l-4 border-l-indigo-600">
-              <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest block mb-3">Counterfactual Impact Summary</span>
-              <ul className="text-xs space-y-2.5 text-indigo-900 font-semibold leading-relaxed">
+            <Card className="!rounded-3xl bg-brand-500/10 border-brand-500/25 border-l-4 border-l-indigo-600">
+              <span className="text-[10px] font-black text-brand-300 uppercase tracking-widest block mb-3">Counterfactual Impact Summary</span>
+              <ul className="text-xs space-y-2.5 text-brand-300 font-semibold leading-relaxed">
                 <li className="flex items-start gap-2"><TrendingUp className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" /> +{formatINR(selectedStrategy.scoring.counterfactual.minimumBalanceDelta)} minimum-balance improvement.</li>
                 <li className="flex items-start gap-2"><TrendingDown className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" /> {selectedStrategy.scoring.counterfactual.deficitDaysDelta} fewer deficit days.</li>
                 <li className="flex items-start gap-2"><ShieldCheck className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" /> +{((selectedStrategy.scoring.counterfactual.coverageRatioDelta ?? 0) * 100).toFixed(0)} percentage points buffer coverage ratio.</li>
                 <li className="flex items-start gap-2"><Lock className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" /> {selectedStrategy.scoring.counterfactual.criticalObligationsProtectedDelta} additional critical obligations protected.</li>
-                <li className="pt-2.5 border-t border-indigo-200/50 mt-2.5 text-[10px] uppercase font-bold tracking-wider">
+                <li className="pt-2.5 border-t border-brand-500/25 mt-2.5 text-[10px] uppercase font-bold tracking-wider">
                   Effectiveness: <span className="underline">{selectedStrategy.scoring.counterfactual.effectiveness.replace(/_/g, " ")}</span>
                 </li>
               </ul>
@@ -440,32 +443,32 @@ export default function Strategies() {
         {/* DEFERRED OBLIGATIONS */}
         {selectedStrategy.deferredObligations && selectedStrategy.deferredObligations.length > 0 && (
           <StaggerItem>
-            <Card className="!rounded-3xl bg-red-50/60 border-red-200 border-l-4 border-l-red-500 space-y-3">
-              <div className="flex items-center gap-2 text-red-700">
+            <Card className="!rounded-3xl bg-risk-500/10 border-risk-500/25 border-l-4 border-l-red-500 space-y-3">
+              <div className="flex items-center gap-2 text-risk-400">
                 <AlertTriangle className="w-5 h-5 flex-shrink-0" />
                 <h4 className="text-xs font-black uppercase tracking-widest">Deferred Obligation Warning</h4>
               </div>
-              <p className="text-xs text-red-700 leading-relaxed font-semibold">
+              <p className="text-xs text-risk-400 leading-relaxed font-semibold">
                 This strategy resolves the immediate 14-day cash runway deficit by rescheduling supplier payouts beyond the forecast horizon. The obligations have been shifted, not eliminated.
               </p>
               <div className="space-y-3 pt-2">
                 {selectedStrategy.deferredObligations.map((def: any, idx: number) => (
-                  <div key={idx} className="bg-white border border-red-100 p-4 rounded-2xl grid grid-cols-1 sm:grid-cols-4 gap-4 text-xs font-semibold text-slate-700">
+                  <div key={idx} className="bg-ground-100 border border-risk-500/20 p-4 rounded-2xl grid grid-cols-1 sm:grid-cols-4 gap-4 text-xs font-semibold text-ink-200">
                     <div>
-                      <span className="text-[9px] text-slate-400 block uppercase">Deferred Amount</span>
-                      <span className="text-slate-800 font-black">{formatINR(def.amount)}</span>
+                      <span className="text-[9px] text-ink-400 block uppercase">Deferred Amount</span>
+                      <span className="text-ink-100 font-black">{formatINR(def.amount)}</span>
                     </div>
                     <div>
-                      <span className="text-[9px] text-slate-400 block uppercase">Original due date</span>
-                      <span className="text-slate-800">{new Date(def.originalDueDate).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</span>
+                      <span className="text-[9px] text-ink-400 block uppercase">Original due date</span>
+                      <span className="text-ink-100">{new Date(def.originalDueDate).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</span>
                     </div>
                     <div>
-                      <span className="text-[9px] text-slate-400 block uppercase">New Expected Date</span>
-                      <span className="text-slate-800">{new Date(def.newDueDate).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</span>
+                      <span className="text-[9px] text-ink-400 block uppercase">New Expected Date</span>
+                      <span className="text-ink-100">{new Date(def.newDueDate).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</span>
                     </div>
                     <div>
-                      <span className="text-[9px] text-slate-400 block uppercase">Days beyond horizon</span>
-                      <span className="text-red-600 font-black">{def.daysBeyondHorizon} day(s)</span>
+                      <span className="text-[9px] text-ink-400 block uppercase">Days beyond horizon</span>
+                      <span className="text-risk-400 font-black">{def.daysBeyondHorizon} day(s)</span>
                     </div>
                   </div>
                 ))}
@@ -477,31 +480,31 @@ export default function Strategies() {
         {/* SECTION D — Actions Included Checklist */}
         <StaggerItem>
           <Card className="!rounded-3xl space-y-4">
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest block border-b border-slate-100 pb-3">
+            <h3 className="text-xs font-bold text-ink-400 uppercase tracking-widest block border-b border-line-faint pb-3">
               Intervention Actions Included ({selectedStrategy.actions.length})
             </h3>
 
             <div className="space-y-3.5">
               {selectedStrategy.actions.length === 0 ? (
-                <div className="text-center py-6 text-xs text-slate-400 font-semibold italic">
+                <div className="text-center py-6 text-xs text-ink-400 font-semibold italic">
                   This strategy includes no active interventions. Forecast remains on baseline trajectory.
                 </div>
               ) : (
                 selectedStrategy.actions.map((act: any) => (
                   <div
                     key={act.id}
-                    className="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-xs"
+                    className="flex items-center justify-between p-3.5 bg-ground-200 border border-line-faint rounded-2xl text-xs"
                   >
                     <div>
-                      <span className="font-extrabold text-slate-800 block">{actionTitle(act.type)}</span>
-                      <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block mt-1">
+                      <span className="font-extrabold text-ink-100 block">{actionTitle(act.type)}</span>
+                      <span className="text-[9px] text-ink-400 font-bold uppercase tracking-wider block mt-1">
                         {act.label}
                       </span>
                     </div>
 
                     <div className="text-right flex items-center gap-4">
                       <div>
-                        <span className="font-extrabold text-slate-700 block">
+                        <span className="font-extrabold text-ink-200 block">
                           +{formatINR(act.amount)}
                         </span>
                         <Badge tone="brand" size="xs" className="mt-0.5">Simulated</Badge>
@@ -516,11 +519,11 @@ export default function Strategies() {
 
         {/* TECHNICAL DECISION TRACE */}
         <StaggerItem>
-          <details className="group bg-white border border-slate-200/80 shadow-sm rounded-3xl p-6">
-            <summary className="text-xs font-black text-slate-400 uppercase tracking-widest cursor-pointer select-none outline-none">
+          <details className="group bg-ground-100 border border-line-soft shadow-sm rounded-3xl p-6">
+            <summary className="text-xs font-black text-ink-400 uppercase tracking-widest cursor-pointer select-none outline-none">
               How did CashPilot reach this decision? (Technical Trace)
             </summary>
-            <div className="pt-4 border-t border-slate-100 mt-4 text-xs font-semibold text-slate-600 space-y-3.5 pr-2 group-open:block hidden">
+            <div className="pt-4 border-t border-line-faint mt-4 text-xs font-semibold text-ink-300 space-y-3.5 pr-2 group-open:block hidden">
               {[
                 `Detected liquidity buffer breach on forecast day ${baselineCrisisIndex + 1}.`,
                 "Identified critical vendor payouts and acceleratable receivables.",
@@ -531,7 +534,7 @@ export default function Strategies() {
                 `Ranked Strategy ${selectedStrategy.name} highest based on optimal risk-adjusted cash recovery.`,
               ].map((line, idx) => (
                 <div key={idx} className="flex gap-3">
-                  <span className="w-5 h-5 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-black">{idx + 1}</span>
+                  <span className="w-5 h-5 bg-brand-500/10 text-brand-300 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-black">{idx + 1}</span>
                   <span>{line}</span>
                 </div>
               ))}
@@ -542,7 +545,7 @@ export default function Strategies() {
         {/* ALTERNATIVE STRATEGIES */}
         <StaggerItem>
           <Card className="!rounded-3xl space-y-4">
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-3">
+            <h3 className="text-xs font-bold text-ink-400 uppercase tracking-widest border-b border-line-faint pb-3">
               Alternative Strategies &amp; Options
             </h3>
             <div className="space-y-3">
@@ -550,13 +553,13 @@ export default function Strategies() {
                 const isRecommended = s.recommended;
                 const isSelected = s.id === selectedStrategyId;
                 return (
-                  <div key={s.id} className="flex flex-wrap justify-between items-center gap-3 bg-slate-50/60 p-4 border border-slate-100 rounded-2xl text-xs font-semibold text-slate-700">
+                  <div key={s.id} className="flex flex-wrap justify-between items-center gap-3 bg-ground-200/60 p-4 border border-line-faint rounded-2xl text-xs font-semibold text-ink-200">
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="font-extrabold text-slate-800">{strategyPrettyName(s.name)}</span>
+                        <span className="font-extrabold text-ink-100">{strategyPrettyName(s.name)}</span>
                         <Badge tone={isRecommended ? "success" : "neutral"} size="xs">{isRecommended ? "Best" : "Alternative"}</Badge>
                       </div>
-                      <span className="text-[10px] text-slate-400 mt-1 block">Expected closing: {formatINR(s.result.projectedBalance)} • Score: {s.scoring.finalScore}</span>
+                      <span className="text-[10px] text-ink-400 mt-1 block">Expected closing: {formatINR(s.result.projectedBalance)} • Score: {s.scoring.finalScore}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <Button variant="secondary" size="sm" onClick={() => setDrawerStrategyId(s.id)}>
@@ -576,14 +579,14 @@ export default function Strategies() {
         {/* COMPARISON HELPER: Why C wins over D */}
         {selectedStrategy.name === "FULL_INTERVENTION" && (
           <StaggerItem>
-            <Card className="!rounded-3xl bg-amber-50/70 border-amber-200 space-y-4">
+            <Card className="!rounded-3xl bg-warn-500/12 border-warn-500/25 space-y-4">
               <div className="flex items-center gap-2.5">
-                <Info className="w-5 h-5 text-amber-600 flex-shrink-0" />
-                <h4 className="text-sm font-black text-amber-800 uppercase tracking-tight">
+                <Info className="w-5 h-5 text-warn-400 flex-shrink-0" />
+                <h4 className="text-sm font-black text-warn-400 uppercase tracking-tight">
                   Why is Full Intervention scored lower than Strategy C?
                 </h4>
               </div>
-              <p className="text-xs text-amber-700 font-semibold leading-relaxed">
+              <p className="text-xs text-warn-400 font-semibold leading-relaxed">
                 Postponing the vendor payout beyond the forecast horizon creates a larger bank surplus of{" "}
                 <strong>
                   {(() => {
@@ -604,14 +607,14 @@ export default function Strategies() {
         {/* AI Recommender Narration Box */}
         {cachedRecommendationNarration && (
           <StaggerItem>
-            <Card className="!rounded-3xl bg-indigo-50/60 border-indigo-100 border-l-4 border-l-indigo-600 relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-3 bg-indigo-100 text-indigo-800 rounded-bl-2xl font-bold text-[9px] uppercase tracking-wider">
+            <Card className="!rounded-3xl bg-brand-500/10 border-brand-500/25 border-l-4 border-l-indigo-600 relative overflow-hidden">
+              <div className="absolute top-0 right-0 p-3 bg-brand-500/15 text-brand-300 rounded-bl-2xl font-bold text-[9px] uppercase tracking-wider">
                 Recommender Insights
               </div>
-              <h3 className="text-[10px] font-extrabold text-indigo-600 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+              <h3 className="text-[10px] font-extrabold text-brand-300 uppercase tracking-widest mb-3 flex items-center gap-1.5">
                 <Sparkles className="w-4 h-4" /> AI Comparative Explanation
               </h3>
-              <p className="text-slate-700 text-sm leading-relaxed font-semibold italic">
+              <p className="text-ink-200 text-sm leading-relaxed font-semibold italic">
                 &ldquo;{cachedRecommendationNarration}&rdquo;
               </p>
             </Card>
@@ -622,7 +625,7 @@ export default function Strategies() {
         <StaggerItem className="flex items-center justify-between pt-2">
           <button
             onClick={() => router.push("/investigation")}
-            className="text-xs font-bold text-slate-500 hover:text-slate-700 outline-none"
+            className="text-xs font-bold text-ink-300 hover:text-ink-200 outline-none"
           >
             ← Back to Investigation
           </button>
@@ -653,7 +656,7 @@ export default function Strategies() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[999] flex justify-end"
+              className="fixed inset-0 bg-ground-000/60 backdrop-blur-sm z-[999] flex justify-end"
               onClick={() => setDrawerStrategyId(null)}
             >
               <motion.div
@@ -662,28 +665,28 @@ export default function Strategies() {
                 exit={{ x: "100%" }}
                 transition={{ duration: 0.35, ease: EASE_OUT_EXPO }}
                 onClick={(e) => e.stopPropagation()}
-                className="bg-white w-full max-w-lg h-full p-6 shadow-2xl flex flex-col justify-between overflow-y-auto space-y-6"
+                className="bg-ground-100 w-full max-w-lg h-full p-6 shadow-2xl flex flex-col justify-between overflow-y-auto space-y-6"
               >
                 <div className="space-y-6">
                   <div className="flex justify-between items-center border-b pb-4">
                     <div>
-                      <span className="text-[9px] font-black text-indigo-600 uppercase tracking-widest">Strategy Deep-Dive</span>
-                      <h3 className="text-md font-black tracking-tight text-slate-800 mt-1">
+                      <span className="text-[9px] font-black text-brand-300 uppercase tracking-widest">Strategy Deep-Dive</span>
+                      <h3 className="text-md font-black tracking-tight text-ink-100 mt-1">
                         {strategyPrettyName(drawerStrategy.name)}
                       </h3>
                     </div>
                     <button
                       onClick={() => setDrawerStrategyId(null)}
-                      className="text-slate-400 hover:text-slate-600 p-2 rounded-lg hover:bg-slate-100 transition-colors"
+                      className="text-ink-400 hover:text-ink-300 p-2 rounded-lg hover:bg-ground-200 transition-colors"
                     >
                       <X className="w-5 h-5" />
                     </button>
                   </div>
 
-                  <div className="space-y-5 text-xs font-semibold text-slate-600">
+                  <div className="space-y-5 text-xs font-semibold text-ink-300">
                     <div>
-                      <span className="text-[10px] text-slate-400 block uppercase tracking-wider mb-1.5">Why This Action? (Strengths)</span>
-                      <ul className="list-disc pl-4 space-y-1 text-slate-700 font-medium">
+                      <span className="text-[10px] text-ink-400 block uppercase tracking-wider mb-1.5">Why This Action? (Strengths)</span>
+                      <ul className="list-disc pl-4 space-y-1 text-ink-200 font-medium">
                         {drawerStrategy.scoring.strengths?.map((str: string, idx: number) => (
                           <li key={idx}>{str}</li>
                         )) || <li>Eliminates projected deficit and secures critical obligations.</li>}
@@ -691,8 +694,8 @@ export default function Strategies() {
                     </div>
 
                     <div>
-                      <span className="text-[10px] text-slate-400 block uppercase tracking-wider mb-1.5">Risks &amp; Trade-Offs</span>
-                      <ul className="list-disc pl-4 space-y-1 text-slate-700 font-medium">
+                      <span className="text-[10px] text-ink-400 block uppercase tracking-wider mb-1.5">Risks &amp; Trade-Offs</span>
+                      <ul className="list-disc pl-4 space-y-1 text-ink-200 font-medium">
                         {drawerStrategy.scoring.tradeoffs?.map((tr: string, idx: number) => (
                           <li key={idx}>{tr}</li>
                         )) || <li>No major risks identified.</li>}
@@ -700,18 +703,18 @@ export default function Strategies() {
                     </div>
 
                     <div>
-                      <span className="text-[10px] text-slate-400 block uppercase tracking-wider mb-2">What Changes? (Actions)</span>
+                      <span className="text-[10px] text-ink-400 block uppercase tracking-wider mb-2">What Changes? (Actions)</span>
                       <div className="space-y-2.5">
                         {drawerStrategy.actions.length === 0 ? (
-                          <span className="italic text-slate-400 font-normal">No interventions. Forecast stays on baseline.</span>
+                          <span className="italic text-ink-400 font-normal">No interventions. Forecast stays on baseline.</span>
                         ) : (
                           drawerStrategy.actions.map((act: any) => (
-                            <div key={act.id} className="bg-slate-50 border border-slate-100 p-3 rounded-xl flex justify-between items-center">
+                            <div key={act.id} className="bg-ground-200 border border-line-faint p-3 rounded-xl flex justify-between items-center">
                               <div>
-                                <span className="text-slate-800 font-bold block">{act.label}</span>
-                                <span className="text-[9px] text-slate-400 block mt-0.5">Type: {act.type.replace(/_/g, " ")}</span>
+                                <span className="text-ink-100 font-bold block">{act.label}</span>
+                                <span className="text-[9px] text-ink-400 block mt-0.5">Type: {act.type.replace(/_/g, " ")}</span>
                               </div>
-                              <span className="text-emerald-600 font-black">+{formatINR(act.amount)}</span>
+                              <span className="text-safe-400 font-black">+{formatINR(act.amount)}</span>
                             </div>
                           ))
                         )}
@@ -719,35 +722,35 @@ export default function Strategies() {
                     </div>
 
                     <div>
-                      <span className="text-[10px] text-slate-400 block uppercase tracking-wider mb-2">Expected Impact</span>
-                      <div className="bg-slate-50 border border-slate-100 p-4 rounded-2xl space-y-2.5">
+                      <span className="text-[10px] text-ink-400 block uppercase tracking-wider mb-2">Expected Impact</span>
+                      <div className="bg-ground-200 border border-line-faint p-4 rounded-2xl space-y-2.5">
                         <div className="flex justify-between">
-                          <span className="text-slate-400">Projected balance:</span>
-                          <span className="text-slate-800">{formatINR(drawerStrategy.result.projectedBalance)}</span>
+                          <span className="text-ink-400">Projected balance:</span>
+                          <span className="text-ink-100">{formatINR(drawerStrategy.result.projectedBalance)}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-slate-400">Minimum balance:</span>
-                          <span className={clsx(drawerStrategy.result.minimumProjectedBalance < 0 ? "text-red-600 font-black" : "text-slate-800")}>
+                          <span className="text-ink-400">Minimum balance:</span>
+                          <span className={clsx(drawerStrategy.result.minimumProjectedBalance < 0 ? "text-risk-400 font-black" : "text-ink-100")}>
                             {formatINR(drawerStrategy.result.minimumProjectedBalance)}
                           </span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-slate-400">Risk rating:</span>
-                          <span className="uppercase text-slate-800">{drawerStrategy.result.riskLevel}</span>
+                          <span className="text-ink-400">Risk rating:</span>
+                          <span className="uppercase text-ink-100">{drawerStrategy.result.riskLevel}</span>
                         </div>
                       </div>
                     </div>
 
                     {drawerStrategy.deferredObligations && drawerStrategy.deferredObligations.length > 0 && (
-                      <div className="bg-red-50 border border-red-200 p-4 rounded-2xl space-y-2 text-red-800">
+                      <div className="bg-risk-500/10 border border-risk-500/25 p-4 rounded-2xl space-y-2 text-risk-400">
                         <span className="text-[9px] font-bold block uppercase tracking-widest flex items-center gap-1.5">
                           <AlertTriangle className="w-3.5 h-3.5" /> Deferred Obligations
                         </span>
-                        <p className="text-[10px] text-red-700 leading-normal font-semibold">
+                        <p className="text-[10px] text-risk-400 leading-normal font-semibold">
                           This strategy reschedules payouts beyond the current 14-day window.
                         </p>
                         {drawerStrategy.deferredObligations.map((def: any, idx: number) => (
-                          <div key={idx} className="flex justify-between pt-1 border-t border-red-200/50 text-[10px]">
+                          <div key={idx} className="flex justify-between pt-1 border-t border-risk-500/25 text-[10px]">
                             <span>Amount: {formatINR(def.amount)}</span>
                             <span>Days beyond horizon: {def.daysBeyondHorizon}</span>
                           </div>
@@ -757,7 +760,7 @@ export default function Strategies() {
                   </div>
                 </div>
 
-                <Button variant="subtle" size="lg" onClick={() => setDrawerStrategyId(null)} className="w-full !bg-slate-800 !text-white hover:!bg-slate-900">
+                <Button variant="subtle" size="lg" onClick={() => setDrawerStrategyId(null)} className="w-full !bg-ground-300 !text-white hover:!bg-ground-000">
                   Close Deep-Dive
                 </Button>
               </motion.div>

@@ -24,21 +24,21 @@ const integrations: Integration[] = [
     sub: "Test Mode active",
     status: "Connected",
     icon: <span className="text-[10px] font-black">RZP</span>,
-    iconBg: "bg-indigo-50 text-indigo-600",
+    iconBg: "bg-brand-500/10 text-brand-300",
   },
   {
     label: "Groq AI Inference Service",
     sub: "Using qwen/qwen3.6-27b",
     status: "Connected",
     icon: <span className="text-[10px] font-black">GRQ</span>,
-    iconBg: "bg-indigo-50 text-indigo-600",
+    iconBg: "bg-brand-500/10 text-brand-300",
   },
   {
     label: "SBI Corporate Banking Ledger",
     sub: "Mock Bank Node Link",
     status: "Synced",
     icon: <Landmark className="w-4 h-4" />,
-    iconBg: "bg-slate-100 text-slate-600",
+    iconBg: "bg-ground-200 text-ink-300",
   },
 ];
 
@@ -70,14 +70,14 @@ export default function Profile() {
       {/* Header navigation bar */}
       <Reveal className="flex justify-between items-center flex-wrap gap-4">
         <div>
-          <h1 className="text-xl font-black text-slate-900 tracking-tight">Account &amp; Settings</h1>
-          <p className="text-slate-500 text-xs mt-1">
+          <h1 className="text-xl font-black text-ink-100 tracking-tight">Account &amp; Settings</h1>
+          <p className="text-ink-300 text-xs mt-1">
             Manage your business profile, integrations, and controller access.
           </p>
         </div>
         <button
           onClick={() => router.push("/dashboard")}
-          className="flex items-center gap-1.5 px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-colors duration-150 shadow-sm outline-none"
+          className="flex items-center gap-1.5 px-4 py-2 bg-ground-100 border border-line-soft rounded-xl text-xs font-bold text-ink-200 hover:bg-ground-200 hover:border-line-firm transition-colors duration-150 shadow-sm outline-none"
         >
           <ArrowLeft className="w-3.5 h-3.5" /> Back to Cash Command Dashboard
         </button>
@@ -87,19 +87,19 @@ export default function Profile() {
         {/* Profile Card Header */}
         <StaggerItem>
           <Card hoverable className="flex flex-col sm:flex-row items-center gap-6">
-            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-700 flex items-center justify-center text-2xl font-black text-white shadow-lg shadow-indigo-200 flex-shrink-0">
+            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-brand-500 to-brand-600 flex items-center justify-center text-2xl font-black text-white shadow-lg shadow-brand-500/30 flex-shrink-0">
               {initials || "CP"}
             </div>
 
             <div className="text-center sm:text-left flex-grow">
-              <h2 className="text-2xl font-black text-slate-800 tracking-tight">{name}</h2>
-              <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-0.5">
+              <h2 className="text-2xl font-black text-ink-100 tracking-tight">{name}</h2>
+              <p className="text-xs text-ink-400 font-bold uppercase tracking-wider mt-0.5">
                 Financial Controller • {businessName}
               </p>
-              <p className="text-xs text-slate-500 font-semibold mt-2">{email}</p>
+              <p className="text-xs text-ink-300 font-semibold mt-2">{email}</p>
             </div>
 
-            <div className="flex sm:flex-col items-center sm:items-end gap-2 border-t sm:border-t-0 sm:border-l border-slate-100 pt-4 sm:pt-0 sm:pl-6 w-full sm:w-auto justify-center sm:justify-start">
+            <div className="flex sm:flex-col items-center sm:items-end gap-2 border-t sm:border-t-0 sm:border-l border-line-faint pt-4 sm:pt-0 sm:pl-6 w-full sm:w-auto justify-center sm:justify-start">
               <Badge tone="brand" size="sm">
                 <Shield className="w-3.5 h-3.5 mr-1.5" />
                 Verified Controller
@@ -114,16 +114,16 @@ export default function Profile() {
           <div className="md:col-span-2 space-y-6">
             <StaggerItem>
               <Card className="space-y-4">
-                <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider border-b border-slate-100 pb-3 flex items-center gap-2">
-                  <Briefcase className="w-4 h-4 text-slate-400" />
+                <h3 className="text-sm font-black text-ink-100 uppercase tracking-wider border-b border-line-faint pb-3 flex items-center gap-2">
+                  <Briefcase className="w-4 h-4 text-ink-400" />
                   Business Profile
                 </h3>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                   {businessFields.map((field) => (
                     <div key={field.label}>
-                      <span className="text-slate-400 font-bold uppercase block mb-1">{field.label}</span>
-                      <span className={field.muted ? "text-slate-500 font-bold" : "text-slate-700 font-bold"}>
+                      <span className="text-ink-400 font-bold uppercase block mb-1">{field.label}</span>
+                      <span className={field.muted ? "text-ink-300 font-bold" : "text-ink-200 font-bold"}>
                         {field.accessor === "businessName" ? businessName : field.value}
                       </span>
                     </div>
@@ -134,8 +134,8 @@ export default function Profile() {
 
             <StaggerItem>
               <Card className="space-y-4">
-                <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider border-b border-slate-100 pb-3 flex items-center gap-2">
-                  <Key className="w-4 h-4 text-slate-400" />
+                <h3 className="text-sm font-black text-ink-100 uppercase tracking-wider border-b border-line-faint pb-3 flex items-center gap-2">
+                  <Key className="w-4 h-4 text-ink-400" />
                   Integration Settings
                 </h3>
 
@@ -143,15 +143,15 @@ export default function Profile() {
                   {integrations.map((integ) => (
                     <div
                       key={integ.label}
-                      className="card-hover flex items-center justify-between p-3 rounded-2xl bg-slate-50 border border-slate-100"
+                      className="card-hover flex items-center justify-between p-3 rounded-2xl bg-ground-200 border border-line-faint"
                     >
                       <div className="flex items-center gap-3">
                         <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${integ.iconBg}`}>
                           {integ.icon}
                         </div>
                         <div>
-                          <span className="text-xs font-bold text-slate-700 block">{integ.label}</span>
-                          <span className="text-[10px] text-slate-400 font-semibold block">{integ.sub}</span>
+                          <span className="text-xs font-bold text-ink-200 block">{integ.label}</span>
+                          <span className="text-[10px] text-ink-400 font-semibold block">{integ.sub}</span>
                         </div>
                       </div>
                       <Badge tone="success">
@@ -168,14 +168,14 @@ export default function Profile() {
           {/* Stat Cards Side Panel */}
           <StaggerItem>
             <Card className="space-y-4 h-fit" tone="raised">
-              <h3 className="text-sm font-black text-white uppercase tracking-wider border-b border-slate-700 pb-3 flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-slate-400" />
+              <h3 className="text-sm font-black text-white uppercase tracking-wider border-b border-line-soft pb-3 flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-ink-400" />
                 Intervention Stats
               </h3>
 
               <div className="space-y-4">
                 <div className="p-3 bg-white/5 border border-white/10 rounded-2xl">
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">
+                  <span className="text-[9px] font-bold text-ink-400 uppercase tracking-widest block">
                     Forecast Runway Horizon
                   </span>
                   <span className="text-lg font-black text-white mt-1 block">
@@ -184,19 +184,19 @@ export default function Profile() {
                 </div>
 
                 <div className="p-3 bg-white/5 border border-white/10 rounded-2xl">
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">
+                  <span className="text-[9px] font-bold text-ink-400 uppercase tracking-widest block">
                     Deficits Identified &amp; Blocked
                   </span>
-                  <span className="text-lg font-black text-red-400 mt-1 block">
+                  <span className="text-lg font-black text-risk-400 mt-1 block">
                     <AnimatedNumber value={420000} format={(n) => `₹${Math.round(n).toLocaleString("en-IN")}`} />
                   </span>
                 </div>
 
                 <div className="p-3 bg-white/5 border border-white/10 rounded-2xl">
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">
+                  <span className="text-[9px] font-bold text-ink-400 uppercase tracking-widest block">
                     Intervention Decision Accuracy
                   </span>
-                  <span className="text-lg font-black text-emerald-400 mt-1 block">
+                  <span className="text-lg font-black text-safe-400 mt-1 block">
                     <AnimatedNumber value={98.4} format={(n) => `${n.toFixed(1)}%`} />
                   </span>
                 </div>

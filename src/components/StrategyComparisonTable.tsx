@@ -19,9 +19,9 @@ export function StrategyComparisonTable({ strategies }: { strategies: Strategy[]
   };
 
   return (
-    <div className="overflow-hidden border border-slate-200 rounded-xl bg-white shadow-sm">
-      <table className="min-w-full divide-y divide-slate-200 text-left text-sm text-slate-600">
-        <thead className="bg-slate-50 font-semibold text-slate-700">
+    <div className="overflow-hidden border border-line-soft rounded-xl bg-ground-100 shadow-sm">
+      <table className="min-w-full divide-y divide-line-soft text-left text-sm text-ink-300">
+        <thead className="bg-ground-200 font-semibold text-ink-200">
           <tr>
             <th className="px-6 py-4">Strategy</th>
             <th className="px-6 py-4">Projected Balance</th>
@@ -30,16 +30,16 @@ export function StrategyComparisonTable({ strategies }: { strategies: Strategy[]
             <th className="px-6 py-4">Dynamic Score</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100 font-medium">
+        <tbody className="divide-y divide-line-faint font-medium">
           {strategies.map((s) => (
             <tr
               key={s.id}
-              className={s.recommended ? "bg-indigo-50/40 font-semibold text-slate-900" : ""}
+              className={s.recommended ? "bg-brand-500/10 font-semibold text-ink-100" : ""}
             >
               <td className="px-6 py-4 flex items-center gap-1.5">
                 {getStrategyDisplayName(s.name)}
                 {s.recommended && (
-                  <span className="bg-indigo-100 text-indigo-800 text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider">
+                  <span className="bg-brand-500/15 text-brand-300 text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider">
                     Recommended
                   </span>
                 )}
@@ -49,15 +49,15 @@ export function StrategyComparisonTable({ strategies }: { strategies: Strategy[]
               </td>
               <td className="px-6 py-4">
                 {s.result.crisisDay ? (
-                  <span className="text-red-600 font-semibold">Day {s.result.crisisDay}</span>
+                  <span className="text-risk-400 font-semibold">Day {s.result.crisisDay}</span>
                 ) : (
-                  <span className="text-green-600">Resolved</span>
+                  <span className="text-safe-400">Resolved</span>
                 )}
               </td>
               <td className="px-6 py-4">
                 <RiskBadge level={s.result.riskLevel} />
               </td>
-              <td className="px-6 py-4 text-slate-800 font-bold">{s.scoring.finalScore}/100</td>
+              <td className="px-6 py-4 text-ink-100 font-bold">{s.scoring.finalScore}/100</td>
             </tr>
           ))}
         </tbody>

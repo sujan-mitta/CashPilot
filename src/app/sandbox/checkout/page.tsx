@@ -76,8 +76,8 @@ function CheckoutContent() {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center p-8 space-y-4">
-        <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
-        <span className="text-xs text-slate-500 font-bold">Initializing sandbox session...</span>
+        <div className="w-10 h-10 border-4 border-brand-500 border-t-transparent rounded-full animate-spin" />
+        <span className="text-xs text-ink-300 font-bold">Initializing sandbox session...</span>
       </div>
     );
   }
@@ -87,11 +87,11 @@ function CheckoutContent() {
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-red-50 p-6 rounded-2xl border border-red-200 text-center max-w-sm space-y-4"
+        className="bg-risk-500/10 p-6 rounded-2xl border border-risk-500/25 text-center max-w-sm space-y-4"
       >
-        <AlertTriangle className="w-10 h-10 text-red-600 mx-auto" />
-        <h3 className="text-md font-bold text-red-800">Checkout Session Failure</h3>
-        <p className="text-xs text-red-700 font-medium leading-relaxed">{error}</p>
+        <AlertTriangle className="w-10 h-10 text-risk-400 mx-auto" />
+        <h3 className="text-md font-bold text-risk-400">Checkout Session Failure</h3>
+        <p className="text-xs text-risk-400 font-medium leading-relaxed">{error}</p>
       </motion.div>
     );
   }
@@ -101,17 +101,17 @@ function CheckoutContent() {
       initial={{ opacity: 0, y: 16, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.45, ease: EASE_OUT_EXPO }}
-      className="bg-white border border-slate-200 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl shadow-slate-300/40"
+      className="bg-ground-100 border border-line-soft rounded-3xl w-full max-w-md overflow-hidden shadow-2xl shadow-black/50"
     >
       {/* simulated payment gateway header */}
-      <div className="bg-gradient-to-r from-indigo-600 to-indigo-700 text-white p-6 flex items-center justify-between">
+      <div className="bg-gradient-to-r from-brand-500 to-brand-600 text-white p-6 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center backdrop-blur-md border border-white/10">
             <PilotIcon className="w-4 h-4" />
           </div>
           <div>
             <span className="font-extrabold text-sm block">CashPilot Checkout Sandbox</span>
-            <span className="text-[9px] uppercase tracking-widest text-indigo-200 block -mt-0.5">
+            <span className="text-[9px] uppercase tracking-widest text-brand-300 block -mt-0.5">
               Razorpay Simulation Mode
             </span>
           </div>
@@ -136,51 +136,51 @@ function CheckoutContent() {
                 animate={{ scale: 1, opacity: 1 }}
                 transition={{ delay: 0.1, type: "spring", stiffness: 260, damping: 16 }}
               >
-                <CheckCircle2 className="w-16 h-16 text-emerald-500 mx-auto" />
+                <CheckCircle2 className="w-16 h-16 text-safe-400 mx-auto" />
               </motion.div>
               <div>
-                <h3 className="text-lg font-black text-slate-800">✓ Test Payment Completed</h3>
-                <p className="text-xs text-slate-500 font-semibold leading-relaxed mt-2">
+                <h3 className="text-lg font-black text-ink-100">✓ Test Payment Completed</h3>
+                <p className="text-xs text-ink-300 font-semibold leading-relaxed mt-2">
                   Simulated transaction approved successfully. The recovery record has transitioned to{" "}
-                  <span className="text-emerald-600 font-bold">RECOVERED</span>, and the action status is updated to{" "}
-                  <span className="text-emerald-600 font-bold">COMPLETED</span> in the ledger database.
+                  <span className="text-safe-400 font-bold">RECOVERED</span>, and the action status is updated to{" "}
+                  <span className="text-safe-400 font-bold">COMPLETED</span> in the ledger database.
                 </p>
               </div>
-              <div className="pt-4 border-t border-slate-100 text-[10px] text-slate-400 font-semibold leading-normal">
+              <div className="pt-4 border-t border-line-faint text-[10px] text-ink-400 font-semibold leading-normal">
                 You can now close this window, return to the CashPilot execution control center tab, and click
                 &quot;Verify Status&quot; to fetch the updated balance.
               </div>
             </motion.div>
           ) : (
             <motion.div key="form" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
-              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-2 text-xs text-slate-600 font-semibold">
+              <div className="bg-ground-200 p-4 rounded-2xl border border-line-faint space-y-2 text-xs text-ink-300 font-semibold">
                 <div className="flex justify-between">
                   <span>Payment Link reference:</span>
-                  <span className="font-mono text-slate-800">{paymentLinkId}</span>
+                  <span className="font-mono text-ink-100">{paymentLinkId}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Ledger Action reference:</span>
-                  <span className="font-mono text-slate-800">{actionId}</span>
+                  <span className="font-mono text-ink-100">{actionId}</span>
                 </div>
               </div>
 
               {/* Simulated credit card fields */}
               <div className="space-y-3.5">
-                <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest block pl-1">
+                <span className="text-[10px] font-extrabold text-ink-400 uppercase tracking-widest block pl-1">
                   Enter simulated Card Details
                 </span>
 
-                <div className="space-y-3 p-4 bg-slate-50 rounded-2xl border border-slate-200">
-                  <div className="flex items-center gap-2 border-b pb-2 border-slate-200">
-                    <CreditCard className="w-4 h-4 text-slate-400" />
+                <div className="space-y-3 p-4 bg-ground-200 rounded-2xl border border-line-soft">
+                  <div className="flex items-center gap-2 border-b pb-2 border-line-soft">
+                    <CreditCard className="w-4 h-4 text-ink-400" />
                     <input
                       type="text"
                       disabled
                       value="4111 •••• •••• 1111 (Razorpay Sandbox)"
-                      className="w-full text-xs font-bold text-slate-700 bg-transparent outline-none"
+                      className="w-full text-xs font-bold text-ink-200 bg-transparent outline-none"
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-4 text-xs font-bold text-slate-500">
+                  <div className="grid grid-cols-2 gap-4 text-xs font-bold text-ink-300">
                     <div>Expiry: 12/29</div>
                     <div className="text-right">CVV: 111</div>
                   </div>
@@ -197,7 +197,7 @@ function CheckoutContent() {
                 )}
               </Button>
 
-              <div className="flex items-center justify-center gap-1.5 text-[9px] font-black text-slate-400 uppercase tracking-widest">
+              <div className="flex items-center justify-center gap-1.5 text-[9px] font-black text-ink-400 uppercase tracking-widest">
                 <ShieldCheck className="w-3.5 h-3.5" /> SECURE TEST-MODE ENVIRONMENT
               </div>
             </motion.div>
@@ -213,8 +213,8 @@ export default function SandboxCheckout() {
     <div className="min-h-screen bg-[var(--background)] flex items-center justify-center p-6">
       <Suspense fallback={
         <div className="flex flex-col items-center justify-center p-8 space-y-4">
-          <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
-          <span className="text-xs text-slate-500 font-bold">Loading sandbox shell...</span>
+          <div className="w-10 h-10 border-4 border-brand-500 border-t-transparent rounded-full animate-spin" />
+          <span className="text-xs text-ink-300 font-bold">Loading sandbox shell...</span>
         </div>
       }>
         <CheckoutContent />

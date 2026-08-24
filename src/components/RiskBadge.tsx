@@ -10,17 +10,17 @@ export function RiskBadge({ level }: { level: string }) {
       className={clsx(
         "inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider",
         {
-          "bg-red-100 text-red-800 border border-red-200": isHigh,
+          "bg-risk-500/15 text-risk-400 border border-risk-500/25": isHigh,
           "bg-orange-100 text-orange-800 border border-orange-200": isMedium,
-          "bg-green-100 text-green-800 border border-green-200": !isHigh && !isMedium,
+          "bg-safe-500/15 text-safe-400 border border-safe-500/25": !isHigh && !isMedium,
         }
       )}
     >
       <span
         className={clsx("w-2 h-2 mr-1.5 rounded-full inline-block animate-pulse", {
-          "bg-red-600": isHigh,
+          "bg-risk-500": isHigh,
           "bg-orange-600": isMedium,
-          "bg-green-600": !isHigh && !isMedium,
+          "bg-safe-500": !isHigh && !isMedium,
         })}
       />
       {level} RISK
