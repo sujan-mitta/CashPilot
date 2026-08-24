@@ -8,6 +8,7 @@ import {
   ContextMovement,
   FingerprintDetail,
 } from "./strategyFreshness";
+import { DecisionContextReader, PayoutRecord, TransactionRecord } from "../db/records";
 
 export interface ContextActionInput {
   type: string;
@@ -25,7 +26,7 @@ export interface ContextActionInput {
  * would show up as spurious staleness.
  */
 export async function buildDecisionContext(
-  client: any,
+  client: DecisionContextReader,
   businessId: string,
   options: {
     strategyType: string;
@@ -43,8 +44,8 @@ export async function buildDecisionContext(
     incomplete = true;
   }
 
-  let transactions: any[] = [];
-  let payouts: any[] = [];
+  let transactions: TransactionRecord[] = [];
+  let payouts: PayoutRecord[] = [];
   try {
     transactions = (await client.transaction?.findMany({ where: { businessId } })) ?? [];
   } catch {
@@ -70,7 +71,7 @@ export async function buildDecisionContext(
   // Obligations, reduced to identity + the fields that change a recommendation.
   const obligations: ContextObligation[] = extractObligations(payouts, transactions, today).map(
     (o) => {
-      const payout = payouts.find((p: any) => p.id === o.sourceId);
+      const payout = payouts.find((p) => p.id === o.sourceId);
       return {
         sourceType: payout ? ("PAYOUT" as const) : ("TRANSACTION" as const),
         sourceId: o.sourceId,
@@ -79,7 +80,7 @@ export async function buildDecisionContext(
         criticality: o.priority,
         status: payout
           ? payout.status
-          : transactions.find((t: any) => t.id === o.sourceId)?.status ?? "UNKNOWN",
+          : transactions.find((t) => t.id === o.sourceId)?.status ?? "UNKNOWN",
       };
     }
   );
@@ -88,7 +89,7 @@ export async function buildDecisionContext(
   // has already settled, the plan is acting on a world that no longer exists.
   const actionTargets: ContextActionTarget[] = options.actions.map((a) => {
     if (a.targetPayoutId) {
-      const payout = payouts.find((p: any) => p.id === a.targetPayoutId);
+      const payout = payouts.find((p) => p.id === a.targetPayoutId);
       return {
         actionType: a.type,
         targetType: "PAYOUT" as const,
@@ -99,7 +100,7 @@ export async function buildDecisionContext(
       };
     }
     if (a.targetTransactionId) {
-      const tx = transactions.find((t: any) => t.id === a.targetTransactionId);
+      const tx = transactions.find((t) => t.id === a.targetTransactionId);
       return {
         actionType: a.type,
         targetType: "TRANSACTION" as const,
@@ -123,8 +124,11 @@ export async function buildDecisionContext(
   // Every movement, identified absolutely. No rolling window, so the clock
   // advancing cannot by itself make a strategy look stale.
   const movements: ContextMovement[] = transactions
-    .filter((t: any) => typeof t?.id === "string")
-    .map((t: any) => ({
+    .filter((t) => typeof t?.id === "string")
+    .filter((t): t is TransactionRecord & { type: "INFLOW" | "OUTFLOW" } =>
+      t.type === "INFLOW" || t.type === "OUTFLOW"
+    )
+    .map((t) => ({
       id: t.id,
       amount: t.amount ?? 0,
       type: t.type,

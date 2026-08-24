@@ -4,6 +4,7 @@ import { scoreAllStrategies } from "../scorer";
 import { buildForecast } from "../forecast";
 import { extractObligations, calculateTemporalRequiredLiquidity, CashObligation } from "../liquiditySafety";
 import { addDays, isSameDay } from "date-fns";
+import { PayoutRecord } from "../../db/records";
 
 describe("Obligation-Aware Liquidity & Temporal Risk Engine (Tests 1-20)", () => {
   const today = new Date("2026-08-22");
@@ -228,12 +229,36 @@ describe("Obligation-Aware Liquidity & Temporal Risk Engine (Tests 1-20)", () =>
 
   // 10. Missing due date warning/exclude
   it("Test 10: Safely ignores database payouts missing scheduled dates", () => {
+    // scheduledDate is NOT NULL in the schema; this models a Json snapshot or an
+    // import, the only sources that can carry a missing date.
     const rawPayouts = [
-      { id: "payout_bad", amount: 100000, vendor: "Bad Payout", status: "SCHEDULED", criticality: "HIGH", scheduledDate: null },
+      { id: "payout_bad", amount: 100000, vendor: "Bad Payout", status: "SCHEDULED", criticality: "HIGH", scheduledDate: null } as unknown as PayoutRecord,
     ];
 
     const obligations = extractObligations(rawPayouts, [], today);
     expect(obligations.length).toBe(0);
+  });
+
+  // 10b. A malformed row must not take a well-formed one down with it. Excluding
+  // an obligation understates required liquidity, so the exclusion has to be
+  // surgical rather than batch-wide.
+  it("Test 10b: Excludes only the undated obligation from a mixed batch", () => {
+    const rawPayouts = [
+      { id: "payout_bad", amount: 100000, vendor: "Bad Payout", status: "SCHEDULED", criticality: "HIGH", scheduledDate: null } as unknown as PayoutRecord,
+      {
+        id: "payout_good",
+        amount: 250000,
+        vendor: "Good Payout",
+        status: "SCHEDULED",
+        criticality: "HIGH",
+        scheduledDate: addDays(today, 5),
+      } as PayoutRecord,
+    ];
+
+    const obligations = extractObligations(rawPayouts, [], today);
+    expect(obligations.length).toBe(1);
+    expect(obligations[0].sourceId).toBe("payout_good");
+    expect(obligations[0].amount).toBe(250000);
   });
 
   // 11. Zero amount validation

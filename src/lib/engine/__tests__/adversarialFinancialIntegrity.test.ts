@@ -16,6 +16,7 @@ import { calculateLiquiditySafetyRequirement, extractObligations } from "../liqu
 import { verifiedMovements, measureDeferredObligations, measureDecisionOutcome } from "../outcomeMeasurer";
 import { prisma } from "../../prisma";
 import { getSession } from "../../auth";
+import { PayoutRecord } from "../../db/records";
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -713,7 +714,9 @@ describe("PART 20-22 - Data quality handling", () => {
 
   it("an obligation with a missing due date is excluded rather than defaulted to today", () => {
     const obligations = extractObligations(
-      [{ id: "p1", amount: 100, scheduledDate: null, status: "SCHEDULED", criticality: "HIGH", vendor: "X" }],
+      // scheduledDate is NOT NULL in the schema; this models a Json snapshot or
+      // an import, the only sources that can carry a missing date.
+      [{ id: "p1", amount: 100, scheduledDate: null, status: "SCHEDULED", criticality: "HIGH", vendor: "X" } as unknown as PayoutRecord],
       [],
       T0
     );

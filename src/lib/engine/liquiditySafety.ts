@@ -2,6 +2,11 @@ import { addDays } from "date-fns";
 import { SCORING_CONFIG } from "./scorer";
 import { FINANCIAL_CONFIG } from "./financialConfig";
 import { ForecastDay, DailyMovement } from "./forecast";
+import {
+  FinancialRecordReader,
+  PayoutRecord,
+  TransactionRecord,
+} from "../db/records";
 
 export interface LiquiditySafetyRequirement {
   requiredBuffer: number;
@@ -34,14 +39,14 @@ export interface CashObligation {
  */
 export async function calculateLiquiditySafetyRequirement(
   businessId: string,
-  prismaClient: any,
+  prismaClient: FinancialRecordReader,
   today: Date = new Date()
 ): Promise<LiquiditySafetyRequirement> {
   const dataWarnings: string[] = [];
   let confidence: "HIGH" | "MEDIUM" | "LOW" = "HIGH";
 
   // Defensive check for transaction client presence (common in unit tests with partial mocks)
-  let historicalTransactions: any[] = [];
+  let historicalTransactions: TransactionRecord[] = [];
   if (prismaClient.transaction) {
     const thirtyDaysAgo = addDays(today, -FINANCIAL_CONFIG.HISTORICAL_LOOKBACK_DAYS);
     historicalTransactions = await prismaClient.transaction.findMany({
@@ -59,12 +64,12 @@ export async function calculateLiquiditySafetyRequirement(
     dataWarnings.push("Transaction database client not available.");
   }
 
-  const totalHistoricalOutflow = historicalTransactions.reduce((sum: number, t: any) => sum + t.amount, 0);
+  const totalHistoricalOutflow = historicalTransactions.reduce((sum: number, t: TransactionRecord) => sum + t.amount, 0);
   const historicalDailyOutflow = totalHistoricalOutflow / FINANCIAL_CONFIG.HISTORICAL_LOOKBACK_DAYS;
 
   // Defensive checks for projected transactions and payouts
-  let projectedTransactions: any[] = [];
-  let projectedPayouts: any[] = [];
+  let projectedTransactions: TransactionRecord[] = [];
+  let projectedPayouts: PayoutRecord[] = [];
 
   const fourteenDaysLater = addDays(today, FINANCIAL_CONFIG.FORECAST_HORIZON_DAYS);
   if (prismaClient.transaction) {
@@ -97,8 +102,8 @@ export async function calculateLiquiditySafetyRequirement(
   }
 
   const totalProjectedOutflow =
-    projectedTransactions.reduce((sum: number, t: any) => sum + t.amount, 0) +
-    projectedPayouts.reduce((sum: number, p: any) => sum + p.amount, 0);
+    projectedTransactions.reduce((sum: number, t: TransactionRecord) => sum + t.amount, 0) +
+    projectedPayouts.reduce((sum: number, p: PayoutRecord) => sum + p.amount, 0);
   const projectedDailyOutflow = totalProjectedOutflow / FINANCIAL_CONFIG.FORECAST_HORIZON_DAYS;
 
   // 3. Compute weighted daily run-rate
@@ -129,7 +134,7 @@ export async function calculateLiquiditySafetyRequirement(
 
   // Check for large outliers in historical data to warn the business of skewness
   if (historicalTransactions.length > 0) {
-    const maxHistorical = Math.max(...historicalTransactions.map((t: any) => t.amount));
+    const maxHistorical = Math.max(...historicalTransactions.map((t) => t.amount));
     if (maxHistorical > FINANCIAL_CONFIG.OUTLIER_MULTIPLE * averageDailyOutflow && averageDailyOutflow > 0) {
       dataWarnings.push("Large historical transaction outlier detected; safety buffer may be slightly elevated.");
       confidence = "MEDIUM";
@@ -160,8 +165,8 @@ export async function calculateLiquiditySafetyRequirement(
  * Extracts obligations from the database payout and pending transaction lists.
  */
 export function extractObligations(
-  payouts: any[],
-  transactions: any[],
+  payouts: PayoutRecord[],
+  transactions: TransactionRecord[],
   today: Date = new Date()
 ): CashObligation[] {
   const obligations: CashObligation[] = [];
@@ -211,9 +216,20 @@ export function extractObligations(
     if (t.type === "OUTFLOW" && t.status === "PENDING") {
       if (t.amount <= 0) return; // Exclude negative or zero amounts
 
+      // Excluded before the duplicate comparison rather than after it. The old
+      // ordering computed `new Date(t.expectedDate)` on a possibly-null value -
+      // harmless in practice, because the guard below discarded the row anyway,
+      // but it meant the comparison ran against the epoch. Guarding first states
+      // the intent and removes the null dereference.
+      if (!t.expectedDate) {
+        dataWarnings.push(`Transaction ${t.id} has missing due date; excluding.`);
+        return;
+      }
+      const expectedDate = new Date(t.expectedDate);
+
       // Prevent double counting against payouts
       const isDuplicate = obligations.some(
-        (o) => o.sourceId === t.id || (o.amount === t.amount && Math.abs(o.dueDate.getTime() - new Date(t.expectedDate).getTime()) < 1000 * 60 * 60)
+        (o) => o.sourceId === t.id || (o.amount === t.amount && Math.abs(o.dueDate.getTime() - expectedDate.getTime()) < 1000 * 60 * 60)
       );
 
       if (!isDuplicate) {
@@ -223,15 +239,10 @@ export function extractObligations(
           type = "EXPENSE";
         }
 
-        if (!t.expectedDate) {
-          dataWarnings.push(`Transaction ${t.id} has missing due date; excluding.`);
-          return;
-        }
-
         obligations.push({
           id: `tx-${t.id}`,
           amount: t.amount,
-          dueDate: new Date(t.expectedDate),
+          dueDate: expectedDate,
           type,
           priority: "NORMAL",
           confidence: "MEDIUM",
