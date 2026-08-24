@@ -1,219 +1,534 @@
 @import "tailwindcss";
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   CASHPILOT DESIGN SYSTEM — "Command Deck"
+   ───────────────────────────────────────────────────────────────────────────
+   Dark-first. The product is a financial control surface: the operator is
+   reading numbers under pressure and deciding whether to move real money.
+   That drives every choice here.
+
+     · Deep, desaturated ground so luminous data is the brightest thing on
+       screen. Nothing competes with a figure.
+     · Colour carries MEANING, never decoration. Emerald is solvent, rose is
+       deficit, amber is unresolved. A colour is never chosen because it looks
+       nice in a spot where it would imply a financial state.
+     · Motion is short, springy and purposeful. It shows causality — this came
+       from that — and gets out of the way. Nothing loops in the operator's
+       peripheral vision while they read.
+     · Every figure uses tabular numerals so digits never jitter mid-update.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 :root {
-  /* Core surface tokens */
-  --background: #f6f7fb;
-  --foreground: #0f172a;
+  /* ── Ground ─────────────────────────────────────────────────────────────
+     Four steps of elevation. Each is a real surface, not a tint: a panel
+     lifted one step must read as lifted without needing a border. */
+  --ground-000: #05070d;   /* page floor, behind everything */
+  --ground-050: #080b14;   /* app background */
+  --ground-100: #0c111d;   /* panels */
+  --ground-200: #121829;   /* raised panels, popovers */
+  --ground-300: #1a2133;   /* hover state of a raised panel */
+  --ground-400: #232c42;   /* pressed / active */
 
-  --surface: #ffffff;
-  --surface-muted: #f8fafc;
-  --border-subtle: rgba(15, 23, 42, 0.08);
-  --border-strong: rgba(15, 23, 42, 0.16);
+  /* ── Ink ────────────────────────────────────────────────────────────────
+     Deliberately not pure white. #F8FAFF at full strength keeps large
+     numerals from blooming against the dark ground. */
+  --ink-100: #f8faff;      /* primary — figures, headings */
+  --ink-200: #d5dcec;      /* body copy */
+  --ink-300: #9aa6c2;      /* secondary, labels */
+  --ink-400: #6b7799;      /* tertiary, captions */
+  --ink-500: #4a5470;      /* disabled */
 
-  /* Brand */
-  --brand: #4f46e5;
-  --brand-dark: #4338ca;
-  --brand-light: #eef2ff;
+  /* ── Lines ─────────────────────────────────────────────────────────────── */
+  --line-faint: rgb(255 255 255 / 0.05);
+  --line-soft: rgb(255 255 255 / 0.08);
+  --line-firm: rgb(255 255 255 / 0.14);
+  --line-loud: rgb(255 255 255 / 0.22);
 
-  /* Shadows (layered, colour-matched to foreground for a softer look than pure black) */
-  --shadow-color: 224 39% 15%;
-  --shadow-xs: 0 1px 2px hsl(var(--shadow-color) / 0.06);
-  --shadow-sm: 0 1px 3px hsl(var(--shadow-color) / 0.09), 0 1px 2px hsl(var(--shadow-color) / 0.05);
-  --shadow-md: 0 6px 14px hsl(var(--shadow-color) / 0.08), 0 2px 4px hsl(var(--shadow-color) / 0.05);
-  --shadow-lg: 0 16px 32px -8px hsl(var(--shadow-color) / 0.16), 0 4px 10px hsl(var(--shadow-color) / 0.06);
-  --shadow-glow: 0 10px 28px -6px rgb(79 70 229 / 0.38);
+  /* ── Brand ──────────────────────────────────────────────────────────────
+     Indigo→violet is the product. Cyan is reserved for LIVE — something is
+     happening right now. Never use cyan for a static accent; it stops
+     meaning anything. */
+  --brand-300: #a5b4fc;
+  --brand-400: #818cf8;
+  --brand-500: #6366f1;
+  --brand-600: #4f46e5;
+  --brand-700: #4338ca;
+  --violet-500: #8b5cf6;
+  --live-400: #22d3ee;
+  --live-500: #06b6d4;
 
-  /* Motion */
-  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  /* ── Financial semantics ───────────────────────────────────────────────
+     These are load-bearing. Emerald means the business is solvent across the
+     horizon. Rose means a deficit day exists. Amber means we do not yet know,
+     which is a distinct state from either and must never be shown as green. */
+  --safe-400: #34d399;
+  --safe-500: #10b981;
+  --safe-glow: rgb(16 185 129 / 0.35);
+
+  --warn-400: #fbbf24;
+  --warn-500: #f59e0b;
+  --warn-glow: rgb(245 158 11 / 0.35);
+
+  --risk-400: #fb7185;
+  --risk-500: #f43f5e;
+  --risk-glow: rgb(244 63 94 / 0.35);
+
+  --unknown-400: #a78bfa;   /* provider outcome undetermined */
+  --unknown-500: #8b5cf6;
+
+  /* ── Depth ──────────────────────────────────────────────────────────────
+     Dark UI gets depth from LIGHT, not from shadow — a black shadow on a near
+     black ground is invisible. Each elevation pairs a cast shadow with an
+     inset top highlight, which is what actually reads as "raised". */
+  --lift-1:
+    0 1px 2px rgb(0 0 0 / 0.4),
+    inset 0 1px 0 rgb(255 255 255 / 0.04);
+  --lift-2:
+    0 4px 12px -2px rgb(0 0 0 / 0.5),
+    0 2px 4px rgb(0 0 0 / 0.3),
+    inset 0 1px 0 rgb(255 255 255 / 0.06);
+  --lift-3:
+    0 12px 32px -8px rgb(0 0 0 / 0.6),
+    0 4px 8px rgb(0 0 0 / 0.35),
+    inset 0 1px 0 rgb(255 255 255 / 0.07);
+  --lift-4:
+    0 24px 64px -12px rgb(0 0 0 / 0.7),
+    0 8px 16px rgb(0 0 0 / 0.4),
+    inset 0 1px 0 rgb(255 255 255 / 0.09);
+
+  --glow-brand: 0 0 0 1px rgb(99 102 241 / 0.4), 0 8px 32px -8px rgb(99 102 241 / 0.5);
+  --glow-live: 0 0 0 1px rgb(34 211 238 / 0.4), 0 8px 32px -8px rgb(34 211 238 / 0.45);
+
+  /* ── Motion ─────────────────────────────────────────────────────────────
+     One vocabulary, used everywhere. `swift` for state changes the operator
+     caused, `glide` for things entering, `spring` only where an element should
+     feel physical (a toggle, a card lifting to meet the cursor). */
+  --ease-swift: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-glide: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
-  --dur-fast: 150ms;
-  --dur-base: 250ms;
-  --dur-slow: 450ms;
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  --t-instant: 90ms;
+  --t-fast: 160ms;
+  --t-base: 260ms;
+  --t-slow: 420ms;
+  --t-deliberate: 680ms;
+
+  /* ── Type ───────────────────────────────────────────────────────────────
+     Display sizes get negative tracking; small caps labels get positive.
+     Both are what separates considered typography from default typography. */
+  --track-display: -0.035em;
+  --track-title: -0.02em;
+  --track-body: -0.005em;
+  --track-label: 0.08em;
+
+  /* Radii */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 22px;
+  --r-2xl: 28px;
+  --r-full: 999px;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-background: var(--ground-050);
+  --color-foreground: var(--ink-100);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* Expose the system to Tailwind so utilities compose with it:
+     bg-ground-200, text-ink-300, border-line-soft, text-safe-400 … */
+  --color-ground-000: var(--ground-000);
+  --color-ground-050: var(--ground-050);
+  --color-ground-100: var(--ground-100);
+  --color-ground-200: var(--ground-200);
+  --color-ground-300: var(--ground-300);
+  --color-ground-400: var(--ground-400);
+
+  --color-ink-100: var(--ink-100);
+  --color-ink-200: var(--ink-200);
+  --color-ink-300: var(--ink-300);
+  --color-ink-400: var(--ink-400);
+  --color-ink-500: var(--ink-500);
+
+  --color-line-faint: var(--line-faint);
+  --color-line-soft: var(--line-soft);
+  --color-line-firm: var(--line-firm);
+  --color-line-loud: var(--line-loud);
+
+  --color-brand-300: var(--brand-300);
+  --color-brand-400: var(--brand-400);
+  --color-brand-500: var(--brand-500);
+  --color-brand-600: var(--brand-600);
+  --color-brand-700: var(--brand-700);
+  --color-violet-500: var(--violet-500);
+  --color-live-400: var(--live-400);
+  --color-live-500: var(--live-500);
+
+  --color-safe-400: var(--safe-400);
+  --color-safe-500: var(--safe-500);
+  --color-warn-400: var(--warn-400);
+  --color-warn-500: var(--warn-500);
+  --color-risk-400: var(--risk-400);
+  --color-risk-500: var(--risk-500);
+  --color-unknown-400: var(--unknown-400);
+  --color-unknown-500: var(--unknown-500);
+
+  /* Deliberately NOT remapping --radius-*: Tailwind's rounded-lg / rounded-xl /
+     rounded-2xl scale is used across every existing component, and redefining
+     it here changes all of them at once. The --r-* tokens above are for this
+     stylesheet's own rules. */
+}
+
+/* ═══════════════════════════════════════ BASE ═══════════════════════════ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
 }
 
 html {
   scroll-behavior: smooth;
+  background: var(--ground-000);
+  color-scheme: dark;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-feature-settings: "cv11", "ss01";
+  background: var(--ground-050);
+  color: var(--ink-200);
+  font-feature-settings: "cv11", "ss01", "cv02";
+  letter-spacing: var(--track-body);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+}
+
+h1, h2, h3, h4 {
+  color: var(--ink-100);
+  letter-spacing: var(--track-title);
 }
 
 ::selection {
-  background: #c7d2fe;
-  color: #312e81;
+  background: rgb(99 102 241 / 0.35);
+  color: var(--ink-100);
 }
 
-/* Slim, quiet scrollbars */
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
+/* Scrollbars: present when used, invisible when not. */
+::-webkit-scrollbar { width: 11px; height: 11px; }
+::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 999px;
-  border: 2px solid transparent;
+  background: rgb(255 255 255 / 0.1);
+  border-radius: var(--r-full);
+  border: 3px solid transparent;
   background-clip: padding-box;
+  transition: background var(--t-fast) var(--ease-swift);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: rgb(255 255 255 / 0.2);
   background-clip: padding-box;
 }
 * {
   scrollbar-width: thin;
-  scrollbar-color: #cbd5e1 transparent;
+  scrollbar-color: rgb(255 255 255 / 0.12) transparent;
 }
 
-/* Consistent, visible focus ring without the default browser outline look */
+/* A focus ring that is unmistakable without being ugly. Two rings: a dark
+   separator so the bright ring reads on any surface underneath it. */
 :focus-visible {
-  outline: 2px solid #6366f1;
-  outline-offset: 2px;
-  border-radius: 6px;
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--ground-050),
+    0 0 0 4px var(--brand-500);
+  border-radius: var(--r-sm);
 }
 
-/* ---------- Motion primitives ---------- */
+/* ═══════════════════════════════════ SURFACES ═══════════════════════════ */
 
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+/* The workhorse panel. */
+.panel {
+  background: var(--ground-100);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-lg);
+  box-shadow: var(--lift-1);
 }
 
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.panel-raised {
+  background: var(--ground-200);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-lg);
+  box-shadow: var(--lift-2);
 }
 
-@keyframes scaleUp {
-  from {
-    opacity: 0;
-    transform: scale(0.94);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
+/* Frosted glass, for anything floating above content: nav, modals, drawers. */
+.glass {
+  background: rgb(12 17 29 / 0.72);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid var(--line-soft);
 }
 
-@keyframes floatSlow {
-  0%,
-  100% {
-    transform: translate(0, 0);
-  }
-  50% {
-    transform: translate(0, -18px);
-  }
+.glass-strong {
+  background: rgb(8 11 20 / 0.88);
+  backdrop-filter: blur(32px) saturate(200%);
+  -webkit-backdrop-filter: blur(32px) saturate(200%);
+  border: 1px solid var(--line-firm);
 }
 
-@keyframes shimmer {
-  0% {
-    background-position: -400px 0;
-  }
-  100% {
-    background-position: 400px 0;
-  }
+/* A hairline that fades at both ends — reads as considered rather than drawn. */
+.rule-fade {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--line-firm) 20%, var(--line-firm) 80%, transparent);
+  border: 0;
 }
 
-@keyframes spinSlow {
-  to {
-    transform: rotate(360deg);
-  }
+/* Gradient border. The element needs a background of its own; the gradient
+   lives in the padding box behind it. */
+.edge-gradient {
+  position: relative;
+  background: var(--ground-100);
+  border-radius: var(--r-lg);
+}
+.edge-gradient::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, rgb(99 102 241 / 0.5), rgb(139 92 246 / 0.18) 40%, transparent 70%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
 }
 
-@keyframes pulseRing {
-  0% {
-    box-shadow: 0 0 0 0 rgb(79 70 229 / 0.35);
-  }
-  100% {
-    box-shadow: 0 0 0 8px rgb(79 70 229 / 0);
-  }
+/* ═══════════════════════════════ ATMOSPHERE ════════════════════════════ */
+
+/* Soft coloured light sources. Placed behind content, never over it.
+   `--mesh-o` lets a page dim the whole atmosphere in one variable. */
+.mesh-bg {
+  position: relative;
+  isolation: isolate;
+}
+.mesh-bg::before {
+  content: "";
+  position: absolute;
+  inset: -30% -10%;
+  z-index: -1;
+  opacity: var(--mesh-o, 1);
+  background:
+    radial-gradient(48rem 32rem at 12% 8%, rgb(99 102 241 / 0.16), transparent 60%),
+    radial-gradient(40rem 30rem at 88% 12%, rgb(139 92 246 / 0.13), transparent 62%),
+    radial-gradient(52rem 34rem at 50% 100%, rgb(6 182 212 / 0.10), transparent 65%);
+  filter: blur(12px);
+  pointer-events: none;
 }
 
-.animate-fadeIn {
-  animation: fadeIn var(--dur-slow) var(--ease-out-expo) forwards;
+/* Film grain. A single tiny SVG, tiled. Removes the plasticky flatness that
+   large dark gradients otherwise have on a big display. */
+.grain::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  opacity: 0.16;
+  pointer-events: none;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.42'/%3E%3C/svg%3E");
 }
 
-.animate-slideUp {
-  animation: slideUp 0.5s var(--ease-out-expo) forwards;
+/* Faint engineering grid — hints at instrumentation without becoming a texture. */
+.grid-field {
+  background-image:
+    linear-gradient(var(--line-faint) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line-faint) 1px, transparent 1px);
+  background-size: 56px 56px;
+  -webkit-mask-image: radial-gradient(80% 60% at 50% 0%, #000 30%, transparent 100%);
+  mask-image: radial-gradient(80% 60% at 50% 0%, #000 30%, transparent 100%);
 }
 
-.animate-scaleUp {
-  animation: scaleUp var(--dur-base) var(--ease-out-expo) forwards;
+.dot-field {
+  background-image: radial-gradient(circle, var(--line-soft) 1px, transparent 1px);
+  background-size: 22px 22px;
 }
 
-.animate-float-slow {
-  animation: floatSlow 9s ease-in-out infinite;
+/* ══════════════════════════════════ TEXT ═══════════════════════════════ */
+
+.display {
+  font-size: clamp(2.4rem, 4.4vw, 3.9rem);
+  line-height: 1.02;
+  letter-spacing: var(--track-display);
+  font-weight: 700;
+  color: var(--ink-100);
 }
 
-.animate-spin-slow {
-  animation: spinSlow 6s linear infinite;
+.label {
+  font-size: 0.6875rem;
+  font-weight: 650;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--ink-400);
 }
 
-.animate-pulse-ring {
-  animation: pulseRing 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+/* Money and any figure that updates. Tabular so digits never shift width. */
+.numeric {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum", "ss01";
+  letter-spacing: -0.02em;
 }
 
-/* Skeleton shimmer, used in place of flat animate-pulse blocks */
+/* Brand gradient text. Needs a solid fallback colour first: if the clip fails
+   the text must still be readable, not invisible. */
+.text-gradient {
+  color: var(--brand-300);
+  background: linear-gradient(115deg, #c7d2fe 0%, #a5b4fc 30%, #818cf8 55%, #22d3ee 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* ══════════════════════════════ INTERACTION ════════════════════════════ */
+
+/* Card that lifts toward the cursor. Paired with useTilt() for the rotation. */
+.lift {
+  transition:
+    transform var(--t-base) var(--ease-glide),
+    box-shadow var(--t-base) var(--ease-glide),
+    border-color var(--t-base) var(--ease-glide),
+    background-color var(--t-base) var(--ease-glide);
+  will-change: transform;
+}
+.lift:hover {
+  transform: translateY(-3px);
+  border-color: var(--line-firm);
+  box-shadow: var(--lift-3);
+}
+
+/* Specular sweep across a surface on hover. Purely decorative, so it is
+   masked to the element and never affects layout. */
+.sheen {
+  position: relative;
+  overflow: hidden;
+}
+.sheen::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 35%, rgb(255 255 255 / 0.07) 48%, transparent 62%);
+  transform: translateX(-120%);
+  transition: transform var(--t-deliberate) var(--ease-glide);
+  pointer-events: none;
+}
+.sheen:hover::after {
+  transform: translateX(120%);
+}
+
+/* Perspective container. 3D children rotate inside this. */
+.scene {
+  perspective: 1400px;
+  perspective-origin: 50% 50%;
+}
+.scene-near { perspective: 900px; }
+.scene-far  { perspective: 2200px; }
+
+.layer-3d {
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+/* ═══════════════════════════════ FEEDBACK ══════════════════════════════ */
+
+/* Loading placeholder. A travelling highlight rather than a flat pulse: it
+   reads as "arriving" instead of "broken". */
 .skeleton {
   position: relative;
   overflow: hidden;
-  background: linear-gradient(90deg, #eef0f5 25%, #f7f8fb 37%, #eef0f5 63%);
-  background-size: 800px 100%;
-  animation: shimmer 1.6s linear infinite;
+  background: var(--ground-200);
+  border-radius: var(--r-md);
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.06), transparent);
+  animation: sweep 1.7s var(--ease-in-out) infinite;
 }
 
-/* Frosted glass surface, used for modals / drawers / sticky bars */
-.glass-panel {
-  background: rgba(255, 255, 255, 0.78);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
+/* A live indicator. Used ONLY where something is genuinely in flight. */
+.pip {
+  position: relative;
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--r-full);
+  background: var(--live-400);
+}
+.pip::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: inherit;
+  animation: ping 1.9s var(--ease-in-out) infinite;
 }
 
-/* Consistent hover lift for interactive surfaces */
-.card-hover {
-  transition:
-    transform var(--dur-base) var(--ease-out-expo),
-    box-shadow var(--dur-base) var(--ease-out-expo),
-    border-color var(--dur-base) var(--ease-out-expo);
-}
-.card-hover:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-lg);
+/* ═══════════════════════════════ KEYFRAMES ═════════════════════════════ */
+
+@keyframes sweep {
+  100% { transform: translateX(100%); }
 }
 
-/* Soft dotted texture for hero / brand panels */
-.bg-grid-dot {
-  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.16) 1px, transparent 1px);
-  background-size: 20px 20px;
+@keyframes ping {
+  0%   { transform: scale(1);   opacity: 0.7; }
+  70%  { transform: scale(2.6); opacity: 0; }
+  100% { transform: scale(2.6); opacity: 0; }
 }
 
-/* Numeric tabular figures for financial values so digits don't jitter */
-.tabular-nums {
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum";
+@keyframes drift {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50%      { transform: translate3d(0, -14px, 0); }
+}
+
+@keyframes breathe {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50%      { opacity: 0.85; transform: scale(1.04); }
+}
+
+@keyframes slide-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.anim-drift   { animation: drift 9s var(--ease-in-out) infinite; }
+.anim-breathe { animation: breathe 5.5s var(--ease-in-out) infinite; }
+.anim-slide-in { animation: slide-in var(--t-slow) var(--ease-glide) both; }
+
+/* ══════════════════════════════ ACCESSIBILITY ══════════════════════════ */
+
+/* Honour the OS setting. Ambient loops stop entirely; transitions collapse to
+   near-instant rather than to zero, so causality is still legible. */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .anim-drift,
+  .anim-breathe,
+  .skeleton::after,
+  .pip::after {
+    animation: none !important;
+  }
+
+  .lift:hover { transform: none; }
+  .sheen::after { display: none; }
 }

@@ -191,7 +191,7 @@ export default function Strategies() {
       <Stagger className="space-y-8" stagger={0.08}>
         {/* SECTION A — Baseline Reference Card */}
         <StaggerItem>
-          <Card tone="muted" className="!rounded-3xl grid grid-cols-1 sm:grid-cols-4 gap-6 items-center">
+          <Card tone="raised" className="!rounded-3xl grid grid-cols-1 sm:grid-cols-4 gap-6 items-center">
             <div>
               <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest block mb-0.5">
                 Baseline Status (Do Nothing)

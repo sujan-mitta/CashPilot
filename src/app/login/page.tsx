@@ -6,47 +6,53 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useCashPilot } from "@/context/CashPilotContext";
 import { Eye, EyeOff, Lock, Mail, User, Briefcase, ArrowRight, ShieldCheck } from "lucide-react";
 import { PilotIcon } from "@/components/PilotIcon";
+import { HeroScene } from "@/components/hero/HeroScene";
 import { Button } from "@/components/ui/Button";
-import { Reveal, Stagger, StaggerItem } from "@/components/ui/Reveal";
-import { EASE_OUT_EXPO } from "@/components/ui/motion";
+import { Stagger, StaggerItem } from "@/components/ui/Reveal";
+import { EASE_GLIDE, DUR, focusIn } from "@/components/ui/motion";
 import clsx from "clsx";
 import { errorMessage } from "@/lib/errors";
 
 const highlights = [
-  "Deterministic Financial Runway Models",
-  "Live Razorpay Test Payment Recovery Links",
-  "Honest Qwen AI Ledger Diagnostics Narration",
+  "Deterministic runway models — no model guesses at your money",
+  "Live Razorpay recovery links, executed once and only once",
+  "Every decision auditable from recommendation to settled rupee",
 ];
 
-const fieldClass =
-  "w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm outline-none transition-colors duration-200 focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-50 text-slate-800 font-semibold placeholder:text-slate-400 placeholder:font-medium";
+const fieldClass = clsx(
+  "w-full pl-10 pr-4 py-3 rounded-xl text-sm outline-none",
+  "bg-ground-200/70 border border-line-soft text-ink-100 font-medium",
+  "placeholder:text-ink-500 placeholder:font-normal",
+  "transition-[border-color,background,box-shadow] duration-200",
+  "hover:border-line-firm",
+  "focus:border-brand-500 focus:bg-ground-200 focus:shadow-[0_0_0_3px_rgb(99_102_241/0.18)]"
+);
+
+const labelClass = "label block mb-1.5";
 
 export default function Login() {
   const router = useRouter();
   const { user, login } = useCashPilot();
 
-  // Mode state: "SIGN_IN" | "SIGN_UP"
   const [mode, setMode] = useState<"SIGN_IN" | "SIGN_UP">("SIGN_IN");
 
-  // Form inputs
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [businessName, setBusinessName] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
-  // Form error and loading states
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Redirect if already authenticated
+  // Redirect if already authenticated.
   useEffect(() => {
     if (user) {
       router.push("/dashboard");
     }
   }, [user, router]);
 
-  // Listen to message events from the popup Google account chooser
+  // Messages from the popup Google account chooser.
   useEffect(() => {
     const handleGoogleMessage = async (event: MessageEvent) => {
       if (event.data?.type === "GOOGLE_AUTH_SUCCESS") {
@@ -64,8 +70,8 @@ export default function Login() {
           } else {
             setError(data.error || "Google authentication sync failed.");
           }
-        } catch (e) {
-          setError("Google authentication sync failed.");
+        } catch (err) {
+          setError(errorMessage(err, "Google authentication sync failed."));
         }
       }
     };
@@ -77,7 +83,6 @@ export default function Login() {
     e.preventDefault();
     setError(null);
 
-    // Basic Validations
     if (mode === "SIGN_UP" && !name.trim()) {
       setError("Please enter your full name.");
       return;
@@ -99,9 +104,10 @@ export default function Login() {
 
     try {
       const url = mode === "SIGN_UP" ? "/api/auth/signup" : "/api/auth/login";
-      const payload = mode === "SIGN_UP"
-        ? { name, email, businessName }
-        : { email, businessName: businessName || "ABC Electronics Pvt Ltd" };
+      const payload =
+        mode === "SIGN_UP"
+          ? { name, email, businessName }
+          : { email, businessName: businessName || "ABC Electronics Pvt Ltd" };
 
       const res = await fetch(url, {
         method: "POST",
@@ -120,7 +126,7 @@ export default function Login() {
       setIsLoading(false);
       router.push("/dashboard");
     } catch (err) {
-      setError("Unable to connect to auth server.");
+      setError(errorMessage(err, "Unable to connect to auth server."));
       setIsLoading(false);
     }
   };
@@ -143,87 +149,87 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex bg-[var(--background)]">
-      {/* Left side: Premium Branding Panel */}
-      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-indigo-950 via-indigo-800 to-indigo-600 text-white p-12 flex-col justify-between relative overflow-hidden">
-        {/* Abstract background art */}
-        <div className="absolute inset-0 bg-grid-dot opacity-40" />
-        <div className="absolute top-0 right-0 w-[28rem] h-[28rem] bg-indigo-400 rounded-full opacity-20 blur-3xl transform translate-x-32 -translate-y-32 animate-float-slow" />
-        <div
-          className="absolute bottom-0 left-0 w-[28rem] h-[28rem] bg-indigo-950 rounded-full opacity-40 blur-3xl transform -translate-x-24 translate-y-24 animate-float-slow"
-          style={{ animationDelay: "-4s" }}
-        />
+    <div className="relative min-h-screen flex overflow-hidden bg-ground-000 mesh-bg grain">
+      {/* The runway terrain sits behind everything, anchored to the lower half
+          where there is no text over it. */}
+      <HeroScene className="pointer-events-none absolute inset-x-0 bottom-0 h-[78vh] z-0" />
 
-        {/* Logo */}
+      {/* ══════════════════════════ Brand side ══════════════════════════ */}
+      <div className="hidden lg:flex lg:w-[54%] relative z-10 p-12 xl:p-16 flex-col justify-between">
         <motion.div
-          initial={{ opacity: 0, y: -8 }}
+          initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, ease: EASE_OUT_EXPO }}
-          className="flex items-center gap-3 relative z-10"
+          transition={{ duration: DUR.slow, ease: EASE_GLIDE }}
+          className="flex items-center gap-3"
         >
-          <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center backdrop-blur-md border border-white/10">
+          <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-brand-400 via-brand-500 to-violet-500 flex items-center justify-center shadow-[0_1px_0_rgb(255_255_255/0.2)_inset,0_10px_30px_-8px_rgb(99_102_241/0.85)]">
             <PilotIcon className="w-6 h-6 text-white" />
           </div>
           <div>
-            <span className="font-black text-xl tracking-tight block">CashPilot</span>
-            <span className="text-[10px] uppercase font-bold tracking-widest text-indigo-200 block -mt-1">
-              Cash Intervention Controller
+            <span className="font-semibold text-[1.35rem] tracking-[-0.035em] text-ink-100 block leading-none">
+              CashPilot
             </span>
+            <span className="label block mt-1.5">Cash Intervention Controller</span>
           </div>
         </motion.div>
 
-        {/* Hero Illustration details */}
-        <Stagger className="my-auto max-w-md space-y-6 relative z-10" stagger={0.09} delayChildren={0.1}>
+        <Stagger className="my-auto max-w-2xl space-y-7" stagger={0.09} delayChildren={0.15}>
           <StaggerItem>
-            <span className="text-xs uppercase font-extrabold bg-white/10 px-3 py-1 rounded-full text-indigo-100 backdrop-blur-md tracking-wider inline-block border border-white/10">
+            <span className="inline-flex items-center gap-2 text-[10px] uppercase font-semibold tracking-[0.1em] glass px-3.5 py-1.5 rounded-full text-brand-300">
+              <span className="pip" aria-hidden />
               Razorpay Buildathon MVP
             </span>
           </StaggerItem>
+
+          <motion.h1 variants={focusIn} className="display max-w-xl">
+            Stop cash crises
+            <br />
+            before they reach
+            <br />
+            <span className="text-gradient">your payroll.</span>
+          </motion.h1>
+
           <StaggerItem>
-            <h1 className="text-4xl font-black leading-tight tracking-tight">
-              Stop cash crises before they interrupt your payroll.
-            </h1>
-          </StaggerItem>
-          <StaggerItem>
-            <p className="text-indigo-100 text-sm leading-relaxed font-semibold">
-              CashPilot connects to your business bank accounts and payment ledgers to forecast liquidity, scan timing
-              gaps, and initiate recovery links in one click.
+            <p className="text-ink-300 text-[0.95rem] leading-relaxed max-w-lg">
+              CashPilot forecasts liquidity from your real ledger, finds the timing gap that
+              causes the shortfall, and executes recovery through Razorpay — with a human
+              approving every rupee that moves.
             </p>
           </StaggerItem>
 
-          <StaggerItem className="space-y-4 pt-4">
+          <StaggerItem className="space-y-3.5 pt-3">
             {highlights.map((h) => (
-              <div key={h} className="flex items-center gap-3">
-                <div className="w-5 h-5 rounded bg-white/20 flex items-center justify-center flex-shrink-0">
-                  <ShieldCheck className="w-3.5 h-3.5 text-white" />
+              <div key={h} className="flex items-start gap-3">
+                <div className="w-5 h-5 mt-px rounded-md bg-safe-500/12 ring-1 ring-inset ring-safe-500/30 flex items-center justify-center shrink-0">
+                  <ShieldCheck className="w-3 h-3 text-safe-400" strokeWidth={2.5} />
                 </div>
-                <span className="text-xs font-bold text-indigo-100">{h}</span>
+                <span className="text-[13px] text-ink-300 leading-snug">{h}</span>
               </div>
             ))}
           </StaggerItem>
         </Stagger>
 
-        {/* Bottom footer */}
-        <div className="text-xs text-indigo-200 font-medium relative z-10">
-          © 2026 CashPilot. Protected by human-in-the-loop validation protocol.
+        <div className="text-[11.5px] text-ink-500">
+          © 2026 CashPilot. Every execution passes a human gate.
         </div>
       </div>
 
-      {/* Right side: Interactive Form Card */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-6 sm:p-12">
-        <Reveal
-          className="max-w-md w-full bg-white p-8 rounded-3xl border border-slate-200/80 shadow-xl shadow-slate-200/60 space-y-6"
-          variants={{
-            hidden: { opacity: 0, y: 16, scale: 0.98 },
-            show: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.5, ease: EASE_OUT_EXPO } },
-          }}
+      {/* ══════════════════════════ Auth side ═══════════════════════════ */}
+      <div className="w-full lg:w-[46%] relative z-10 flex items-center justify-center p-6 sm:p-10">
+        <motion.div
+          initial={{ opacity: 0, y: 20, scale: 0.985 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: DUR.deliberate, ease: EASE_GLIDE, delay: 0.1 }}
+          className="max-w-[26rem] w-full glass-strong rounded-2xl p-8 space-y-6 shadow-[var(--lift-4)]"
         >
           <div className="text-center">
-            <div className="lg:hidden flex items-center justify-center gap-2 mb-4">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-700 flex items-center justify-center">
+            <div className="lg:hidden flex items-center justify-center gap-2.5 mb-5">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-400 to-violet-500 flex items-center justify-center">
                 <PilotIcon className="w-5 h-5 text-white" />
               </div>
-              <span className="font-black text-lg text-slate-800">CashPilot</span>
+              <span className="font-semibold text-[1.15rem] tracking-[-0.03em] text-ink-100">
+                CashPilot
+              </span>
             </div>
 
             <AnimatePresence mode="wait">
@@ -232,27 +238,26 @@ export default function Login() {
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -6 }}
-                transition={{ duration: 0.25, ease: EASE_OUT_EXPO }}
+                transition={{ duration: DUR.base, ease: EASE_GLIDE }}
               >
-                <h2 className="text-2xl font-black text-slate-800 tracking-tight">
-                  {mode === "SIGN_IN" ? "Sign in to your Dashboard" : "Create your CashPilot Account"}
+                <h2 className="text-[1.35rem] font-semibold text-ink-100 tracking-[-0.03em]">
+                  {mode === "SIGN_IN" ? "Sign in to your deck" : "Create your account"}
                 </h2>
-                <p className="text-slate-400 text-xs font-semibold mt-1">
+                <p className="text-ink-400 text-[12.5px] mt-1.5 leading-relaxed">
                   {mode === "SIGN_IN"
-                    ? "Enter your credentials to manage corporate cash diagnostics."
-                    : "Register your business details to seed the financial runway simulator."}
+                    ? "Access the cash diagnostics and execution controls."
+                    : "Register your business to seed the runway simulator."}
                 </p>
               </motion.div>
             </AnimatePresence>
           </div>
 
-          {/* Sign In with Google Button */}
           <button
             type="button"
             onClick={handleGoogleSignIn}
-            className="w-full py-3 border border-slate-200 hover:bg-slate-50 hover:border-slate-300 text-slate-700 rounded-2xl text-sm font-bold shadow-sm transition-colors duration-200 flex items-center justify-center gap-2.5 outline-none"
+            className="w-full py-3 rounded-xl text-[13px] font-semibold outline-none flex items-center justify-center gap-2.5 bg-ground-200 border border-line-soft text-ink-200 hover:bg-ground-300 hover:border-line-firm transition-colors duration-200"
           >
-            <svg className="w-4 h-4" viewBox="0 0 24 24">
+            <svg className="w-4 h-4" viewBox="0 0 24 24" aria-hidden>
               <path
                 fill="#4285F4"
                 d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v3.9h6.69c-.29 1.5-.1.14-.1.14v2.54h1.03l2.42-1.87c2-1.86 3.7-4.64 3.7-8.64z"
@@ -273,48 +278,50 @@ export default function Login() {
             Continue with Google
           </button>
 
-          {/* Divider */}
-          <div className="flex items-center justify-between gap-4 py-1 text-slate-300 font-bold uppercase tracking-widest text-[9px]">
-            <div className="h-px bg-slate-100 flex-grow" />
-            <span>Or use email</span>
-            <div className="h-px bg-slate-100 flex-grow" />
+          <div className="flex items-center gap-4 text-ink-500">
+            <span className="h-px bg-line-soft grow" />
+            <span className="label">Or use email</span>
+            <span className="h-px bg-line-soft grow" />
           </div>
 
-          {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
             <AnimatePresence>
               {error && (
                 <motion.div
-                  initial={{ opacity: 0, height: 0, marginBottom: 0 }}
-                  animate={{ opacity: 1, height: "auto", marginBottom: 0 }}
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
                   exit={{ opacity: 0, height: 0 }}
-                  transition={{ duration: 0.25, ease: EASE_OUT_EXPO }}
-                  className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-xs font-semibold text-red-600 overflow-hidden"
+                  transition={{ duration: DUR.base, ease: EASE_GLIDE }}
+                  role="alert"
+                  className="overflow-hidden"
                 >
-                  {error}
+                  <div className="p-3.5 rounded-xl bg-risk-500/10 border border-risk-500/25 text-[12.5px] font-medium text-risk-400">
+                    {error}
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>
 
-            {/* Name (Sign up only) */}
             <AnimatePresence initial={false}>
               {mode === "SIGN_UP" && (
                 <motion.div
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: "auto" }}
                   exit={{ opacity: 0, height: 0 }}
-                  transition={{ duration: 0.3, ease: EASE_OUT_EXPO }}
+                  transition={{ duration: DUR.base, ease: EASE_GLIDE }}
                   className="overflow-hidden"
                 >
-                  <div className="space-y-1 pb-0.5">
-                    <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest block">
-                      Full Name
+                  <div className="pb-0.5">
+                    <label htmlFor="cp-name" className={labelClass}>
+                      Full name
                     </label>
                     <div className="relative">
-                      <User className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-400" />
+                      <User className="absolute left-3.5 top-3.5 w-4 h-4 text-ink-500" aria-hidden />
                       <input
+                        id="cp-name"
                         type="text"
                         required
+                        autoComplete="name"
                         placeholder="Enter your name"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
@@ -326,16 +333,17 @@ export default function Login() {
               )}
             </AnimatePresence>
 
-            {/* Email */}
-            <div className="space-y-1">
-              <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest block">
-                Email Address
+            <div>
+              <label htmlFor="cp-email" className={labelClass}>
+                Email address
               </label>
               <div className="relative">
-                <Mail className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-400" />
+                <Mail className="absolute left-3.5 top-3.5 w-4 h-4 text-ink-500" aria-hidden />
                 <input
+                  id="cp-email"
                   type="email"
                   required
+                  autoComplete="email"
                   placeholder="name@company.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -344,16 +352,17 @@ export default function Login() {
               </div>
             </div>
 
-            {/* Business Name */}
-            <div className="space-y-1">
-              <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest block">
-                Business Name
+            <div>
+              <label htmlFor="cp-business" className={labelClass}>
+                Business name
               </label>
               <div className="relative">
-                <Briefcase className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-400" />
+                <Briefcase className="absolute left-3.5 top-3.5 w-4 h-4 text-ink-500" aria-hidden />
                 <input
+                  id="cp-business"
                   type="text"
                   required
+                  autoComplete="organization"
                   placeholder="e.g. ABC Electronics Ltd"
                   value={businessName}
                   onChange={(e) => setBusinessName(e.target.value)}
@@ -362,16 +371,17 @@ export default function Login() {
               </div>
             </div>
 
-            {/* Password */}
-            <div className="space-y-1">
-              <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest block">
+            <div>
+              <label htmlFor="cp-password" className={labelClass}>
                 Password
               </label>
               <div className="relative">
-                <Lock className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-400" />
+                <Lock className="absolute left-3.5 top-3.5 w-4 h-4 text-ink-500" aria-hidden />
                 <input
+                  id="cp-password"
                   type={showPassword ? "text" : "password"}
                   required
+                  autoComplete={mode === "SIGN_IN" ? "current-password" : "new-password"}
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -380,34 +390,35 @@ export default function Login() {
                 <button
                   type="button"
                   onClick={() => setShowPassword((p) => !p)}
-                  className="absolute right-3.5 top-3.5 text-slate-400 hover:text-slate-600 outline-none"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  className="absolute right-3.5 top-3.5 text-ink-500 hover:text-ink-200 transition-colors outline-none"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
             </div>
 
-            {/* Submit */}
-            <Button type="submit" variant="primary" size="lg" loading={isLoading} className="mt-2 w-full">
+            <Button type="submit" variant="primary" size="lg" loading={isLoading} className="mt-1 w-full">
               {!isLoading && (
                 <>
-                  {mode === "SIGN_IN" ? "Access Dashboard" : "Register & Seed Demo"}
+                  {mode === "SIGN_IN" ? "Access dashboard" : "Register & seed demo"}
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
             </Button>
           </form>
 
-          {/* Toggle link */}
-          <div className="text-center pt-2">
+          <div className="text-center pt-1">
             <button
               onClick={toggleMode}
-              className="text-xs text-indigo-600 font-bold hover:underline outline-none"
+              className="text-[12.5px] text-brand-300 font-medium hover:text-brand-400 transition-colors outline-none rounded"
             >
-              {mode === "SIGN_IN" ? "Don't have an account? Sign Up" : "Already have an account? Sign In"}
+              {mode === "SIGN_IN"
+                ? "Don't have an account? Sign up"
+                : "Already have an account? Sign in"}
             </button>
           </div>
-        </Reveal>
+        </motion.div>
       </div>
     </div>
   );

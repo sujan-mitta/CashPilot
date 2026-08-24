@@ -167,7 +167,7 @@ export default function Profile() {
 
           {/* Stat Cards Side Panel */}
           <StaggerItem>
-            <Card className="space-y-4 h-fit" tone="dark">
+            <Card className="space-y-4 h-fit" tone="raised">
               <h3 className="text-sm font-black text-white uppercase tracking-wider border-b border-slate-700 pb-3 flex items-center gap-2">
                 <TrendingUp className="w-4 h-4 text-slate-400" />
                 Intervention Stats

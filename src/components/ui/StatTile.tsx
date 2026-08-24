@@ -4,24 +4,39 @@ import React from "react";
 import clsx from "clsx";
 import { AnimatedNumber } from "./AnimatedNumber";
 
+/**
+ * A single figure with its label.
+ *
+ * The figure is the largest, brightest thing in the tile and everything else
+ * recedes — that hierarchy is the whole job. `tone` is derived from what the
+ * number MEANS, so a tile never renders green because green looked better.
+ */
+
 interface StatTileProps {
   label: string;
-  /** Static value. Omit when passing numericValue + format for an animated count instead. */
+  /** Static value. Omit when passing numericValue + format for an animated count. */
   value?: React.ReactNode;
-  /** If provided (with format), renders an animated count instead of a static value. */
+  /** With `format`, renders an animated count instead of a static value. */
   numericValue?: number;
   format?: (n: number) => string;
   sublabel?: React.ReactNode;
-  tone?: "default" | "danger" | "success" | "brand";
+  tone?: "default" | "danger" | "success" | "warning" | "brand";
   className?: string;
-  size?: "sm" | "lg";
+  size?: "sm" | "lg" | "xl";
 }
 
 const toneText: Record<NonNullable<StatTileProps["tone"]>, string> = {
-  default: "text-slate-800",
-  danger: "text-red-600",
-  success: "text-emerald-600",
-  brand: "text-indigo-600",
+  default: "text-ink-100",
+  danger: "text-risk-400",
+  success: "text-safe-400",
+  warning: "text-warn-400",
+  brand: "text-brand-300",
+};
+
+const sizeText: Record<NonNullable<StatTileProps["size"]>, string> = {
+  sm: "text-[1.35rem]",
+  lg: "text-[1.75rem] sm:text-[2.1rem]",
+  xl: "text-[2.4rem] sm:text-[3rem] leading-[1.05]",
 };
 
 export function StatTile({
@@ -36,11 +51,23 @@ export function StatTile({
 }: StatTileProps) {
   return (
     <div className={className}>
-      <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest block mb-1">{label}</span>
-      <span className={clsx("font-black block", toneText[tone], size === "lg" ? "text-2xl sm:text-3xl" : "text-xl")}>
-        {numericValue !== undefined && format ? <AnimatedNumber value={numericValue} format={format} /> : value}
+      <span className="label block mb-1.5">{label}</span>
+      <span
+        className={clsx(
+          "numeric font-semibold block tracking-[-0.03em]",
+          toneText[tone],
+          sizeText[size]
+        )}
+      >
+        {numericValue !== undefined && format ? (
+          <AnimatedNumber value={numericValue} format={format} />
+        ) : (
+          value
+        )}
       </span>
-      {sublabel && <span className="text-[11px] text-slate-400 font-semibold mt-1 block">{sublabel}</span>}
+      {sublabel && (
+        <span className="text-[11.5px] text-ink-400 font-medium mt-1.5 block">{sublabel}</span>
+      )}
     </div>
   );
 }

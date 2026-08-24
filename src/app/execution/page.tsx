@@ -658,7 +658,7 @@ function ExecutionContent() {
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ duration: 0.4, ease: EASE_OUT_EXPO }}
               >
-                <Card tone="dark" className="!rounded-3xl bg-gradient-to-br from-indigo-600 to-indigo-800 border-indigo-700 text-center flex flex-col items-center justify-center space-y-2">
+                <Card tone="raised" className="!rounded-3xl bg-gradient-to-br from-indigo-600 to-indigo-800 border-indigo-700 text-center flex flex-col items-center justify-center space-y-2">
                   <Sparkles className="w-8 h-8 text-amber-300" />
                   <h2 className="text-lg font-black tracking-tight">
                     All Obligations Secured &amp; Resolved
