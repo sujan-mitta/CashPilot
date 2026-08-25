@@ -17,6 +17,30 @@
 
 export type ConfigSeverity = "FATAL" | "DEGRADED" | "OK";
 
+/**
+ * What this deployment IS, as distinct from how it was built.
+ *
+ * NODE_ENV answers "was this compiled for production?". It does not answer
+ * "does this deployment move real money?" - and those are different questions.
+ * Every Vercel deployment sets NODE_ENV=production, including a staging box
+ * whose whole purpose is to exercise the payment provider in TEST mode.
+ *
+ * Conflating the two made the guard below reject a certification deployment
+ * for holding rzp_test_ keys, which is precisely the configuration such a
+ * deployment is supposed to have.
+ *
+ * The tier is therefore explicit and fails safe: an unset, unknown or
+ * misspelled value is treated as "production", so no deployment can loosen a
+ * financial control by accident or typo.
+ */
+export type DeploymentTier = "production" | "certification";
+
+export function resolveDeploymentTier(
+  raw: string | undefined = process.env.CASHPILOT_DEPLOYMENT_TIER
+): DeploymentTier {
+  return raw?.trim().toLowerCase() === "certification" ? "certification" : "production";
+}
+
 export interface ConfigCheck {
   key: string;
   present: boolean;
@@ -30,6 +54,8 @@ export interface ConfigCheck {
 export interface ConfigReport {
   environment: string;
   isProduction: boolean;
+  /** Whether this deployment is permitted to move real money. */
+  tier: DeploymentTier;
   checks: ConfigCheck[];
   /** Structural problems with values that ARE set. */
   defects: ConfigDefect[];
@@ -57,7 +83,10 @@ export interface ConfigDefect {
   severity: ConfigSeverity;
 }
 
-export function detectMalformedConfiguration(isProduction: boolean): ConfigDefect[] {
+export function detectMalformedConfiguration(
+  isProduction: boolean,
+  tier: DeploymentTier = resolveDeploymentTier()
+): ConfigDefect[] {
   const defects: ConfigDefect[] = [];
 
   const keyId = process.env.RAZORPAY_KEY_ID ?? "";
@@ -68,12 +97,33 @@ export function detectMalformedConfiguration(isProduction: boolean): ConfigDefec
       severity: isProduction ? "FATAL" : "DEGRADED",
     });
   }
-  if (isProduction && keyId.startsWith("rzp_test_")) {
+
+  // The key/tier matrix. Both mismatches are dangerous, in opposite directions.
+  if (isProduction && keyId.startsWith("rzp_test_") && tier === "production") {
     // The most dangerous misconfiguration there is: everything "works", and no
     // money ever moves.
     defects.push({
       key: "RAZORPAY_KEY_ID",
       problem: "A TEST-mode Razorpay key is configured in production. Payments would be simulated while the system reports success.",
+      severity: "FATAL",
+    });
+  }
+  if (isProduction && keyId.startsWith("rzp_test_") && tier === "certification") {
+    // Expected for this tier - but never silent. A certification deployment
+    // that quietly looks like production is how a test key ends up serving
+    // real customers.
+    defects.push({
+      key: "RAZORPAY_KEY_ID",
+      problem: "TEST-mode Razorpay key accepted because CASHPILOT_DEPLOYMENT_TIER=certification. No real money can move from this deployment.",
+      severity: "DEGRADED",
+    });
+  }
+  if (keyId.startsWith("rzp_live_") && tier === "certification") {
+    // The mirror image, and the reason the tier is worth having: a
+    // certification box must not be able to touch real money.
+    defects.push({
+      key: "RAZORPAY_KEY_ID",
+      problem: "A LIVE Razorpay key is configured on a deployment declared as certification. Real money must never move from a certification tier.",
       severity: "FATAL",
     });
   }
@@ -113,7 +163,10 @@ export function detectMalformedConfiguration(isProduction: boolean): ConfigDefec
  * that is supposed to be guarding it. `DEGRADED` means the system stays safe but
  * loses a capability (and must say so rather than pretend).
  */
-export function inspectConfiguration(env: string = process.env.NODE_ENV ?? "development"): ConfigReport {
+export function inspectConfiguration(
+  env: string = process.env.NODE_ENV ?? "development",
+  tier: DeploymentTier = resolveDeploymentTier()
+): ConfigReport {
   const isProduction = env === "production";
 
   const definitions: Omit<ConfigCheck, "present" | "severity">[] = [
@@ -166,7 +219,7 @@ export function inspectConfiguration(env: string = process.env.NODE_ENV ?? "deve
     return { ...d, present: isPresent, severity };
   });
 
-  const defects = detectMalformedConfiguration(isProduction);
+  const defects = detectMalformedConfiguration(isProduction, tier);
 
   const fatalKeys = [
     ...checks.filter((c) => c.severity === "FATAL").map((c) => c.key),
@@ -180,6 +233,7 @@ export function inspectConfiguration(env: string = process.env.NODE_ENV ?? "deve
   return {
     environment: env,
     isProduction,
+    tier,
     checks,
     defects,
     financiallyUnsafe: fatalKeys.length > 0,
