@@ -5,6 +5,14 @@ import { settlePayment } from "@/lib/razorpay/settlement";
 import { inspectConfiguration } from "@/lib/config/productionConfig";
 import { logger, withCorrelationId } from "@/lib/observability";
 import { errorMessage } from "@/lib/errors";
+import {
+  beginDelivery,
+  markProcessing,
+  markSucceeded,
+  markFailed,
+  markDuplicate,
+  recordRejectedDelivery,
+} from "@/lib/razorpay/webhookDelivery";
 
 export interface RazorpayWebhookPaymentLinkEntity {
   id?: string;
@@ -27,6 +35,9 @@ export interface RazorpayWebhookEvent {
 }
 
 export const POST = withCorrelationId(async (req: Request) => {
+  // M1: durable evidence that a delivery ARRIVED, independent of whether it is
+  // accepted, rejected, or fails during processing. Never deleted.
+  let deliveryId: string | null = null;
   try {
     const body = await req.text();
     const signature = req.headers.get("x-razorpay-signature");
@@ -36,6 +47,7 @@ export const POST = withCorrelationId(async (req: Request) => {
     if (secret) {
       if (!signature) {
         logger.warn("Webhook signature validation failed", { failureClassification: "MISSING_SIGNATURE", status: 400 });
+        await recordRejectedDelivery("MISSING_SIGNATURE");
         return NextResponse.json({ error: "Missing x-razorpay-signature header" }, { status: 400 });
       }
 
@@ -43,6 +55,7 @@ export const POST = withCorrelationId(async (req: Request) => {
       const hexRegex = /^[0-9a-fA-F]{64}$/;
       if (!hexRegex.test(signature)) {
         logger.warn("Webhook signature validation failed", { failureClassification: "MALFORMED_SIGNATURE", status: 400 });
+        await recordRejectedDelivery("MALFORMED_SIGNATURE");
         return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
       }
 
@@ -56,6 +69,7 @@ export const POST = withCorrelationId(async (req: Request) => {
 
       if (expectedBuffer.length !== signatureBuffer.length || !crypto.timingSafeEqual(expectedBuffer, signatureBuffer)) {
         logger.warn("Webhook signature validation failed", { failureClassification: "INVALID_SIGNATURE", status: 400 });
+        await recordRejectedDelivery("INVALID_SIGNATURE");
         return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
       }
     } else if (inspectConfiguration().isProduction) {
@@ -63,6 +77,7 @@ export const POST = withCorrelationId(async (req: Request) => {
       // Silently accepting it because a variable happens to be unset is not a
       // dev convenience, it is a remote ledger-write primitive.
       logger.error("RAZORPAY_WEBHOOK_SECRET is not configured; refusing unsigned webhook.", { status: 500 });
+      await recordRejectedDelivery("SECRET_NOT_CONFIGURED");
       return NextResponse.json(
         { error: "WEBHOOK_SECRET_NOT_CONFIGURED" },
         { status: 500 }
@@ -75,8 +90,13 @@ export const POST = withCorrelationId(async (req: Request) => {
     const eventId = event.id;
 
     if (!eventId) {
+      await recordRejectedDelivery("MISSING_EVENT_ID");
       return NextResponse.json({ error: "Missing event ID" }, { status: 400 });
     }
+
+    // Signature is valid and the event identifies itself: from here this is
+    // genuine provider traffic and is recorded as a real delivery.
+    deliveryId = await beginDelivery({ providerEventId: eventId, eventType: event.event });
 
     // Idempotency claim.
     //
@@ -92,6 +112,7 @@ export const POST = withCorrelationId(async (req: Request) => {
       });
       if (exists) {
         logger.info("Webhook event already processed", { eventId, eventType: event.event, alreadyProcessed: true });
+        await markDuplicate(deliveryId);
         return NextResponse.json({ status: "ALREADY_PROCESSED" });
       }
 
@@ -101,6 +122,7 @@ export const POST = withCorrelationId(async (req: Request) => {
     } catch {
       // Unique constraint violation: another delivery won the race.
       logger.info("Webhook event already processed (raced)", { eventId, eventType: event.event, alreadyProcessed: true });
+      await markDuplicate(deliveryId);
       return NextResponse.json({ status: "ALREADY_PROCESSED" });
     }
 
@@ -117,9 +139,11 @@ export const POST = withCorrelationId(async (req: Request) => {
      const paymentLinkId = event.payload?.payment_link?.entity?.id;
      if (!paymentLinkId) {
        await releaseEventClaim();
+       await markFailed(deliveryId, "MISSING_PAYMENT_LINK_ID");
        return NextResponse.json({ error: "Missing paymentLinkId" }, { status: 400 });
      }
       try {
+        await markProcessing(deliveryId);
         const referenceId = event.payload?.payment_link?.entity?.reference_id;
 
       let intent = null;
@@ -171,6 +195,7 @@ export const POST = withCorrelationId(async (req: Request) => {
 
       if (!businessId) {
         await releaseEventClaim();
+        await markFailed(deliveryId, "PROCESSING_ERROR", "Linked business not found for this payment link", { externalRef: paymentLinkId });
         return NextResponse.json({ error: "Linked business not found for this payment link" }, { status: 404 });
       }
 
@@ -179,6 +204,7 @@ export const POST = withCorrelationId(async (req: Request) => {
       });
       if (!businessExists) {
         await releaseEventClaim();
+        await markFailed(deliveryId, "PROCESSING_ERROR", "Business not found", { businessId, externalRef: paymentLinkId });
         return NextResponse.json({ error: "Business not found" }, { status: 404 });
       }
 
@@ -186,7 +212,7 @@ export const POST = withCorrelationId(async (req: Request) => {
       const actualAmount = event.payload?.payment_link?.entity?.amount_paid || event.payload?.payment_link?.entity?.amount;
 
       // Execute shared transactional settlement
-      const finalStatus = await settlePayment(paymentLinkId, businessId, actualAmount, referenceId);
+      const finalStatus = await settlePayment(paymentLinkId, businessId, actualAmount, referenceId, "WEBHOOK");
       logger.info("Webhook event processed successfully", {
         eventId,
         eventType: event.event,
@@ -194,16 +220,30 @@ export const POST = withCorrelationId(async (req: Request) => {
         processingResult: finalStatus,
         alreadyProcessed: false
       });
+      await markSucceeded(deliveryId, {
+        businessId,
+        executionIntentId: intent?.id ?? null,
+        externalRef: paymentLinkId,
+      });
       return NextResponse.json({ status: finalStatus });
      } catch (settleError) {
+      // ProcessedEvent is released so a provider retry can still settle this
+      // payment. The DELIVERY record is deliberately NOT released - that is the
+      // whole of M1: the attempt stays visible even as the event becomes
+      // claimable again.
       await releaseEventClaim();
+      await markFailed(deliveryId, "PROCESSING_ERROR", String(settleError), { externalRef: paymentLinkId });
       logger.error("Failed to settle webhook payment", { eventId, paymentLinkId, error: String(settleError) });
       throw settleError;
      }
     }
 
+    await markFailed(deliveryId, "UNKNOWN_EVENT_TYPE", "Unhandled event type: " + String(event.event));
     return NextResponse.json({ status: "EVENT_IGNORED" });
   } catch (error) {
+    // Catch-all, including an unparseable body. Any delivery record already
+    // opened survives with a classification rather than vanishing.
+    await markFailed(deliveryId, "PROCESSING_ERROR", errorMessage(error));
     logger.error("Webhook processing error", { error: errorMessage(error) });
     return NextResponse.json({ error: errorMessage(error) }, { status: 500 });
   }

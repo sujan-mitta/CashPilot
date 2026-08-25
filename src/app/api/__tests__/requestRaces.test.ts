@@ -28,7 +28,7 @@ const world = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/prisma", async () => {
-  const { makeExecutionIntentFake, makeDecisionFakes } = await import(
+  const { makeExecutionIntentFake, makeDecisionFakes, matchesField } = await import(
     "../../../lib/engine/__tests__/helpers/prismaFakes"
   );
   return {
@@ -72,7 +72,7 @@ vi.mock("@/lib/prisma", async () => {
           for (const a of world.actions) {
             if (where.id && a.id !== where.id) continue;
             if (where.strategyId && a.strategyId !== where.strategyId) continue;
-            if (where.status && a.status !== where.status) continue;
+            if (where.status && !matchesField(a.status, where.status)) continue;
             Object.assign(a, data);
             count++;
           }
@@ -87,7 +87,7 @@ vi.mock("@/lib/prisma", async () => {
                 updateMany: vi.fn(async ({ where, data }: any) => {
                   let count = 0;
                   for (const a of world.actions) {
-                    if (where.status && a.status !== where.status) continue;
+                    if (where.status && !matchesField(a.status, where.status)) continue;
                     Object.assign(a, data);
                     count++;
                   }

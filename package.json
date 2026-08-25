@@ -7,7 +7,15 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:live": "vitest run --config vitest.live.config.ts",
+    "postinstall": "prisma generate",
+    "db:export": "tsx scripts/export-database.ts",
+    "db:import": "tsx scripts/import-database.ts",
+    "db:verify": "tsx scripts/verify-migration.ts"
+  },
+  "engines": {
+    "node": ">=22.0.0"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.1",

@@ -33,6 +33,53 @@ vi.mock("@/lib/prisma", () => ({ prisma: {} }));
 
 const LIVE = process.env.RAZORPAY_LIVE_TEST === "1";
 
+/**
+ * Spaces out real link creations so the tier certifies the provider CONTRACT
+ * rather than its rate limiter.
+ *
+ * Three of the tests below create a payment link, and vitest runs them back to
+ * back - three creates inside about a second. Razorpay's test mode answers that
+ * with HTTP 429, which `classifyProviderError` correctly turns into a
+ * ProviderIndeterminateError, so the tests failed with "Too many requests"
+ * instead of the contract assertion they exist to make. Observed across
+ * repeated runs: 1-3 failures per run, always from the creating tests, never
+ * the same set twice.
+ *
+ * A 429 is a real provider behaviour and tier B already pins how we classify
+ * it. Deliberately provoking it here just makes the suite unreliable.
+ */
+const pace = async (ms = 2500) => {
+  if (LIVE) await new Promise((r) => setTimeout(r, ms));
+};
+
+/**
+ * Retries a live creation past provider THROTTLING only.
+ *
+ * Razorpay's test mode rate-limits an account that is creating links quickly -
+ * repeated suite runs reliably provoke HTTP 429. `classifyProviderError` turns
+ * that into a ProviderIndeterminateError, which is correct and is already
+ * pinned by tier B, but it made this tier fail on the account being busy rather
+ * than on the contract being wrong. Measured across consecutive runs before
+ * this: 1-3 failures per run, always the creating tests, always 429.
+ *
+ * ONLY an indeterminate (429/5xx/timeout) is retried. A ProviderRejectedError
+ * or ProviderDuplicateError is a real verdict about the request and is
+ * rethrown immediately - retrying those would hide exactly what we certify.
+ */
+async function createPastThrottle<T>(attempt: () => Promise<T>, tries = 4): Promise<T> {
+  let last: unknown;
+  for (let i = 0; i < tries; i++) {
+    try {
+      return await attempt();
+    } catch (err) {
+      if (!(err instanceof ProviderIndeterminateError)) throw err;
+      last = err;
+      await new Promise((r) => setTimeout(r, 3000 * (i + 1)));
+    }
+  }
+  throw last;
+}
+
 // ---------------------------------------------------------------------------
 // TIER B FIXTURES - verbatim shapes observed against the real test account
 // on the Phase 17 certification run. Do not "tidy" these.
@@ -260,10 +307,11 @@ describe("TIER C (LIVE) - real Razorpay test account", () => {
 
   it.skipIf(!LIVE)("creates a link and round-trips reference_id", async () => {
     const { createRecoveryPaymentLink, reconcilePaymentLink } = await import("../client");
+    await pace();
     const ref = `cp_phase17_ct_${Date.now().toString(36)}`;
     const recordedAt = new Date();
 
-    const link = await createRecoveryPaymentLink(100000, "contract test", ref);
+    const link = await createPastThrottle(() => createRecoveryPaymentLink(100000, "contract test", ref));
     expect(link.id).toMatch(/^plink_/);
     expect(link.status).toBe("created");
 
@@ -287,20 +335,49 @@ describe("TIER C (LIVE) - real Razorpay test account", () => {
 
   it.skipIf(!LIVE)("rejects a duplicate reference_id", async () => {
     const { createRecoveryPaymentLink } = await import("../client");
+    await pace();
     const ref = `cp_phase17_ctdup_${Date.now().toString(36)}`;
-    await createRecoveryPaymentLink(100000, "contract dup", ref);
+    await createPastThrottle(() => createRecoveryPaymentLink(100000, "contract dup", ref));
 
-    await expect(createRecoveryPaymentLink(100000, "contract dup", ref)).rejects.toBeInstanceOf(
-      ProviderDuplicateError
-    );
+    // Retry only if the provider throttles; a ProviderDuplicateError is the
+    // verdict under test and propagates on the first occurrence.
+    let duplicateError: unknown;
+    let throttled: ProviderIndeterminateError | undefined;
+    for (let i = 0; i < 4; i++) {
+      try {
+        await createRecoveryPaymentLink(100000, "contract dup", ref);
+        duplicateError = new Error("second create was accepted; expected a duplicate rejection");
+        break;
+      } catch (err) {
+        if (err instanceof ProviderIndeterminateError) {
+          throttled = err;
+          await new Promise((r) => setTimeout(r, 3000 * (i + 1)));
+          continue;
+        }
+        duplicateError = err;
+        break;
+      }
+    }
+
+    // Say what actually happened. Falling through with `duplicateError` unset
+    // asserted "expected undefined to be an instance of ProviderDuplicateError",
+    // which reads like a contract break when the real cause is an exhausted
+    // account - and sends the reader looking in entirely the wrong place.
+    expect(
+      throttled === undefined || duplicateError !== undefined,
+      `provider still throttling after 4 attempts (${throttled?.message}); the account is rate-limited, not the contract broken - re-run once it has settled`
+    ).toBe(true);
+
+    expect(duplicateError).toBeInstanceOf(ProviderDuplicateError);
   }, 60000);
 
   it.skipIf(!LIVE)("does NOT report NOT_FOUND for a link it just created", async () => {
     // The Phase 18 defect, as a live regression test.
     const { createRecoveryPaymentLink, reconcilePaymentLink } = await import("../client");
+    await pace();
     const ref = `cp_phase18_reg_${Date.now().toString(36)}`;
     const recordedAt = new Date();
-    const link = await createRecoveryPaymentLink(100000, "settling regression", ref);
+    const link = await createPastThrottle(() => createRecoveryPaymentLink(100000, "settling regression", ref));
     expect(link.id).toMatch(/^plink_/);
 
     const immediate = await reconcilePaymentLink(ref, { from: recordedAt, to: new Date() }, new Date(), recordedAt);

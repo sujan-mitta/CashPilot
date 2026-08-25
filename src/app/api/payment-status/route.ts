@@ -151,7 +151,7 @@ export async function GET(req: Request) {
 
     // 2. If status is paid and action is resolved, update database values
     if (status === "paid" && action) {
-      await settlePayment(paymentLinkId, business.id);
+      await settlePayment(paymentLinkId, business.id, undefined, undefined, "POLL");
     } else if (status === "cancelled" || status === "expired") {
       if (action && action.status !== ActionStatus.FAILED) {
         const auditEntry = {

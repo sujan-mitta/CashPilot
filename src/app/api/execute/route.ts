@@ -248,11 +248,27 @@ export const POST = withCorrelationId(async (req: Request) => {
         continue;
       }
 
-      // 1. Transition to EXECUTING conditionally (only if it is still APPROVED)
+      // 1. Transition to EXECUTING conditionally, as a compare-and-set so that
+      //    exactly one request may own the execution.
+      //
+      //    The claimable set must match what the state machine already permits
+      //    into EXECUTING, or the two disagree and the stricter one silently
+      //    wins. It previously admitted APPROVED alone while
+      //    ALLOWED_TRANSITIONS[FAILED] = [EXECUTING] declared a retry legal - so
+      //    a FAILED action passed the gate above, lost the claim here, and was
+      //    reported as a "Concurrency block" that no concurrent request caused.
+      //    A failed action could therefore never be retried at all.
+      //
+      //    Admitting FAILED does not weaken duplicate protection: the action
+      //    status is workflow state, and it is the durable intent layer - a
+      //    stable idempotency key plus the obligation guard - that decides
+      //    whether anything is actually re-dispatched to the provider.
+      const CLAIMABLE_STATUSES = [ActionStatus.APPROVED, ActionStatus.FAILED];
+
       const claimResult = await prisma.agentAction.updateMany({
         where: {
           id: action.id,
-          status: ActionStatus.APPROVED,
+          status: { in: CLAIMABLE_STATUSES },
         },
         data: { status: ActionStatus.EXECUTING },
       });
@@ -272,12 +288,33 @@ export const POST = withCorrelationId(async (req: Request) => {
           continue;
         }
 
+        // Report WHY the claim was refused. "Concurrency block" described a race
+        // for every one of these, which sent people looking for a second request
+        // that does not exist. Each case below has a different remedy.
+        const current = refetchedAct?.status;
+        let reason: string;
+        if (current === ActionStatus.EXECUTING) {
+          // Not an error. A payment link is issued, not settled, so this action
+          // sits in EXECUTING until the money is observed arriving.
+          reason =
+            "Already in flight: this action was claimed by an earlier execution and is awaiting settlement. Re-running it would not issue anything new; settle or cancel the outstanding payment link instead.";
+        } else if (current === ActionStatus.EXECUTION_UNKNOWN) {
+          reason =
+            "The outcome of a previous attempt is undetermined and may already have taken effect. Reconcile it against the provider before it can run again.";
+        } else if (current === ActionStatus.RECONCILING) {
+          reason = "Settlement is reconciling this action right now.";
+        } else {
+          reason = `Not in a claimable state (current: ${current ?? "unavailable"}; claimable: ${CLAIMABLE_STATUSES.join(", ")}).`;
+        }
+
         executedSteps.push({
           id: action.id,
           action: action.actionType,
+          // The action's own status is authoritative and untouched - this step
+          // failed to START, which is not the same as the action failing.
           status: ActionStatus.FAILED,
-          result: `Concurrency block: Action is no longer APPROVED (current: ${refetchedAct?.status})`,
-          narration: `Validation check failed.`,
+          result: reason,
+          narration: `Execution not started.`,
         });
         continue;
       }

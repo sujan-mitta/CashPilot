@@ -114,6 +114,28 @@ export async function executeWithDurableIntent(
   // Refused by the obligation guard: an earlier attempt still claims this
   // obligation. Nothing is dispatched, and no new intent row was created.
   if (blocked) {
+    // A SUCCEEDED claim is not ambiguity - it is positive evidence that this
+    // obligation is already discharged, and the intent carries the provider
+    // reference that discharged it. Reporting it as merely "blocked" hides a
+    // live payment link from the caller, who then sees an empty result and no
+    // reason for it. Surface the existing reference instead: the provider is
+    // still not contacted, so the no-second-execution invariant is untouched.
+    //
+    // The reference comes from a DIFFERENT idempotency key (a regenerated
+    // strategy mints a new actionId). That is exactly the case the obligation
+    // key exists to recognise - the invoice is the same debt either way.
+    if (blocked.blockingStatus === ExecutionIntentStatus.SUCCEEDED && intent.externalRef) {
+      return {
+        outcome: "ALREADY_SUCCEEDED",
+        intentId: blocked.blockingIntentId,
+        idempotencyKey,
+        externalRef: intent.externalRef,
+        externalStatus: intent.externalStatus,
+        obligationKey: blocked.obligationKey,
+        blockingIntentId: blocked.blockingIntentId,
+      };
+    }
+
     return {
       outcome: "BLOCKED_BY_PRIOR_ATTEMPT",
       intentId: blocked.blockingIntentId,
@@ -393,7 +415,7 @@ export async function reconcileUnknownIntent(
     if (intent.operation === ExecutionOperation.CREATE_PAYMENT_LINK && result.providerReference) {
       try {
         const { settlePayment } = await import("../razorpay/settlement");
-        await settlePayment(result.providerReference, intent.businessId, intent.amount, intent.idempotencyKey);
+        await settlePayment(result.providerReference, intent.businessId, intent.amount, intent.idempotencyKey, "RECONCILIATION");
       } catch (settleErr) {
         console.error("Failed to execute settlePayment during reconciliation:", settleErr);
       }

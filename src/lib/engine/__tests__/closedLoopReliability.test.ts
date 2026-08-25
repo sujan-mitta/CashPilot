@@ -49,7 +49,7 @@ let dbState = {
 
 
 vi.mock("@/lib/prisma", async () => {
-  const { makeExecutionIntentFake, makeDecisionFakes } = await import("./helpers/prismaFakes");
+  const { makeExecutionIntentFake, makeDecisionFakes, matchesField } = await import("./helpers/prismaFakes");
   const executionIntentFake = makeExecutionIntentFake(stores as any);
   const decisionFakes = makeDecisionFakes(stores as any);
   return {
@@ -114,7 +114,7 @@ vi.mock("@/lib/prisma", async () => {
             if (where.id && x.id !== where.id) return false;
             if (where.paymentLinkId && x.paymentLinkId !== where.paymentLinkId) return false;
             if (where.transactionId && x.transactionId !== where.transactionId) return false;
-            if (where.status && x.status !== where.status) return false;
+            if (where.status && !matchesField(x.status, where.status)) return false;
             return true;
           });
           if (r) {
@@ -204,7 +204,7 @@ vi.mock("@/lib/prisma", async () => {
           let count = 0;
           dbState.agentActions.forEach(a => {
             if ((where.id && a.id === where.id) || (where.strategyId && a.strategyId === where.strategyId)) {
-              if (!where.status || a.status === where.status) {
+              if (!where.status || matchesField(a.status, where.status)) {
                 Object.assign(a, data);
                 count++;
               }

@@ -50,6 +50,28 @@ vi.mock("@/lib/prisma", async () => {
   };
 });
 
+/**
+ * Isolation must not depend on credentials being ABSENT.
+ *
+ * This suite exercises PRIORITIZE_COLLECTIONS and RECOVER_FAILED_PAYMENTS, both
+ * of which call the provider. It used to rely on `isPlaceholder` being true
+ * because no RAZORPAY_* vars were set - so running the suite with
+ * RAZORPAY_LIVE_TEST=1 (which loads dotenv globally, see vitest.config.ts) made
+ * these tests create REAL payment links against the test account and burn its
+ * 30-link quota. A unit test's hermeticity cannot hinge on the ambient env.
+ */
+vi.mock("@/lib/razorpay/client", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/razorpay/client")>("@/lib/razorpay/client");
+  return {
+    ...actual,
+    createRecoveryPaymentLink: vi.fn(async (_amount: number, _desc: string, key?: string) => ({
+      id: `plink_sim_${key}`,
+      short_url: `/sandbox/checkout?paymentLinkId=plink_sim_${key}`,
+      status: "created",
+    })),
+  };
+});
+
 vi.mock("@/lib/auth", () => {
   return {
     getSession: vi.fn(() => Promise.resolve({ userId: "mock-user-id", name: "Mock User", email: "mock@company.com", businessId: "business-1", businessName: "Mock Business" })),
@@ -206,6 +228,203 @@ describe("Execute Strategy Route", () => {
     vi.mocked(prisma.agentAction.updateMany).mockResolvedValue({ count: 1 } as any);
     vi.mocked(prisma.agentAction.update).mockResolvedValue({} as any);
   }
+
+  // =========================================================================
+  // REGRESSION: "Concurrency block: Action is no longer APPROVED (current: X)"
+  //
+  // The claim compare-and-set admitted APPROVED only, while the action state
+  // machine declares FAILED -> EXECUTING a legal retry. A FAILED action
+  // therefore passed the transition gate, lost the claim, and was reported as a
+  // concurrency block caused by a request that never existed - permanently
+  // unable to be retried.
+  // =========================================================================
+  describe("retrying an action that previously failed", () => {
+    /** Records the `where` of each claim so the admitted set can be asserted. */
+    function captureClaims(behaviour: (where: any) => number) {
+      const seen: any[] = [];
+      vi.mocked(prisma.agentAction.updateMany).mockImplementation((async ({ where }: any) => {
+        seen.push(where);
+        return { count: behaviour(where) };
+      }) as any);
+      return seen;
+    }
+
+    /** Matches the real compare-and-set against a row's actual status. */
+    const claimAgainst = (actualStatus: string) => (where: any) => {
+      const filter = where?.status;
+      const admits = filter?.in ? filter.in.includes(actualStatus) : filter === actualStatus;
+      return admits ? 1 : 0;
+    };
+
+    it("claims a FAILED action instead of reporting a phantom concurrency block", async () => {
+      const actions = [
+        { id: "action-1", actionType: "PRIORITIZE_COLLECTIONS", status: "FAILED", amount: 4400000 },
+      ];
+      installStrategy(actions);
+      await installDecision("APPROVED", actions);
+      vi.mocked(prisma.invoice.findMany).mockResolvedValue([
+        { id: "inv-1", amount: 4400000, customerName: "Acme", status: "OVERDUE", businessId: "business-1" },
+      ] as any);
+      vi.mocked(prisma.invoice.updateMany).mockResolvedValue({ count: 1 } as any);
+
+      const claims = captureClaims(claimAgainst("FAILED"));
+
+      const res = await POST(new Request("http://localhost/api/execute", {
+        method: "POST",
+        body: JSON.stringify({ strategyId: "strategy-1" }),
+      }));
+      const body = await res.json();
+
+      // The claim must admit FAILED - this is what the state machine already
+      // declares legal via ALLOWED_TRANSITIONS[FAILED] = [EXECUTING].
+      expect(claims[0].status.in).toContain(ActionStatus.FAILED);
+      expect(claims[0].status.in).toContain(ActionStatus.APPROVED);
+
+      // The retry actually ran rather than dying at the claim.
+      expect(body.steps[0].status).toBe("EXECUTING");
+      expect(body.steps[0].result).not.toMatch(/Concurrency block/i);
+    });
+
+    it("END TO END: retrying the failed collections action returns the links that already exist", async () => {
+      // This is the exact sequence the user hit, both defects in one run:
+      //   1. an earlier action issued links for both invoices;
+      //   2. the strategy was regenerated, so a NEW action targeted the same
+      //      invoices, was refused by the obligation guard, reported
+      //      "0 of 2 overdue invoices" with no reason, and went FAILED;
+      //   3. re-running it hit "Concurrency block: no longer APPROVED (FAILED)".
+      // After both fixes the retry must run AND hand back the existing links,
+      // without contacting the provider a second time.
+      const actions = [
+        { id: "action-2", actionType: "PRIORITIZE_COLLECTIONS", status: "FAILED", amount: 4400000 },
+      ];
+      installStrategy(actions);
+      await installDecision("APPROVED", actions);
+      vi.mocked(prisma.invoice.findMany).mockResolvedValue([
+        { id: "inv-1", amount: 3000000, customerName: "Retail Chain A", status: "OVERDUE", businessId: "business-1" },
+        { id: "inv-2", amount: 1400000, customerName: "Distributor B", status: "OVERDUE", businessId: "business-1" },
+      ] as any);
+      vi.mocked(prisma.invoice.updateMany).mockResolvedValue({ count: 2 } as any);
+      captureClaims(claimAgainst("FAILED"));
+
+      // Step 1: the earlier action's intents, SUCCEEDED, under DIFFERENT
+      // idempotency keys - a regenerated strategy mints a new actionId.
+      stores.intents.push(
+        {
+          id: "intent-old-1", businessId: "business-1", strategyId: "strategy-0", actionId: "action-1",
+          idempotencyKey: "cp_oldkey_1", operation: "CREATE_PAYMENT_LINK",
+          targetType: "INVOICE", targetId: "inv-1", obligationKey: "INVOICE:inv-1",
+          amount: 3000000, status: "SUCCEEDED", externalRef: "plink_EXISTING_1",
+          externalStatus: "created", attempts: 1, recordedAt: new Date(),
+        },
+        {
+          id: "intent-old-2", businessId: "business-1", strategyId: "strategy-0", actionId: "action-1",
+          idempotencyKey: "cp_oldkey_2", operation: "CREATE_PAYMENT_LINK",
+          targetType: "INVOICE", targetId: "inv-2", obligationKey: "INVOICE:inv-2",
+          amount: 1400000, status: "SUCCEEDED", externalRef: "plink_EXISTING_2",
+          externalStatus: "created", attempts: 1, recordedAt: new Date(),
+        }
+      );
+
+      const res = await POST(new Request("http://localhost/api/execute", {
+        method: "POST",
+        body: JSON.stringify({ strategyId: "strategy-1" }),
+      }));
+      const body = await res.json();
+
+      // Step 3 fixed: the retry was claimed and ran.
+      expect(body.steps[0].result).not.toMatch(/Concurrency block/i);
+      expect(body.steps[0].status).toBe("EXECUTING");
+
+      // Step 2 fixed: both links come back, and they are the ORIGINAL ones.
+      const payload = JSON.parse(body.steps[0].result);
+      expect(payload.message).toBe("Generated payment links for 2 of 2 overdue invoices.");
+      expect(payload.links.map((l: any) => l.paymentLinkId)).toEqual([
+        "plink_EXISTING_1",
+        "plink_EXISTING_2",
+      ]);
+
+      // No second provider execution: no new intent rows, and nothing bearing a
+      // freshly-minted link id.
+      expect(stores.intents).toHaveLength(2);
+      expect(JSON.stringify(payload)).not.toMatch(/plink_sim_/);
+    });
+
+    it("still refuses an action another request is executing, and says why", async () => {
+      const actions = [
+        { id: "action-1", actionType: "PRIORITIZE_COLLECTIONS", status: "EXECUTING", amount: 4400000 },
+      ];
+      installStrategy(actions);
+      await installDecision("APPROVED", actions);
+      captureClaims(claimAgainst("EXECUTING"));
+      vi.mocked(prisma.agentAction.findUnique).mockResolvedValue({
+        id: "action-1",
+        status: ActionStatus.EXECUTING,
+        result: "",
+      } as any);
+
+      const res = await POST(new Request("http://localhost/api/execute", {
+        method: "POST",
+        body: JSON.stringify({ strategyId: "strategy-1" }),
+      }));
+      const body = await res.json();
+
+      // EXECUTING is genuinely not claimable: an earlier run owns it.
+      expect(body.steps[0].result).toMatch(/already in flight/i);
+      // The old message blamed a race for every refusal, including this one,
+      // and never said what to do about it.
+      expect(body.steps[0].result).toMatch(/settle or cancel/i);
+      expect(body.steps[0].result).not.toMatch(/no longer APPROVED/i);
+    });
+
+    it("never re-dispatches an EXECUTION_UNKNOWN action", async () => {
+      // Caught by the transition gate: ALLOWED_TRANSITIONS[EXECUTION_UNKNOWN]
+      // deliberately omits EXECUTING, because the operation may already have
+      // landed at the provider.
+      const actions = [
+        { id: "action-1", actionType: "PRIORITIZE_COLLECTIONS", status: "EXECUTION_UNKNOWN", amount: 4400000 },
+      ];
+      installStrategy(actions);
+      await installDecision("APPROVED", actions);
+      const claims = captureClaims(() => 1);
+
+      const res = await POST(new Request("http://localhost/api/execute", {
+        method: "POST",
+        body: JSON.stringify({ strategyId: "strategy-1" }),
+      }));
+      const body = await res.json();
+
+      // Refused before the claim is even attempted.
+      expect(claims).toHaveLength(0);
+      expect(body.steps[0].result).toMatch(/Cannot transition from EXECUTION_UNKNOWN/i);
+    });
+
+    it("refuses when the status changed after the gate read it", async () => {
+      // The gate reads the snapshot loaded at the top of the request; the claim
+      // is the authoritative check. A concurrent run can move the row in
+      // between, which is the only genuine race here - and the one case the old
+      // "Concurrency block" wording actually described.
+      const actions = [
+        { id: "action-1", actionType: "PRIORITIZE_COLLECTIONS", status: "APPROVED", amount: 4400000 },
+      ];
+      installStrategy(actions);
+      await installDecision("APPROVED", actions);
+      captureClaims(claimAgainst("EXECUTION_UNKNOWN")); // row moved under us
+      vi.mocked(prisma.agentAction.findUnique).mockResolvedValue({
+        id: "action-1",
+        status: ActionStatus.EXECUTION_UNKNOWN,
+        result: "",
+      } as any);
+
+      const res = await POST(new Request("http://localhost/api/execute", {
+        method: "POST",
+        body: JSON.stringify({ strategyId: "strategy-1" }),
+      }));
+      const body = await res.json();
+
+      expect(body.steps[0].result).toMatch(/undetermined/i);
+      expect(body.steps[0].result).toMatch(/reconcile/i);
+    });
+  });
 
   it("PART 33: issuing a payment link marks the action EXECUTING, never COMPLETED", async () => {
     const actions = [

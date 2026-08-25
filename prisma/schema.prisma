@@ -416,3 +416,52 @@ model DecisionEvent {
   @@index([businessId, createdAt])
   @@index([eventType])
 }
+
+/// Lifecycle of ONE inbound webhook delivery.
+///
+/// Deliberately not merged into ProcessedEvent: that model is the idempotency
+/// mechanism and holds exactly one row per event id, created before processing
+/// and DELETED again if processing throws. That release is correct - it stops a
+/// transient failure from permanently marking a real payment as handled - but it
+/// means a delivered-then-failed webhook left no trace anywhere (M1).
+enum WebhookDeliveryStatus {
+  RECEIVED
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  DUPLICATE
+}
+
+/// Durable observability for inbound webhooks. Never authoritative for money.
+///
+/// One row per DELIVERY, not per event, so retries and duplicates are all
+/// visible. providerEventId is intentionally NOT unique for that reason.
+///
+/// Holds no secret, no signature and no raw payload - only the identifiers
+/// needed to correlate a delivery with what it settled.
+model WebhookDeliveryAttempt {
+  id                    String                @id @default(cuid())
+  provider              String                @default("razorpay")
+  /// Null when the request was rejected before the body could be trusted.
+  providerEventId       String?
+  eventType             String?
+  status                WebhookDeliveryStatus
+  attemptNumber         Int                   @default(1)
+  receivedAt            DateTime              @default(now())
+  processingStartedAt   DateTime?
+  processingCompletedAt DateTime?
+  /// Stable classification, e.g. INVALID_SIGNATURE, MISSING_SIGNATURE.
+  errorClass            String?
+  /// Our own truncated error text. Never provider credentials or headers.
+  errorMessage          String?
+  correlationId         String?
+  businessId            String?
+  executionIntentId     String?
+  externalRef           String?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+
+  @@index([providerEventId])
+  @@index([status])
+  @@index([businessId])
+}

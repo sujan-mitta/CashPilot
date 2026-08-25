@@ -56,6 +56,33 @@ function statusForOutcome(outcome: ExecuteResult["outcome"], settledImmediately:
 }
 
 /**
+ * Appends `actionId` to a checkout URL, choosing the right separator.
+ *
+ * The previous version always used `&`, which is only correct for a URL that
+ * already carries a query string. Our own `/sandbox/checkout?...` links do, but
+ * a provider `short_url` does not - so a stored Razorpay link became
+ * `https://rzp.io/rzp/XXXX&actionId=...`, a different PATH rather than the link
+ * plus a parameter. Observed live: a PAYMENT_PENDING recovery whose stored
+ * shortUrl was exactly that, handed to the operator as a dead link.
+ *
+ * The corrupted value also persisted: the old guard skipped any URL already
+ * containing "actionId=", so once written it was never repaired.
+ */
+export function withActionId(shortUrl: string | null | undefined, actionId: string): string {
+  if (!shortUrl) return shortUrl ?? "";
+
+  // Already carries an actionId - but it may be a previously corrupted value,
+  // so repair the separator rather than trusting it.
+  const corrupted = /^([^?]*?)&(actionId=|paymentLinkId=)/.exec(shortUrl);
+  if (corrupted) {
+    return shortUrl.replace(/^([^?]*?)&/, "$1?");
+  }
+  if (shortUrl.includes("actionId=")) return shortUrl;
+
+  return `${shortUrl}${shortUrl.includes("?") ? "&" : "?"}actionId=${actionId}`;
+}
+
+/**
  * RECOVER_FAILED_PAYMENTS - issues one recovery payment link.
  *
  * The PaymentRecovery row is moved to RECOVERY_INITIATED before the external
@@ -68,13 +95,33 @@ export async function executeRecoverFailedPayments(
   ctx: { businessId: string; strategyId: string; action: AgentAction },
   hooks: ExecutionHooks = {}
 ): Promise<ActionExecutionOutcome> {
-  const recovery = await client.paymentRecovery.findFirst({
-    where: {
-      status: RecoveryStatus.RECOVERY_CANDIDATE,
-      transaction: { businessId: ctx.businessId },
-    },
-    include: { transaction: true },
-  });
+  // States from which the recovery state machine permits RECOVERY_INITIATED.
+  //
+  // Searching for RECOVERY_CANDIDATE alone was narrower than what
+  // validateRecoveryTransition already allows, so a recovery whose link was
+  // cancelled or expired could never be re-attempted - the debt was real, the
+  // link was dead, and nothing could issue a replacement. Observed live: a
+  // cancelled link on a genuine failed payment left six actions wedged.
+  //
+  // This is the same mismatch as the execute route claiming only APPROVED while
+  // the action machine allowed FAILED -> EXECUTING: when a guard is stricter
+  // than the state machine it is supposed to enforce, the stricter one wins
+  // silently and the documented recovery path becomes unreachable.
+  // A fresh debt is always preferred over re-attempting a previously dead one,
+  // so the two are queried in explicit precedence rather than relying on the
+  // enum's declaration order to sort them.
+  const findRecovery = (statuses: RecoveryStatus[]) =>
+    client.paymentRecovery.findFirst({
+      where: {
+        status: { in: statuses },
+        transaction: { businessId: ctx.businessId },
+      },
+      include: { transaction: true },
+    });
+
+  const recovery =
+    (await findRecovery([RecoveryStatus.RECOVERY_CANDIDATE])) ??
+    (await findRecovery([RecoveryStatus.FAILED, RecoveryStatus.EXPIRED]));
 
   if (!recovery) {
     const activePending = await client.paymentRecovery.findFirst({
@@ -84,10 +131,7 @@ export async function executeRecoverFailedPayments(
       },
     });
     if (activePending) {
-      const url =
-        activePending.shortUrl && !activePending.shortUrl.includes("actionId=")
-          ? `${activePending.shortUrl}&actionId=${ctx.action.id}`
-          : activePending.shortUrl;
+      const url = withActionId(activePending.shortUrl, ctx.action.id);
       return {
         status: ActionStatus.EXECUTING,
         result: `Razorpay link generated: ${url}`,
@@ -238,10 +282,23 @@ export async function executePrioritizeCollections(
         shortUrl: `/sandbox/checkout?paymentLinkId=${linkId}&actionId=${ctx.action.id}`,
         amount: inv.amount,
       });
-    } else if (outcome.outcome === "UNKNOWN" || outcome.outcome === "BLOCKED_UNKNOWN") {
-      anyUnknown = outcome.unknownReason;
+    } else if (
+      outcome.outcome === "UNKNOWN" ||
+      outcome.outcome === "BLOCKED_UNKNOWN" ||
+      // A prior attempt still claims this invoice and its provider outcome is
+      // not established. That is an ambiguity, not a failure, so it must not
+      // fall through to the FAILED branch below - which reads `outcome.error`,
+      // a field the blocked path never sets, and so reported nothing at all.
+      outcome.outcome === "BLOCKED_BY_PRIOR_ATTEMPT"
+    ) {
+      anyUnknown = outcome.unknownReason ?? `Invoice ${inv.id}: ${outcome.outcome}.`;
     } else {
-      anyFailed = outcome.error;
+      // Never leave the caller with a bare count and no reason: every branch
+      // that produces no link owes an explanation.
+      anyFailed =
+        outcome.error ??
+        outcome.unknownReason ??
+        `Invoice ${inv.id}: attempt ended as ${outcome.outcome} without a reported reason.`;
     }
   }
 

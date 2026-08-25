@@ -22,18 +22,19 @@ export interface IntentStore {
  * filter OBJECT against a scalar field with `===`, so any `{ in: [...] }` clause
  * matched nothing and a query that should have found rows quietly returned null.
  */
+export function matchesField(actual: unknown, filter: unknown): boolean {
+  if (filter && typeof filter === "object" && !Array.isArray(filter) && !(filter instanceof Date)) {
+    const f = filter as Record<string, unknown>;
+    if (Array.isArray(f.in)) return (f.in as unknown[]).includes(actual);
+    if ("not" in f) return actual !== f.not;
+    return true;
+  }
+  return actual === filter;
+}
+
 function matchesWhere(row: any, where: any): boolean {
   if (!where) return true;
-  return Object.entries(where).every(([k, v]) => {
-    const actual = row?.[k];
-    if (v && typeof v === "object" && !Array.isArray(v) && !(v instanceof Date)) {
-      const filter = v as Record<string, unknown>;
-      if (Array.isArray(filter.in)) return (filter.in as unknown[]).includes(actual);
-      if ("not" in filter) return actual !== filter.not;
-      return true;
-    }
-    return actual === v;
-  });
+  return Object.entries(where).every(([k, v]) => matchesField(row?.[k], v));
 }
 
 export function makeExecutionIntentFake(store: IntentStore) {

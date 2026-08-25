@@ -192,6 +192,52 @@ interface InvoiceLink {
 }
 
 /**
+ * What actually caused a settlement to run.
+ *
+ * H2: every settlement audit entry used to be stamped `SYSTEM_WEBHOOK`, whether
+ * it came from a Razorpay delivery, a status poll, reconciliation, or somebody
+ * calling settlePayment() from a script. An audit trail that cannot tell those
+ * apart cannot answer the one question a provider certification asks - "did the
+ * provider trigger this?" - and it answered it wrongly, in the reassuring
+ * direction.
+ *
+ * The trigger is therefore a required-by-default parameter that flows from the
+ * caller. It is NOT re-derived inside settlement, because settlement genuinely
+ * cannot know: every caller reaches the same function by the same path.
+ */
+export type SettlementTrigger =
+  /** A signed delivery from the payment provider. */
+  | "WEBHOOK"
+  /** A client or server polling the provider for current link status. */
+  | "POLL"
+  /** The reconciler resolving a previously undetermined intent. */
+  | "RECONCILIATION"
+  /** A direct call - scripts, operators, tests. Never provider-attested. */
+  | "MANUAL";
+
+/**
+ * Audit actor for a settlement trigger.
+ *
+ * WEBHOOK keeps the historic `SYSTEM_WEBHOOK` string so existing records stay
+ * comparable and nothing already written has to be rewritten - but it is now
+ * only ever emitted when a webhook really was the trigger. Every other trigger
+ * gets its own actor, and the default is MANUAL, so a bare settlePayment() call
+ * can no longer produce SYSTEM_WEBHOOK by omission.
+ */
+export function settlementActor(trigger: SettlementTrigger): string {
+  switch (trigger) {
+    case "WEBHOOK":
+      return "SYSTEM_WEBHOOK";
+    case "POLL":
+      return "SYSTEM_POLL";
+    case "RECONCILIATION":
+      return "SYSTEM_RECONCILIATION";
+    case "MANUAL":
+      return "MANUAL_SETTLEMENT";
+  }
+}
+
+/**
  * Settles a payment recovery or overdue collections link by executing the ledger balance updates.
  * Returns the final resolved status of the link ("paid" or "created").
  */
@@ -199,7 +245,12 @@ export async function settlePayment(
   paymentLinkId: string,
   businessId: string,
   actualAmount?: number,
-  referenceId?: string
+  referenceId?: string,
+  /**
+   * Defaults to MANUAL on purpose. An omitted trigger must never be able to
+   * masquerade as provider-attested settlement.
+   */
+  trigger: SettlementTrigger = "MANUAL"
 ): Promise<string> {
   // Resolve intent first if possible
   let intent = null;
@@ -365,11 +416,40 @@ export async function settlePayment(
           });
           if (freshAction && freshAction.status !== ActionStatus.COMPLETED) {
             // First transition PENDING/APPROVED/EXECUTING -> RECONCILING
-            if (validateActionTransition(freshAction.status, ActionStatus.RECONCILING)) {
+            const canReconcile = validateActionTransition(
+              freshAction.status,
+              ActionStatus.RECONCILING
+            );
+            if (canReconcile) {
               await tx.agentAction.updateMany({
                 where: { id: freshAction.id },
                 data: { status: ActionStatus.RECONCILING },
               });
+            }
+
+            // THE LEDGER IS AUTHORITATIVE.
+            //
+            // When the action cannot legally reach RECONCILING - an APPROVED
+            // action whose intent nevertheless SUCCEEDED, for example - the
+            // guarded update below matches nothing, and the "concurrently
+            // modified" branch used to throw. That threw out of the enclosing
+            // transaction and rolled back the recovery status AND the cash
+            // credit, so money that genuinely arrived at the provider left no
+            // trace in the ledger. Verified live against a paid link whose
+            // action was still APPROVED.
+            //
+            // A status transition the state machine refuses is not a reason to
+            // un-settle real money. Record the divergence and let the money
+            // stand, exactly as reconcileDecisionForStrategy already does when
+            // the Decision machine refuses a late transition.
+            if (!canReconcile) {
+              logger.warn("Settled money against an action that cannot advance", {
+                paymentLinkId,
+                actionId: freshAction.id,
+                actionStatus: freshAction.status,
+                settlementRecordedButActionNotAdvanced: true,
+              });
+              return;
             }
 
             let targetStatus: ActionStatus = ActionStatus.COMPLETED;
@@ -396,7 +476,8 @@ export async function settlePayment(
             };
 
             const auditEntry = {
-              who: "SYSTEM_WEBHOOK",
+              who: settlementActor(trigger),
+              trigger,
               what: `Transition RECONCILING -> ${targetStatus}`,
               when: new Date().toISOString(),
               why: `Reconciliation check: ${resultDetail}`,
@@ -578,7 +659,8 @@ export async function settlePayment(
                 };
 
                 const auditEntry = {
-                  who: "SYSTEM_WEBHOOK",
+                  who: settlementActor(trigger),
+                  trigger,
                   what: `Transition RECONCILING -> ${targetStatus}`,
                   when: new Date().toISOString(),
                   why: `Reconciliation check: ${resultDetail}`,
@@ -621,6 +703,7 @@ export async function settlePayment(
           });
         }
         await reconcileDecisionForStrategy(prisma, action.strategyId);
+        await convergeSiblingCollectionActions(paymentLinkId, businessId, action.id, trigger);
         return "paid";
       }
     } catch (e) {
@@ -629,4 +712,98 @@ export async function settlePayment(
   }
 
   return "created";
+}
+
+/**
+ * Advances OTHER actions that reference the same payment link once its invoices
+ * are paid.
+ *
+ * A payment link belongs to an OBLIGATION (an invoice), not to an action. One
+ * obligation can be referenced by several actions: a regenerated strategy mints
+ * a new action which re-attaches to the existing link rather than issuing a
+ * second one. Settlement, though, resolves exactly one action - the one its
+ * intent points at - so every other action referencing that link stayed
+ * EXECUTING forever, and `reconcileDecisionForStrategy` treats EXECUTING as
+ * still-in-flight, so those decisions never reconciled either.
+ *
+ * This is deliberately OUTSIDE the settlement transaction and touches no money.
+ * The cash increment is guarded by the invoice compare-and-set and has already
+ * happened exactly once by the time this runs; all that is left is to stop
+ * actions from claiming to be executing work that is demonstrably finished.
+ *
+ * It advances an action only when EVERY invoice that action targeted is PAID,
+ * and only through the guarded transition, so a partially-settled fan-out and a
+ * terminal action are both left alone.
+ */
+async function convergeSiblingCollectionActions(
+  paymentLinkId: string,
+  businessId: string,
+  settledActionId: string,
+  trigger: SettlementTrigger
+): Promise<void> {
+  try {
+    const siblings = await prisma.agentAction.findMany({
+      where: {
+        id: { not: settledActionId },
+        actionType: "PRIORITIZE_COLLECTIONS",
+        result: { contains: paymentLinkId },
+        status: { in: [ActionStatus.EXECUTING, ActionStatus.EXECUTION_UNKNOWN] },
+        strategy: { businessId },
+      },
+    });
+
+    for (const sibling of siblings) {
+      if (!sibling.result) continue;
+
+      let links: InvoiceLink[] | undefined;
+      try {
+        links = JSON.parse(sibling.result).links;
+      } catch {
+        continue; // Not a links payload; nothing to converge against.
+      }
+      if (!Array.isArray(links) || links.length === 0) continue;
+
+      const invoices = await prisma.invoice.findMany({
+        where: { id: { in: links.map((l) => l.invoiceId) }, businessId },
+      });
+      const allPaid =
+        invoices.length === links.length && invoices.every((i) => i.status === "PAID");
+      if (!allPaid) continue;
+
+      if (!validateActionTransition(sibling.status, ActionStatus.COMPLETED)) continue;
+
+      const auditEntry = {
+        who: "SYSTEM_SETTLEMENT",
+        trigger,
+        what: `Transition ${sibling.status} -> COMPLETED`,
+        when: new Date().toISOString(),
+        why: `Every invoice this action targeted was settled via payment link ${paymentLinkId}, which was issued under a different action for the same obligation.`,
+        result: "SUCCESS",
+      };
+      const existingAudit = Array.isArray(sibling.auditLog) ? sibling.auditLog : [];
+
+      const updated = await prisma.agentAction.updateMany({
+        where: { id: sibling.id, status: sibling.status },
+        data: {
+          status: ActionStatus.COMPLETED,
+          auditLog: [...existingAudit, auditEntry] as Prisma.InputJsonValue,
+        },
+      });
+
+      if (updated.count > 0) {
+        logger.info("Converged a sibling action onto a settled obligation", {
+          siblingActionId: sibling.id,
+          settledActionId,
+          paymentLinkId,
+        });
+        await reconcileDecisionForStrategy(prisma, sibling.strategyId);
+      }
+    }
+  } catch (err) {
+    // Convergence is bookkeeping. It must never break the settlement it follows.
+    logger.error("Failed to converge sibling collection actions", {
+      paymentLinkId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 }

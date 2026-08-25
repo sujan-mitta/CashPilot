@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { POST as executeAction } from "../../execute/route";
 import { POST as approveStrategy } from "../../approve/route";
 import { GET as getPaymentStatus } from "../../payment-status/route";
@@ -101,6 +101,22 @@ vi.mock("@/lib/ai/agents", () => {
 describe("CashPilot Idempotency and Race Verification", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+
+    // These tests exercise the payment-status route's SANDBOX branch, which the
+    // route selects by reading RAZORPAY_* from the environment on every request.
+    // That dependency used to be ambient: the branch was taken only because no
+    // credentials happened to be set. Running with RAZORPAY_LIVE_TEST=1 loads
+    // real ones (see vitest.config.ts), the route then tried to fetch these
+    // fictional link ids from Razorpay, and three race assertions failed for a
+    // reason that had nothing to do with the races under test.
+    //
+    // Stubbing makes the intent explicit and the suite hermetic either way.
+    vi.stubEnv("RAZORPAY_KEY_ID", "rzp_test_placeholder");
+    vi.stubEnv("RAZORPAY_KEY_SECRET", "placeholder_secret");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   // TEST 1 — WEBHOOK WINS

@@ -181,10 +181,10 @@ describe("SCENARIO 6/7/8 - other unresolved states also hold the claim", () => {
     expect(calls).toBe(0);
   });
 
-  it("a SUCCEEDED attempt blocks a second execution for the same obligation", async () => {
+  it("a SUCCEEDED attempt blocks a second execution and hands back the first link", async () => {
     await executeWithDurableIntent(client, {
       ...attempt("action-1"),
-      dispatch: async () => ({ externalRef: "plink_FIRST" }),
+      dispatch: async () => ({ externalRef: "plink_FIRST", externalStatus: "created" }),
     });
     expect(store.intents[0].status).toBe("SUCCEEDED");
 
@@ -196,7 +196,39 @@ describe("SCENARIO 6/7/8 - other unresolved states also hold the claim", () => {
         return { externalRef: "plink_SECOND" };
       },
     });
+
+    // The safety property is unchanged: no second provider execution, no second
+    // intent row.
+    expect(calls).toBe(0);
+    expect(store.intents).toHaveLength(1);
+
+    // But the obligation is DISCHARGED, not ambiguous. A prior success is
+    // positive evidence, so the caller gets the link that already exists rather
+    // than an empty refusal it cannot act on.
+    expect(r.outcome).toBe("ALREADY_SUCCEEDED");
+    expect(r.externalRef).toBe("plink_FIRST");
+    expect(r.blockingIntentId).toBe(store.intents[0].id);
+    expect(r.obligationKey).toBe(`INVOICE:${INVOICE}`);
+  });
+
+  it("still refuses outright when the prior success carries no provider reference", async () => {
+    // A SUCCEEDED row with no externalRef has nothing to hand back, so there is
+    // no evidence to report and the refusal must stand.
+    const { intent } = await recordExecutionIntent(client, attempt("action-1"));
+    await claimExecutionIntent(client, intent.id);
+    store.intents[0].status = "SUCCEEDED";
+    store.intents[0].externalRef = null;
+
+    let calls = 0;
+    const r = await executeWithDurableIntent(client, {
+      ...attempt("action-2"),
+      dispatch: async () => {
+        calls++;
+        return { externalRef: "plink_SECOND" };
+      },
+    });
     expect(r.outcome).toBe("BLOCKED_BY_PRIOR_ATTEMPT");
+    expect(r.unknownReason).toBeTruthy();
     expect(calls).toBe(0);
   });
 });
