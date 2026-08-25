@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import React, { useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCashPilot } from "@/context/CashPilotContext";
 import { Eye, EyeOff, Lock, Mail, User, Briefcase, ArrowRight, ShieldCheck } from "lucide-react";
@@ -30,7 +30,7 @@ const fieldClass = clsx(
 
 const labelClass = "label block mb-1.5";
 
-export default function Login() {
+function LoginForm() {
   const router = useRouter();
   const { user, login } = useCashPilot();
 
@@ -43,6 +43,29 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
+
+  // Why Google sign-in bounced us back, if it did. Derived rather than stored:
+  // it is a pure function of the URL, so it needs neither state nor an effect.
+  const searchParams = useSearchParams();
+  const oauthError = (() => {
+    const reason = searchParams.get("error");
+    if (!reason) return null;
+    const messages: Record<string, string> = {
+      google_not_configured: "Google sign-in is not configured on this deployment.",
+      google_denied: "Google sign-in was cancelled.",
+      google_no_account:
+        "No CashPilot account exists for that Google address. Sign up with your email first.",
+      google_email_unverified: "That Google address is not verified with Google.",
+      google_state_mismatch: "Google sign-in expired or was tampered with. Please try again.",
+      google_state_missing: "Google sign-in expired. Please try again.",
+      google_invalid_response: "Google returned an unexpected response. Please try again.",
+      google_failed: "Google sign-in failed. Please try again.",
+    };
+    return messages[reason] ?? "Google sign-in failed. Please try again.";
+  })();
+
+  /** A form error takes precedence over a stale one carried in the URL. */
+  const shownError = error ?? oauthError;
   const [isLoading, setIsLoading] = useState(false);
 
   // Redirect if already authenticated.
@@ -51,34 +74,6 @@ export default function Login() {
       router.push("/dashboard");
     }
   }, [user, router]);
-
-  // Messages from the popup Google account chooser.
-  useEffect(() => {
-    const handleGoogleMessage = async (event: MessageEvent) => {
-      if (event.data?.type === "GOOGLE_AUTH_SUCCESS") {
-        const { name, email, businessName } = event.data.user;
-        try {
-          const res = await fetch("/api/auth/signup", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name, email, businessName }),
-          });
-          const data = await res.json();
-          if (res.ok) {
-            login(data.user);
-            router.push("/dashboard");
-          } else {
-            setError(data.error || "Google authentication sync failed.");
-          }
-        } catch (err) {
-          setError(errorMessage(err, "Google authentication sync failed."));
-        }
-      }
-    };
-    window.addEventListener("message", handleGoogleMessage);
-    return () => window.removeEventListener("message", handleGoogleMessage);
-  }, [login, router]);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -132,15 +127,16 @@ export default function Login() {
   };
 
   const handleGoogleSignIn = () => {
-    const width = 450;
-    const height = 550;
-    const left = window.screenX + (window.outerWidth - width) / 2;
-    const top = window.screenY + (window.outerHeight - height) / 2;
-    window.open(
-      "/auth/google",
-      "google-oauth-popup",
-      `width=${width},height=${height},left=${left},top=${top},scrollbars=no,resizable=no`
-    );
+    // A top-level navigation, not a popup. The browser never asserts the
+    // identity; it only carries an opaque code that the server exchanges with
+    // Google directly.
+    //
+    // router.push() is wrong here despite the lint rule: this path is an API
+    // route that answers 302 to accounts.google.com. Client-side navigation
+    // would try to render it as a page instead of leaving the app, so the
+    // handoff to Google would never happen.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    window.location.href = "/api/auth/google/start";
   };
 
   const toggleMode = () => {
@@ -286,7 +282,7 @@ export default function Login() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <AnimatePresence>
-              {error && (
+              {shownError && (
                 <motion.div
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: "auto" }}
@@ -296,7 +292,7 @@ export default function Login() {
                   className="overflow-hidden"
                 >
                   <div className="p-3.5 rounded-xl bg-risk-500/10 border border-risk-500/25 text-[12.5px] font-medium text-risk-400">
-                    {error}
+                    {shownError}
                   </div>
                 </motion.div>
               )}
@@ -421,5 +417,19 @@ export default function Login() {
         </motion.div>
       </div>
     </div>
+  );
+}
+
+/**
+ * useSearchParams() opts a route into client-side rendering, so Next requires
+ * it to sit under a Suspense boundary or the static prerender of /login fails
+ * the build outright. The boundary is here rather than around a fragment
+ * because the whole form reads the OAuth error.
+ */
+export default function Login() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
   );
 }
