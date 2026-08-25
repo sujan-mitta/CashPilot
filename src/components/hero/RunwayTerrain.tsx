@@ -1,8 +1,13 @@
 "use client";
 
 import React, { useMemo, useRef } from "react";
-import { Canvas, useFrame, type ThreeElements } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
+import {
+  TERRAIN,
+  createPointerScratch,
+  pointerToTerrainUV,
+} from "./terrainPointer";
 
 /**
  * The runway terrain.
@@ -14,15 +19,25 @@ import * as THREE from "three";
  *
  * Everything is done in the vertex/fragment shaders — the geometry is uploaded
  * once and never touched again, so animating it costs no CPU and allocates
- * nothing per frame. The only per-frame work is advancing a float uniform.
+ * nothing per frame. The only per-frame work is advancing a few uniforms.
+ *
+ * POINTER: the canvas is deliberately NOT interactive. It sits behind the login
+ * form under `pointer-events: none`, so letting it capture events would put an
+ * invisible sheet of glass over the inputs. Instead the pointer is tracked at
+ * the window and the ray is intersected with the terrain's mathematical plane —
+ * O(1), and it ignores pointer-events entirely. Raycasting the real geometry
+ * would mean testing ~50k triangles every frame for a decorative effect.
  */
 
 const vertexShader = /* glsl */ `
   uniform float uTime;
   uniform float uAmplitude;
+  uniform vec2  uPointer;    // terrain UV under the cursor
+  uniform float uHover;      // 0 → 1, eased
 
   varying float vHeight;
-  varying vec2 vUv;
+  varying vec2  vUv;
+  varying float vRipple;
 
   // Layered sines rather than true noise: cheaper, and the repetition reads as
   // a plausible recurring cash cycle rather than as random terrain.
@@ -46,6 +61,22 @@ const vertexShader = /* glsl */ `
     float horizon = smoothstep(0.0, 0.65, vUv.y);
     h *= mix(1.0, 0.25, horizon);
 
+    // ── Cursor ripple ──────────────────────────────────────────────────
+    // Corrected for the plane's 16:11 aspect, or the rings read as ellipses.
+    vec2 d2 = (vUv - uPointer) * vec2(16.0 / 11.0, 1.0);
+    float d = length(d2);
+
+    // Rings travelling outward from the cursor, decaying with distance so the
+    // disturbance stays local and the rest of the surface keeps its own rhythm.
+    float rings = sin(d * 38.0 - uTime * 3.4) * exp(-d * 6.5);
+
+    // A broad swell under the cursor: the surface leans up toward the pointer.
+    float swell = exp(-d * d * 26.0);
+
+    float ripple = (rings * 0.26 + swell * 0.34) * uHover;
+    h += ripple;
+    vRipple = ripple;
+
     pos.z += h;
     vHeight = h;
 
@@ -54,13 +85,17 @@ const vertexShader = /* glsl */ `
 `;
 
 const fragmentShader = /* glsl */ `
-  uniform vec3 uSafeColor;
-  uniform vec3 uRiskColor;
-  uniform vec3 uGridColor;
+  uniform vec3  uSafeColor;
+  uniform vec3  uRiskColor;
+  uniform vec3  uGridColor;
+  uniform vec3  uHoverColor;
   uniform float uFloor;
+  uniform vec2  uPointer;
+  uniform float uHover;
 
   varying float vHeight;
-  varying vec2 vUv;
+  varying vec2  vUv;
+  varying float vRipple;
 
   void main() {
     // Below the safety floor is a deficit. The transition is deliberately
@@ -87,37 +122,84 @@ const fragmentShader = /* glsl */ `
     // this surface that must not be subtle.
     alpha = max(alpha, deficit * 0.16 * fadeY * fadeX);
 
+    // ── Cursor light ───────────────────────────────────────────────────
+    vec2 d2 = (vUv - uPointer) * vec2(16.0 / 11.0, 1.0);
+    float halo = exp(-length(d2) * 5.0) * uHover;
+
+    // Crests of the ripple catch the light; troughs stay dark. Without this the
+    // halo is a flat disc rather than something washing over a surface.
+    float crest = clamp(vRipple * 3.2, 0.0, 1.0);
+
+    color += uHoverColor * (halo * 0.45 + crest * 0.5);
+    alpha = max(alpha, (halo * 0.2 + crest * 0.28) * fadeY * fadeX);
+
     if (alpha < 0.004) discard;
-    gl_FragColor = vec4(color, alpha);
+    gl_FragColor = vec4(color, clamp(alpha, 0.0, 1.0));
   }
 `;
 
-function Terrain({ amplitude = 1 }: { amplitude?: number }) {
+function Terrain({
+  amplitude = 1,
+  pointer,
+}: {
+  amplitude?: number;
+  pointer: React.RefObject<{ x: number; y: number; inside: boolean }>;
+}) {
+  const mesh = useRef<THREE.Mesh>(null);
   const material = useRef<THREE.ShaderMaterial>(null);
+  const { camera } = useThree();
+
+  // Allocated once. Doing this inside useFrame would allocate every frame.
+  const scratch = useMemo(() => createPointerScratch(), []);
 
   const uniforms = useMemo(
     () => ({
       uTime: { value: 0 },
       uAmplitude: { value: amplitude },
       uFloor: { value: -0.15 },
+      uHover: { value: 0 },
+      // Parked off-surface so the very first frame cannot flash a ripple at
+      // the centre before the pointer has ever been seen.
+      uPointer: { value: new THREE.Vector2(-1, -1) },
       uSafeColor: { value: new THREE.Color("#34d399") },
       uRiskColor: { value: new THREE.Color("#fb7185") },
       uGridColor: { value: new THREE.Color("#4f46e5") },
+      uHoverColor: { value: new THREE.Color("#22d3ee") },
     }),
     [amplitude]
   );
 
   useFrame((_, delta) => {
+    const mat = material.current;
+    const obj = mesh.current;
+    if (!mat || !obj) return;
+
     // Advance by delta rather than elapsed time so a dropped frame slows the
     // motion instead of making it jump.
-    if (material.current) {
-      material.current.uniforms.uTime.value += delta;
+    mat.uniforms.uTime.value += delta;
+
+    const p = pointer.current;
+    let onSurface = false;
+
+    if (p?.inside) {
+      const uvHit = pointerToTerrainUV(p.x, p.y, camera, obj, scratch);
+      if (uvHit) {
+        mat.uniforms.uPointer.value.set(uvHit.u, uvHit.v);
+        onSurface = true;
+      }
     }
+
+    // Ease the hover strength rather than switching it. A ripple that vanishes
+    // the instant the cursor leaves looks broken; one that recedes looks like
+    // water settling. Framerate-independent so it feels the same at 30 and 120.
+    const target = onSurface ? 1 : 0;
+    const rate = 1 - Math.exp(-delta * (onSurface ? 6 : 3));
+    mat.uniforms.uHover.value += (target - mat.uniforms.uHover.value) * rate;
   });
 
   return (
-    <mesh rotation={[-Math.PI / 2.32, 0, 0]} position={[0, -0.6, 0]}>
-      <planeGeometry args={[16, 11, 190, 130]} />
+    <mesh ref={mesh} rotation={[TERRAIN.rotationX, 0, 0]} position={[0, TERRAIN.y, 0]}>
+      <planeGeometry args={[TERRAIN.width, TERRAIN.height, 190, 130]} />
       <shaderMaterial
         ref={material}
         uniforms={uniforms}
@@ -135,8 +217,8 @@ function Terrain({ amplitude = 1 }: { amplitude?: number }) {
 /** The liquidity safety floor, as a physical sheet the terrain cuts through. */
 function SafetyPlane() {
   return (
-    <mesh rotation={[-Math.PI / 2.32, 0, 0]} position={[0, -0.75, 0.001]}>
-      <planeGeometry args={[16, 11]} />
+    <mesh rotation={[TERRAIN.rotationX, 0, 0]} position={[0, TERRAIN.y - 0.15, 0.001]}>
+      <planeGeometry args={[TERRAIN.width, TERRAIN.height]} />
       <meshBasicMaterial
         color="#6366f1"
         transparent
@@ -160,29 +242,57 @@ function Rig({ pointer }: { pointer: React.RefObject<{ x: number; y: number }> }
     const t = state.clock.elapsedTime;
     const p = pointer.current ?? { x: 0, y: 0 };
 
-    const targetX = Math.sin(t * 0.11) * 0.55 + p.x * 0.9;
-    const targetY = 2.4 + Math.sin(t * 0.16) * 0.16 - p.y * 0.5;
+    const targetX = Math.sin(t * 0.11) * 0.55 + p.x * 0.5;
+    const targetY = 2.4 + Math.sin(t * 0.16) * 0.16 + p.y * 0.3;
 
-    state.camera.position.x += (targetX - state.camera.position.x) * Math.min(delta * 1.6, 1);
-    state.camera.position.y += (targetY - state.camera.position.y) * Math.min(delta * 1.6, 1);
+    const rate = 1 - Math.exp(-delta * 1.6);
+    state.camera.position.x += (targetX - state.camera.position.x) * rate;
+    state.camera.position.y += (targetY - state.camera.position.y) * rate;
     state.camera.lookAt(0, -0.5, -1.2);
   });
   return null;
 }
 
 export default function RunwayTerrain({ className }: { className?: string }) {
-  const pointer = useRef({ x: 0, y: 0 });
+  const host = useRef<HTMLDivElement>(null);
+  // Normalised device coordinates (-1 … 1), plus whether the cursor is over
+  // the hero region at all.
+  const pointer = useRef({ x: 0, y: 0, inside: false });
 
-  const onPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    pointer.current = {
-      x: (event.clientX - rect.left) / rect.width - 0.5,
-      y: (event.clientY - rect.top) / rect.height - 0.5,
+  // Tracked on the window rather than on the canvas. The hero sits under
+  // `pointer-events: none` so it never steals a click from the sign-in form,
+  // which also means it can never receive a pointer event of its own.
+  React.useEffect(() => {
+    const onMove = (event: PointerEvent) => {
+      const el = host.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height) return;
+
+      const x = ((event.clientX - r.left) / r.width) * 2 - 1;
+      const y = -(((event.clientY - r.top) / r.height) * 2 - 1);
+
+      pointer.current.x = x;
+      pointer.current.y = y;
+      // A margin outside the box still counts, so the ripple fades as the
+      // cursor approaches rather than snapping on at the boundary.
+      pointer.current.inside = x > -1.35 && x < 1.35 && y > -1.35 && y < 1.35;
     };
-  };
+
+    const onLeave = () => {
+      pointer.current.inside = false;
+    };
+
+    window.addEventListener("pointermove", onMove, { passive: true });
+    document.addEventListener("pointerleave", onLeave);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerleave", onLeave);
+    };
+  }, []);
 
   return (
-    <div className={className} onPointerMove={onPointerMove} aria-hidden>
+    <div ref={host} className={className} aria-hidden>
       <Canvas
         // Cap DPR: at 3x on a high-density display this shader is fill-bound
         // and costs far more than it looks like it should.
@@ -191,14 +301,10 @@ export default function RunwayTerrain({ className }: { className?: string }) {
         camera={{ position: [0, 2.4, 5.2], fov: 42 }}
         style={{ background: "transparent" }}
       >
-        <Terrain />
+        <Terrain pointer={pointer} />
         <SafetyPlane />
         <Rig pointer={pointer} />
       </Canvas>
     </div>
   );
 }
-
-// R3F augments JSX with three.js elements; referencing the type here keeps the
-// import meaningful to the linter without widening anything.
-export type { ThreeElements };

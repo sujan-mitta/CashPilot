@@ -198,18 +198,16 @@ export function useInView<T extends HTMLElement = HTMLDivElement>(
   { threshold = 0.15, once = true }: { threshold?: number; once?: boolean } = {}
 ) {
   const ref = useRef<T>(null);
-  const [inView, setInView] = useState(false);
+  // No IntersectionObserver (SSR, or a test environment) means the content must
+  // start visible rather than stay hidden forever. That is knowable at first
+  // render, so it is the initial value instead of an effect that immediately
+  // overwrites it.
+  const [inView, setInView] = useState(() => typeof IntersectionObserver === "undefined");
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-
-    // No IntersectionObserver (or a test environment): show the content rather
-    // than leaving it permanently hidden.
-    if (typeof IntersectionObserver === "undefined") {
-      setInView(true);
-      return;
-    }
+    if (typeof IntersectionObserver === "undefined") return;
 
     const observer = new IntersectionObserver(
       ([entry]) => {
@@ -241,8 +239,10 @@ export function useCountUp(value: number, duration = 900) {
   const frameRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
+    // Reduced motion returns `value` directly from render below, so there is
+    // nothing to animate and nothing to set here — only the start point for a
+    // later run, once the preference changes.
     if (reduced || duration <= 0) {
-      setDisplay(value);
       fromRef.current = value;
       return;
     }
@@ -272,5 +272,7 @@ export function useCountUp(value: number, duration = 900) {
     };
   }, [value, duration, reduced]);
 
-  return display;
+  // Reduced motion (or a zero duration) means the caller gets the exact figure,
+  // never a partially-counted one.
+  return reduced || duration <= 0 ? value : display;
 }
