@@ -298,6 +298,39 @@ describe("SCENARIO 5 - concurrency", () => {
     expect(results.every((r) => r.outcome === "BLOCKED_BY_PRIOR_ATTEMPT")).toBe(true);
     expect(calls).toBe(0);
   });
+
+  // Tranche 17: exactly-once must hold as concurrency scales. First attempt is
+  // UNKNOWN (provider outcome uncertain); every regenerated concurrent attempt
+  // against the SAME obligation must be refused, so the provider is called
+  // exactly once total and only one intent row exists.
+  it.each([2, 5, 10, 50])(
+    "%i concurrent regenerated attempts on one obligation -> at most one financial effect",
+    async (n) => {
+      let providerCalls = 0;
+      // Seed the obligation with an UNKNOWN first attempt.
+      await executeWithDurableIntent(client, {
+        ...attempt("action-seed"),
+        dispatch: async () => { providerCalls++; throw new Error("ETIMEDOUT"); },
+      });
+      expect(providerCalls).toBe(1);
+      expect(store.intents).toHaveLength(1);
+
+      const fire = (i: number) =>
+        executeWithDurableIntent(client, {
+          ...attempt(`action-${i}`),
+          dispatch: async () => { providerCalls++; return { externalRef: `plink_${i}` }; },
+        });
+
+      const results = await Promise.all(Array.from({ length: n }, (_, i) => fire(i)));
+
+      // Not one of the concurrent attempts reached the provider.
+      expect(results.every((r) => r.outcome === "BLOCKED_BY_PRIOR_ATTEMPT")).toBe(true);
+      // Provider was called exactly once total (the seed), never again.
+      expect(providerCalls).toBe(1);
+      // Exactly one intent row exists for the obligation - no duplicates.
+      expect(store.intents).toHaveLength(1);
+    }
+  );
 });
 
 // ===========================================================================
