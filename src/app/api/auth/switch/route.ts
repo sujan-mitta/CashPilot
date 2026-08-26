@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession, signSession, requireBusinessAccess } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { cookies } from "next/headers";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage, parseJsonBody } from "@/lib/errors";
 
 export async function POST(req: Request) {
   try {
@@ -11,9 +11,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { businessId } = await req.json();
-    if (!businessId) {
-      return NextResponse.json({ error: "Missing businessId parameter." }, { status: 400 });
+    const parsed = await parseJsonBody<{ businessId?: unknown }>(req);
+    if (!parsed.ok) return parsed.response;
+    const businessId = parsed.data.businessId;
+    if (typeof businessId !== "string" || businessId.trim() === "") {
+      return NextResponse.json({ error: "Missing or invalid businessId parameter." }, { status: 400 });
     }
 
     // Verify user has access to this business

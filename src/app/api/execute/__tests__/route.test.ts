@@ -549,6 +549,36 @@ describe("Execute Strategy Route", () => {
     });
   });
 
+  // =========================================================================
+  // TRANCHE 12 - input validation. Client-controlled bad input must be 4xx,
+  // never a 500. These reproduce the live findings (wrong-typed strategyId and
+  // malformed JSON both returned 500 before the fix).
+  // =========================================================================
+  describe("TRANCHE 12 - execute input validation", () => {
+    const exec = (raw: string) =>
+      POST(new Request("http://localhost/api/execute", { method: "POST", body: raw }));
+
+    it("wrong-typed strategyId returns 400, not 500 (never reaches Prisma)", async () => {
+      for (const bad of ["12345", '["a"]', '{"x":1}', "true", "null"]) {
+        const res = await exec(`{"strategyId":${bad}}`);
+        expect([400]).toContain(res.status);
+        expect(res.status).not.toBe(500);
+      }
+    });
+
+    it("malformed JSON returns 400, not 500", async () => {
+      const res = await exec("not json{{{");
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(JSON.stringify(body)).not.toMatch(/SyntaxError|Prisma|at Object|stack/i);
+    });
+
+    it("missing strategyId returns 400", async () => {
+      const res = await exec("{}");
+      expect(res.status).toBe(400);
+    });
+  });
+
   it("PART 33: issuing a payment link marks the action EXECUTING, never COMPLETED", async () => {
     const actions = [
       { id: "action-1", actionType: "PRIORITIZE_COLLECTIONS", status: "APPROVED", amount: 4400000 },

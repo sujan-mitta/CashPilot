@@ -18,7 +18,7 @@ import { ExecutionIntentStatus } from "../../../../generated/prisma/client";
 import { checkStrategyFreshness, recordStaleBlock, describeStaleness } from "@/lib/engine/freshnessGate";
 import { formatINR } from "@/lib/format";
 import { logger, withCorrelationId } from "@/lib/observability";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage, parseJsonBody } from "@/lib/errors";
 
 export const POST = withCorrelationId(async (req: Request) => {
   try {
@@ -41,10 +41,14 @@ export const POST = withCorrelationId(async (req: Request) => {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { strategyId } = await req.json();
+    const parsed = await parseJsonBody<{ strategyId?: unknown }>(req);
+    if (!parsed.ok) return parsed.response;
+    const { strategyId } = parsed.data;
 
-    if (!strategyId) {
-      return NextResponse.json({ error: "Missing strategyId parameter." }, { status: 400 });
+    // strategyId must be a non-empty string. A number/array/object would reach
+    // Prisma as a mistyped id and surface as a 500; reject it as a 400 here.
+    if (typeof strategyId !== "string" || strategyId.trim() === "") {
+      return NextResponse.json({ error: "Missing or invalid strategyId parameter." }, { status: 400 });
     }
 
     const business = await prisma.business.findUnique({

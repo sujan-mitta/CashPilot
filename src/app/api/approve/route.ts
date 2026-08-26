@@ -5,7 +5,7 @@ import { validateActionTransition } from "@/lib/engine/stateTransitions";
 import { transitionDecision, InvalidDecisionTransitionError } from "@/lib/engine/decisionStateMachine";
 import { checkStrategyFreshness, recordStaleBlock, describeStaleness } from "@/lib/engine/freshnessGate";
 import { DecisionStatus } from "../../../../generated/prisma/client";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage, parseJsonBody } from "@/lib/errors";
 
 export async function POST(req: Request) {
   let strategyId: string | undefined = undefined;
@@ -15,13 +15,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await req.json();
-    strategyId = body.strategyId;
-    const action = body.action || "approve";
-    const reason = body.reason || null;
+    const parsed = await parseJsonBody<{ strategyId?: unknown; action?: unknown; reason?: unknown }>(req);
+    if (!parsed.ok) return parsed.response;
+    strategyId = typeof parsed.data.strategyId === "string" ? parsed.data.strategyId : "";
+    const action = typeof parsed.data.action === "string" ? parsed.data.action : "approve";
+    const reason = typeof parsed.data.reason === "string" ? parsed.data.reason : null;
 
-    if (!strategyId) {
-      return NextResponse.json({ error: "Missing strategyId parameter." }, { status: 400 });
+    if (!strategyId || strategyId.trim() === "") {
+      return NextResponse.json({ error: "Missing or invalid strategyId parameter." }, { status: 400 });
     }
 
     const business = await prisma.business.findUnique({
