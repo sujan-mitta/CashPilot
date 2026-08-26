@@ -582,7 +582,19 @@ export const POST = withCorrelationId(async (req: Request) => {
       executionIntentIds,
     });
   } catch (error) {
+    // An illegal decision transition is an expected CONFLICT, not a server
+    // fault - e.g. trying to execute a strategy that is already reconciled. It
+    // must be a clean 409 and must not leak the internal state-machine detail
+    // (which named the exact from/to states to the client). No financial state
+    // changed: the transition guard refused before any mutation.
+    if (error instanceof InvalidDecisionTransitionError) {
+      logger.warn("Execute refused by decision state machine", { reason: errorMessage(error) });
+      return NextResponse.json(
+        { error: "This strategy can no longer be executed in its current state." },
+        { status: 409 }
+      );
+    }
     logger.error("API error in execute", { error: errorMessage(error) });
-    return NextResponse.json({ error: errorMessage(error) }, { status: 500 });
+    return NextResponse.json({ error: "Execution failed. Please try again." }, { status: 500 });
   }
 });
