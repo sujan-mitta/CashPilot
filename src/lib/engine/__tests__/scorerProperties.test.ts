@@ -55,7 +55,8 @@ function randomStrategies(rng: () => number): StrategyResult[] {
   const names = ["DO_NOTHING", "RECOVER_ONLY", "RECOVER_AND_COLLECT", "FULL_INTERVENTION", "DEFER_ONLY"];
   const count = 1 + Math.floor(rng() * names.length);
   const chosen = names.slice(0, count);
-  return chosen.map((name) => {
+  return chosen.map((rawName) => {
+    const name = rawName as StrategyResult["name"];
     const minBalance = Math.floor((rng() - 0.4) * 50_000_000);
     const deficitDays = Math.floor(rng() * 8);
     const nActions = name === "DO_NOTHING" ? 0 : 1 + Math.floor(rng() * 3);
@@ -154,12 +155,12 @@ describe("scoring edge cases (explicit)", () => {
 
   it("all-equal strategies still produce a stable, unique ranking via name tie-break", () => {
     const base = randomStrategies(mulberry32(42))[0];
-    const clones = ["ALPHA", "BRAVO", "CHARLIE"].map((name) => ({ ...base, name }));
+    const clones = ["ALPHA", "BRAVO", "CHARLIE"].map((name) => ({ ...base, name: name as StrategyResult["name"] }));
     const scored = scoreAllStrategies(clones);
     // Equal on every metric -> tie broken by name; ranks are unique 1,2,3.
     const ranks = scored.map((s) => s.scoring.rank).sort();
     expect(ranks).toEqual([1, 2, 3]);
     // ALPHA sorts first alphabetically among equals.
-    expect(scored.find((s) => s.name === "ALPHA")!.scoring.rank).toBe(1);
+    expect(scored.find((s) => (s.name as string) === "ALPHA")!.scoring.rank).toBe(1);
   });
 });

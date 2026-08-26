@@ -57,7 +57,7 @@ function makeForecast(minBalance: number, deficitDays: number): ForecastDay[] {
 
 function strat(name: string, minBalance: number, deficitDays: number, actions: StrategyResult["actions"]): StrategyResult {
   return {
-    name,
+    name: name as StrategyResult["name"],
     actions,
     projectedBalance: minBalance,
     riskLevel: "HIGH",
@@ -112,7 +112,7 @@ describe("counterfactual math consistency", () => {
       strat("DO_NOTHING", -10_000_000, 2, []),
       strat("SAME_AS_BASELINE", -10_000_000, 2, []),
     ]);
-    const same = scored.find((s) => s.name === "SAME_AS_BASELINE")!;
+    const same = scored.find((s) => (s.name as string) === "SAME_AS_BASELINE")!;
     const cf = same.scoring.counterfactual;
     if (cf) {
       expect(cf.minimumBalanceDelta).toBe(0);
