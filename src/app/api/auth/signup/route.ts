@@ -5,6 +5,7 @@ import { hashPassword } from "@/lib/auth/password";
 import { rateLimit, clientKey } from "@/lib/auth/rateLimit";
 import { cookies } from "next/headers";
 import { logger } from "@/lib/observability";
+import { parseJsonBody } from "@/lib/errors";
 
 /**
  * Account registration.
@@ -30,7 +31,9 @@ export async function POST(req: Request) {
       );
     }
 
-    const { name, email, businessName, password } = await req.json();
+    const parsed = await parseJsonBody<Record<string, unknown>>(req);
+    if (!parsed.ok) return parsed.response;
+    const { name, email, businessName, password } = parsed.data as any;
     if (!name || !email || !businessName || !password) {
       return NextResponse.json({ error: "Name, email, business name and password are required." }, { status: 400 });
     }

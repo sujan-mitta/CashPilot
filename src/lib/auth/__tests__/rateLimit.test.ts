@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { rateLimit, clientKey } from "../rateLimit";
 
 describe("rateLimit", () => {
@@ -11,13 +11,20 @@ describe("rateLimit", () => {
   });
 
   it("resets after the window elapses", () => {
-    const key = `t-${Math.random()}`;
-    expect(rateLimit(key, 1, 1).ok).toBe(true);   // consume the single slot
-    expect(rateLimit(key, 1, 1).ok).toBe(false);  // immediately blocked
-    // window of 1ms has now passed
-    const later = Date.now();
-    while (Date.now() <= later + 2) { /* spin briefly */ }
-    expect(rateLimit(key, 1, 1).ok).toBe(true);
+    // Fake timers make this deterministic: the previous real-clock version
+    // raced across millisecond boundaries under load and flaked.
+    vi.useFakeTimers();
+    try {
+      const key = `t-${Math.random()}`;
+      const t0 = new Date("2026-01-01T00:00:00.000Z").getTime();
+      vi.setSystemTime(t0);
+      expect(rateLimit(key, 1, 60_000).ok).toBe(true);   // consume the slot
+      expect(rateLimit(key, 1, 60_000).ok).toBe(false);  // blocked within window
+      vi.setSystemTime(t0 + 60_001);                     // window has elapsed
+      expect(rateLimit(key, 1, 60_000).ok).toBe(true);   // slot available again
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("tracks keys independently", () => {

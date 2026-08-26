@@ -5,6 +5,7 @@ import { verifyPassword, isPlaceholderHash } from "@/lib/auth/password";
 import { rateLimit, clientKey } from "@/lib/auth/rateLimit";
 import { cookies } from "next/headers";
 import { logger } from "@/lib/observability";
+import { parseJsonBody } from "@/lib/errors";
 
 /**
  * Email + password sign-in.
@@ -30,7 +31,9 @@ export async function POST(req: Request) {
       );
     }
 
-    const { email, password, businessName } = await req.json();
+    const parsed = await parseJsonBody<Record<string, unknown>>(req);
+    if (!parsed.ok) return parsed.response;
+    const { email, password, businessName } = parsed.data as any;
     if (!email || !password || !businessName) {
       return NextResponse.json({ error: "Email, password and business name are required." }, { status: 400 });
     }

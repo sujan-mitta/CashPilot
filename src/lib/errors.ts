@@ -18,3 +18,29 @@ export function errorMessage(error: unknown, fallback = "Unexpected error"): str
   }
   return fallback;
 }
+
+import { NextResponse } from "next/server";
+
+/**
+ * Parses a JSON request body, distinguishing "malformed input" (the client's
+ * fault) from a genuine server error.
+ *
+ * A bare `await req.json()` throws a SyntaxError on malformed input, which then
+ * falls into a route's catch-all and returns 500 - telling the client the
+ * server broke when the client sent garbage. This returns a typed result so the
+ * caller can answer 400 instead. It never exposes the parser's internal error
+ * text.
+ */
+export async function parseJsonBody<T = unknown>(
+  req: Request
+): Promise<{ ok: true; data: T } | { ok: false; response: NextResponse }> {
+  try {
+    const data = (await req.json()) as T;
+    return { ok: true, data };
+  } catch {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Request body must be valid JSON." }, { status: 400 }),
+    };
+  }
+}
