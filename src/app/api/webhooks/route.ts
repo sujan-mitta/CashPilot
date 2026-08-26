@@ -87,7 +87,12 @@ export const POST = withCorrelationId(async (req: Request) => {
     }
 
     const event = JSON.parse(body) as RazorpayWebhookEvent;
-    const eventId = event.id;
+    // Razorpay carries the unique event id in the X-Razorpay-Event-Id HEADER,
+    // not the body - the webhook payload has no top-level `id`. Reading only
+    // `event.id` rejected every real delivery as MISSING_EVENT_ID (caught by
+    // WebhookDeliveryAttempt). The header is the idempotency key; the body id
+    // is kept as a fallback so synthetic/test events that embed one still work.
+    const eventId = req.headers.get("x-razorpay-event-id") || event.id;
 
     if (!eventId) {
       await recordRejectedDelivery("MISSING_EVENT_ID");

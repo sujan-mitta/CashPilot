@@ -108,6 +108,24 @@ const post = (b: string, signature?: string) =>
     headers: signature ? { "x-razorpay-signature": signature } : {},
   }));
 
+/**
+ * A delivery shaped like a REAL Razorpay one: the event id arrives in the
+ * X-Razorpay-Event-Id HEADER, and the body has NO top-level id. This is the
+ * shape that failed live with MISSING_EVENT_ID until the handler was fixed.
+ */
+const postRazorpayShaped = (eventId: string, paidBody: string, signature: string) =>
+  POST(new Request("http://localhost/api/webhooks", {
+    method: "POST",
+    body: paidBody,
+    headers: { "x-razorpay-signature": signature, "x-razorpay-event-id": eventId },
+  }));
+
+const bodyNoId = () =>
+  JSON.stringify({
+    event: "payment_link.paid",
+    payload: { payment_link: { entity: { id: "plink_test", amount_paid: 100000, reference_id: "cp_ref_1" } } },
+  });
+
 const deliveriesFor = (eventId: string) =>
   state.deliveries.filter((d) => d.providerEventId === eventId);
 
@@ -232,6 +250,33 @@ describe("M1 — durable webhook delivery observability", () => {
     expect(d).toHaveLength(1);
     expect(d[0].errorClass).toBe("UNKNOWN_EVENT_TYPE");
     expect(state.settleCalls).toBe(0);
+  });
+
+  it("THE LIVE BUG: uses the X-Razorpay-Event-Id header when the body has no id", async () => {
+    // Razorpay's real payment_link.paid delivery carries the event id in the
+    // header, not the body. Reading only body.id rejected every real delivery
+    // as MISSING_EVENT_ID - caught by WebhookDeliveryAttempt, invisible without
+    // it. This asserts a header-id delivery now settles.
+    const b = bodyNoId();
+    const res = await postRazorpayShaped("evt_from_header_1", b, sign(b));
+
+    expect(res.status).toBe(200);
+    const d = deliveriesFor("evt_from_header_1");
+    expect(d).toHaveLength(1);
+    expect(d[0].status).toBe("SUCCEEDED");
+    expect(state.processed).toContain("evt_from_header_1");
+    expect(state.settleCalls).toBe(1);
+  });
+
+  it("still rejects a delivery with an id in NEITHER header nor body", async () => {
+    const b = bodyNoId();
+    const res = await POST(new Request("http://localhost/api/webhooks", {
+      method: "POST",
+      body: b,
+      headers: { "x-razorpay-signature": sign(b) },
+    }));
+    expect(res.status).toBe(400);
+    expect(state.deliveries.at(-1)?.errorClass).toBe("MISSING_EVENT_ID");
   });
 
   it("observability never mutates financial state on its own", async () => {
