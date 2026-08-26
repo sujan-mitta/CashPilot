@@ -33,7 +33,7 @@ export async function POST(req: Request) {
 
     const parsed = await parseJsonBody<Record<string, unknown>>(req);
     if (!parsed.ok) return parsed.response;
-    const { name, email, businessName, password } = parsed.data as any;
+    const { name, email, businessName, password } = parsed.data;
     if (!name || !email || !businessName || !password) {
       return NextResponse.json({ error: "Name, email, business name and password are required." }, { status: 400 });
     }
@@ -41,6 +41,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Password must be at least 8 characters." }, { status: 400 });
     }
     const normalizedEmail = String(email).toLowerCase();
+    const businessNameStr = String(businessName).trim();
+    const nameStr = String(name).trim();
 
     // An existing email must sign in, not sign up again. This also stops a
     // second registration silently re-connecting an account elsewhere.
@@ -55,7 +57,7 @@ export async function POST(req: Request) {
     // A taken business name is refused rather than joined. Joining an existing
     // tenant is a deliberate, authorized action (an invite), never a
     // side-effect of picking the same name.
-    const existingBusiness = await prisma.business.findFirst({ where: { name: businessName } });
+    const existingBusiness = await prisma.business.findFirst({ where: { name: businessNameStr } });
     if (existingBusiness) {
       return NextResponse.json(
         { error: "That business name is already registered. Choose a different name, or ask an existing member to invite you." },
@@ -68,11 +70,11 @@ export async function POST(req: Request) {
     // One transaction so a half-created account can never exist.
     const { user, business } = await prisma.$transaction(async (tx) => {
       const business = await tx.business.create({
-        data: { name: businessName, currentCash: 100000000 },
+        data: { name: businessNameStr, currentCash: 100000000 },
       });
       const user = await tx.user.create({
         data: {
-          name,
+          name: nameStr,
           email: normalizedEmail,
           password: passwordHash,
           businesses: { connect: { id: business.id } },

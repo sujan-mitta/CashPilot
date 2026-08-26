@@ -33,7 +33,7 @@ export async function POST(req: Request) {
 
     const parsed = await parseJsonBody<Record<string, unknown>>(req);
     if (!parsed.ok) return parsed.response;
-    const { email, password, businessName } = parsed.data as any;
+    const { email, password, businessName } = parsed.data;
     if (!email || !password || !businessName) {
       return NextResponse.json({ error: "Email, password and business name are required." }, { status: 400 });
     }
