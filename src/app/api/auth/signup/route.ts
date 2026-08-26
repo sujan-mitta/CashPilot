@@ -1,63 +1,82 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { signSession } from "@/lib/auth";
+import { hashPassword } from "@/lib/auth/password";
+import { rateLimit, clientKey } from "@/lib/auth/rateLimit";
 import { cookies } from "next/headers";
-import { errorMessage } from "@/lib/errors";
+import { logger } from "@/lib/observability";
 
+/**
+ * Account registration.
+ *
+ * Two live-verified defects are closed here:
+ *
+ *  1. Passwordless. The route never hashed or stored a password, so every
+ *     account was unauthenticable-by-design and login accepted anything.
+ *
+ *  2. Tenant hijack. A new user signing up with an EXISTING business name was
+ *     silently connected to that business. Proven live: an outside email
+ *     joined ABC Electronics and received a session scoped to its ledger.
+ *     Business membership is now granted only at creation; you cannot join an
+ *     existing tenant by guessing its name.
+ */
 export async function POST(req: Request) {
   try {
-    const { name, email, businessName } = await req.json();
-
-    if (!name || !email || !businessName) {
-      return NextResponse.json({ error: "Missing required parameters." }, { status: 400 });
+    const limited = rateLimit(`signup:${clientKey(req)}`, 5, 60_000);
+    if (!limited.ok) {
+      return NextResponse.json(
+        { error: "Too many attempts. Please wait a minute and try again." },
+        { status: 429, headers: { "Retry-After": String(limited.retryAfterSec) } }
+      );
     }
 
-    // Find or create Business
-    let business = await prisma.business.findFirst({
-      where: { name: businessName },
-    });
+    const { name, email, businessName, password } = await req.json();
+    if (!name || !email || !businessName || !password) {
+      return NextResponse.json({ error: "Name, email, business name and password are required." }, { status: 400 });
+    }
+    if (String(password).length < 8) {
+      return NextResponse.json({ error: "Password must be at least 8 characters." }, { status: 400 });
+    }
+    const normalizedEmail = String(email).toLowerCase();
 
-    if (!business) {
-      business = await prisma.business.create({
-        data: {
-          name: businessName,
-          currentCash: 100000000, // ₹10.0L default in paise
-        },
+    // An existing email must sign in, not sign up again. This also stops a
+    // second registration silently re-connecting an account elsewhere.
+    const existingUser = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+    if (existingUser) {
+      return NextResponse.json(
+        { error: "An account with this email already exists. Please sign in." },
+        { status: 409 }
+      );
+    }
+
+    // A taken business name is refused rather than joined. Joining an existing
+    // tenant is a deliberate, authorized action (an invite), never a
+    // side-effect of picking the same name.
+    const existingBusiness = await prisma.business.findFirst({ where: { name: businessName } });
+    if (existingBusiness) {
+      return NextResponse.json(
+        { error: "That business name is already registered. Choose a different name, or ask an existing member to invite you." },
+        { status: 409 }
+      );
+    }
+
+    const passwordHash = await hashPassword(String(password));
+
+    // One transaction so a half-created account can never exist.
+    const { user, business } = await prisma.$transaction(async (tx) => {
+      const business = await tx.business.create({
+        data: { name: businessName, currentCash: 100000000 },
       });
-    }
-
-    // Find or create User and connect to Business
-    let user = await prisma.user.findUnique({
-      where: { email },
-      include: { businesses: true },
-    });
-
-    if (!user) {
-      user = await prisma.user.create({
+      const user = await tx.user.create({
         data: {
           name,
-          email,
-          businesses: {
-            connect: { id: business.id },
-          },
+          email: normalizedEmail,
+          password: passwordHash,
+          businesses: { connect: { id: business.id } },
         },
-        include: { businesses: true },
       });
-    } else {
-      // Connect to business if not already linked
-      const isLinked = user.businesses.some((b) => b.id === business.id);
-      if (!isLinked) {
-        user = await prisma.user.update({
-          where: { id: user.id },
-          data: {
-            businesses: {
-              connect: { id: business.id },
-            },
-          },
-          include: { businesses: true },
-        });
-      }
-    }
+      return { user, business };
+    });
 
     const sessionPayload = {
       userId: user.id,
@@ -73,13 +92,14 @@ export async function POST(req: Request) {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
-      maxAge: 604800, // 7 days
+      maxAge: 604800,
       path: "/",
     });
 
+    logger.info("Account created", { userId: user.id, businessId: business.id });
     return NextResponse.json({ success: true, user: sessionPayload });
   } catch (error) {
-    console.error("Signup API error:", error);
-    return NextResponse.json({ error: errorMessage(error) }, { status: 500 });
+    logger.error("Signup API error", { error: error instanceof Error ? error.message : String(error) });
+    return NextResponse.json({ error: "Sign-up failed. Please try again." }, { status: 500 });
   }
 }

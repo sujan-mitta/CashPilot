@@ -90,8 +90,8 @@ function LoginForm() {
       setError("Please enter your business name.");
       return;
     }
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters long.");
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters long.");
       return;
     }
 
@@ -101,8 +101,8 @@ function LoginForm() {
       const url = mode === "SIGN_UP" ? "/api/auth/signup" : "/api/auth/login";
       const payload =
         mode === "SIGN_UP"
-          ? { name, email, businessName }
-          : { email, businessName: businessName || "ABC Electronics Pvt Ltd" };
+          ? { name, email, businessName, password }
+          : { email, password, businessName };
 
       const res = await fetch(url, {
         method: "POST",
