@@ -146,7 +146,11 @@ export function ForecastChart({
               fill: C.brand,
               fontSize: 10,
               fontWeight: 600,
-              position: "insideTopRight",
+              // Anchored to the LEFT, while "Out of cash" is anchored to the
+              // right. When the safety threshold sits close to the zero line the
+              // two labels would otherwise stack on the same corner and overlap;
+              // opposite corners keep them legible at any data range.
+              position: "insideTopLeft",
             }}
           />
         )}
