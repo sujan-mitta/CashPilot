@@ -8,15 +8,15 @@ interface ActionItem {
 
 export function ActionPlanChecklist({ actions }: { actions: ActionItem[] }) {
   return (
-    <div className="space-y-3 bg-ground-100 border border-line-soft p-5 rounded-xl shadow-sm">
-      <h3 className="text-xs font-bold text-ink-400 uppercase tracking-widest border-b border-line-faint pb-3 mb-4">
+    <div className="space-y-3 bg-ground-100 border border-line-soft p-5 rounded-md">
+      <h3 className="text-xs font-bold text-ink-400 border-b border-line-faint pb-3 mb-4">
         Intervention Action Checklist
       </h3>
       <div className="space-y-2.5">
         {actions.map((action, idx) => (
           <div
             key={idx}
-            className="flex justify-between items-center p-3.5 rounded-lg bg-ground-200 border border-line-faint"
+            className="flex justify-between items-center p-3.5 rounded-md bg-ground-200 border border-line-faint"
           >
             <div className="flex items-center gap-3">
               <input

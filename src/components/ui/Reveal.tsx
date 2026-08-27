@@ -1,72 +1,55 @@
 "use client";
 
 import React from "react";
-import { motion, type Variants } from "framer-motion";
-import { fadeUp, staggerContainer, staggerItem } from "./motion";
-
-interface RevealProps {
-  children: React.ReactNode;
-  className?: string;
-  delay?: number;
-  variants?: Variants;
-  as?: "div" | "section";
-}
 
 /**
- * Fades + lifts its children in on mount. Use for individual sections so a
- * page never just "appears" — it settles into place.
+ * These used to fade-and-rise every section into view on a stagger, on every
+ * screen — 69 wrappers in total. Content that assembles itself as you scroll
+ * is the house style of a marketing page, not of a tool somebody uses all day
+ * to read numbers. An operator opening the dashboard wants the figures to be
+ * there, not to arrive.
+ *
+ * The components are kept (rather than deleted from 69 call sites) so the page
+ * structure stays readable, and so a future decision to animate has one place
+ * to go. They now render a plain element.
  */
-export function Reveal({ children, className, delay = 0, variants = fadeUp, as = "div" }: RevealProps) {
-  const Component = motion[as];
-  return (
-    <Component
-      className={className}
-      initial="hidden"
-      animate="show"
-      variants={variants}
-      transition={{ delay }}
-    >
-      {children}
-    </Component>
-  );
-}
 
-interface StaggerProps {
-  children: React.ReactNode;
-  className?: string;
+type DivProps = React.HTMLAttributes<HTMLDivElement>;
+
+/** Accepts and ignores the old motion props so call sites need no edits. */
+type LegacyMotionProps = {
+  variants?: unknown;
   stagger?: number;
   delayChildren?: number;
-  as?: "div" | "section" | "ul";
-}
+  delay?: number;
+  once?: boolean;
+  amount?: number;
+};
 
-/** Container that reveals its direct children one after another. Pair with <StaggerItem>. */
-export function Stagger({ children, className, stagger = 0.07, delayChildren = 0, as = "div" }: StaggerProps) {
-  const Component = motion[as];
-  return (
-    <Component
-      className={className}
-      initial="hidden"
-      animate="show"
-      variants={staggerContainer(stagger, delayChildren)}
-    >
-      {children}
-    </Component>
-  );
-}
-
-export function StaggerItem({
+export function Reveal({
   children,
-  className,
-  as = "div",
-}: {
-  children: React.ReactNode;
-  className?: string;
-  as?: "div" | "li";
-}) {
-  const Component = motion[as];
-  return (
-    <Component className={className} variants={staggerItem}>
-      {children}
-    </Component>
-  );
+  variants,
+  delay,
+  once,
+  amount,
+  ...rest
+}: DivProps & LegacyMotionProps) {
+  void variants; void delay; void once; void amount;
+  return <div {...rest}>{children}</div>;
+}
+
+export function Stagger({
+  children,
+  stagger,
+  delayChildren,
+  variants,
+  ...rest
+}: DivProps & LegacyMotionProps) {
+  void stagger; void delayChildren; void variants;
+  return <div {...rest}>{children}</div>;
+}
+
+export function StaggerItem({ children, variants, ...rest }: DivProps & LegacyMotionProps) {
+  void variants;
+  return <div {...rest}>{children}</div>;
 }

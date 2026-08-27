@@ -5,25 +5,35 @@ import { useRouter, usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import { useCashPilot } from "@/context/CashPilotContext";
 import { PilotIcon } from "./PilotIcon";
+import { ThemeToggle } from "./ThemeToggle";
 import { Check, ChevronDown, LogOut } from "lucide-react";
 import { initialsOf } from "@/lib/format";
 import { errorMessage } from "@/lib/errors";
+import { useToast } from "./ui/Toast";
 import clsx from "clsx";
 
+/**
+ * Step names are written for someone who has never used the product.
+ *
+ * The previous set ("Your cash forecast", "Root Investigation", "Human Gate",
+ * "Action Execution") described the ENGINE. These describe what the person is
+ * about to do, which is what a stepper is for. `route` is what makes a
+ * completed step navigable.
+ */
 const steps = [
-  { num: 1, label: "Runway Forecast" },
-  { num: 2, label: "Root Investigation" },
-  { num: 3, label: "Simulate Strategy" },
-  { num: 4, label: "Human Gate" },
-  { num: 5, label: "Action Execution" },
+  { num: 1, label: "See the problem", route: "/dashboard" },
+  { num: 2, label: "Find the cause", route: "/investigation" },
+  { num: 3, label: "Compare fixes", route: "/strategies" },
+  { num: 4, label: "Approve", route: "/approval" },
+  { num: 5, label: "Run it", route: "/execution" },
 ];
 
 export function Navbar({ activeStep }: { activeStep: number }) {
   const router = useRouter();
   const pathname = usePathname();
   const { user, login, logout } = useCashPilot();
+  const { toast } = useToast();
   const [businesses, setBusinesses] = React.useState<{ id: string; name: string }[]>([]);
-  const [switchError, setSwitchError] = React.useState<string | null>(null);
 
   // Navigation guard: redirect if no session exists (after mount, to avoid an
   // SSR flash). Re-checked on every route change, since the Navbar lives at the
@@ -50,7 +60,6 @@ export function Navbar({ activeStep }: { activeStep: number }) {
     const businessId = e.target.value;
     if (!businessId || businessId === user?.businessId) return;
 
-    setSwitchError(null);
     try {
       const res = await fetch("/api/auth/switch", {
         method: "POST",
@@ -62,12 +71,22 @@ export function Navbar({ activeStep }: { activeStep: number }) {
         login(data.user);
         // Full reload so every cached figure is re-fetched under the new tenant.
         // Switching business must never leave one business's numbers on screen.
+        // Blunt, and deliberately kept that way: every in-memory figure in the
+        // app belongs to the previous tenant and none of it may survive.
         window.location.reload();
       } else {
-        setSwitchError(data.error || "Access denied.");
+        toast({
+          tone: "danger",
+          title: "Could not switch business",
+          description: `${data.error || "Access denied."} You are still viewing ${businessName}.`,
+        });
       }
     } catch (err) {
-      setSwitchError(errorMessage(err));
+      toast({
+        tone: "danger",
+        title: "Could not switch business",
+        description: `${errorMessage(err)} You are still viewing ${businessName}.`,
+      });
     }
   };
 
@@ -80,6 +99,8 @@ export function Navbar({ activeStep }: { activeStep: number }) {
   const operatorName = user?.name || "Aryan Mittal";
   const initials = initialsOf(operatorName);
 
+  const currentStep = steps.find((s) => s.num === activeStep);
+
   return (
     <header className="sticky top-0 z-50 glass border-b border-line-soft">
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
@@ -87,21 +108,18 @@ export function Navbar({ activeStep }: { activeStep: number }) {
           {/* ── Mark ─────────────────────────────────────────────────── */}
           <button
             onClick={() => router.push("/dashboard")}
-            className="flex items-center gap-2.5 text-left outline-none group shrink-0 rounded-xl"
+            className="flex items-center gap-2.5 text-left outline-none group shrink-0 rounded-md"
           >
             <motion.span
               whileHover={{ rotate: 8, scale: 1.06 }}
               transition={{ type: "spring", stiffness: 400, damping: 18 }}
-              className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-400 via-brand-500 to-violet-500 flex items-center justify-center shadow-[0_1px_0_rgb(255_255_255/0.2)_inset,0_6px_18px_-6px_rgb(99_102_241/0.8)]"
+              className="w-9 h-9 rounded-md bg-brand-500 flex items-center justify-center"
             >
               <PilotIcon className="w-[18px] h-[18px] text-white" />
             </motion.span>
-            <span className="flex items-center gap-2">
+            <span className="hidden sm:flex items-center gap-2">
               <span className="font-semibold text-[1.05rem] tracking-[-0.03em] text-ink-100">
                 CashPilot
-              </span>
-              <span className="hidden sm:inline text-[9px] bg-brand-500/12 text-brand-300 ring-1 ring-inset ring-brand-500/25 font-semibold px-1.5 py-0.5 rounded-md tracking-[0.08em] uppercase">
-                Agent v1.0
               </span>
             </span>
           </button>
@@ -109,32 +127,47 @@ export function Navbar({ activeStep }: { activeStep: number }) {
           {/* ── Workflow stepper ──────────────────────────────────────
               The pill is a shared layoutId, so moving between steps
               animates the highlight across rather than cross-fading it —
-              which is what makes the five stages read as one progression. */}
+              which is what makes the five stages read as one progression.
+
+              Completed steps are real buttons: the checkmark promises you
+              can go back and look, so it has to be true. Future steps stay
+              inert, which keeps the flow strictly forward. */}
           {activeStep > 0 && (
             <nav
               className="hidden lg:flex items-center"
-              aria-label="Intervention workflow progress"
+              aria-label="Progress through the intervention"
             >
               {steps.map((s, idx) => {
                 const isCurrent = s.num === activeStep;
                 const isPast = s.num < activeStep;
+                const Tag = isPast ? "button" : "div";
 
                 return (
                   <React.Fragment key={s.num}>
-                    <div
-                      className="relative flex items-center gap-2 py-1.5 pl-1.5 pr-3.5 rounded-full"
+                    <Tag
+                      {...(isPast
+                        ? {
+                            onClick: () => router.push(s.route),
+                            title: `Back to step ${s.num}: ${s.label}`,
+                            type: "button" as const,
+                          }
+                        : {})}
+                      className={clsx(
+                        "relative flex items-center gap-2 py-1.5 pl-1.5 pr-3.5 rounded-full outline-none",
+                        isPast && "hover:bg-ground-200 transition-colors cursor-pointer"
+                      )}
                       aria-current={isCurrent ? "step" : undefined}
                     >
                       {isCurrent && (
                         <motion.span
                           layoutId="nav-step-pill"
-                          className="absolute inset-0 rounded-full bg-gradient-to-r from-brand-500 to-brand-600 shadow-[0_0_0_1px_rgb(99_102_241/0.4),0_4px_16px_-4px_rgb(99_102_241/0.7)]"
+                          className="absolute inset-0 rounded-full bg-brand-500"
                           transition={{ type: "spring", stiffness: 380, damping: 32 }}
                         />
                       )}
                       <span
                         className={clsx(
-                          "relative z-10 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-semibold transition-colors duration-300",
+                          "relative z-10 w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-semibold transition-colors duration-300",
                           {
                             "bg-white text-brand-600": isCurrent,
                             "bg-safe-500/20 text-safe-400 ring-1 ring-inset ring-safe-500/40":
@@ -157,7 +190,7 @@ export function Navbar({ activeStep }: { activeStep: number }) {
                       >
                         {s.label}
                       </span>
-                    </div>
+                    </Tag>
                     {idx < steps.length - 1 && (
                       <span
                         className={clsx(
@@ -173,16 +206,21 @@ export function Navbar({ activeStep }: { activeStep: number }) {
           )}
 
           {/* ── Operator ─────────────────────────────────────────────── */}
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            {/* Visible at every width. Hiding it under sm meant phone users — the
+                most likely to want light mode outdoors — were the only ones
+                who could not switch. It fits: 92px in a 343px content box. */}
+            <ThemeToggle />
+
             <button
               onClick={() => router.push("/profile")}
-              className="flex items-center gap-2.5 text-left rounded-xl px-1.5 py-1 hover:bg-ground-200 transition-colors duration-200 outline-none group"
+              className="flex items-center gap-2.5 text-left rounded-md px-1.5 py-1 hover:bg-ground-200 transition-colors duration-200 outline-none group"
             >
-              <div className="w-8 h-8 rounded-[10px] bg-brand-500/12 ring-1 ring-inset ring-brand-500/25 flex items-center justify-center text-[11px] font-semibold text-brand-300 group-hover:ring-brand-500/45 transition-all duration-200">
+              <div className="w-8 h-8 rounded-md bg-brand-500/12 ring-1 ring-inset ring-brand-500/25 flex items-center justify-center text-[11px] font-semibold text-brand-300 group-hover:ring-brand-500/45 transition-all duration-200">
                 {initials}
               </div>
-              <div className="text-right hidden sm:block">
-                <span className="text-[9px] uppercase font-semibold text-ink-400 block tracking-[0.09em] leading-none">
+              <div className="text-right hidden md:block">
+                <span className="text-[11px] font-medium text-ink-400 block leading-none">
                   {operatorName}
                 </span>
                 {businesses.length > 1 ? (
@@ -215,7 +253,7 @@ export function Navbar({ activeStep }: { activeStep: number }) {
               onClick={handleLogout}
               title="Sign out"
               aria-label="Sign out"
-              className="p-2 text-ink-400 hover:text-risk-400 hover:bg-risk-500/10 rounded-xl transition-colors duration-200 outline-none"
+              className="p-2 text-ink-400 hover:text-risk-400 hover:bg-risk-500/10 rounded-md transition-colors duration-200 outline-none"
             >
               <LogOut className="w-4 h-4" />
             </motion.button>
@@ -223,19 +261,32 @@ export function Navbar({ activeStep }: { activeStep: number }) {
         </div>
       </div>
 
-      {/* A failed tenant switch used to be an alert(). It belongs in the chrome,
-          because the operator needs to know WHICH business they are looking at
-          before they read any figure below. */}
-      {switchError && (
-        <motion.div
-          initial={{ opacity: 0, height: 0 }}
-          animate={{ opacity: 1, height: "auto" }}
-          role="alert"
-          className="bg-risk-500/12 border-t border-risk-500/25 text-risk-400 text-[11.5px] font-medium px-6 py-2 text-center"
-        >
-          Could not switch business — {switchError} You are still viewing{" "}
-          <strong className="font-semibold">{businessName}</strong>.
-        </motion.div>
+      {/* ── Compact progress, below lg ────────────────────────────────
+          The full stepper is hidden under 1024px, which left tablet and
+          phone users with no sense of position at all in a five-step flow
+          whose entire premise is knowing where you are. */}
+      {activeStep > 0 && currentStep && (
+        <div className="lg:hidden border-t border-line-faint px-4 sm:px-6 py-2 flex items-center gap-3">
+          <span className="label shrink-0">
+            Step {activeStep} of {steps.length}
+          </span>
+          <span className="text-[12px] font-medium text-ink-200 truncate">{currentStep.label}</span>
+          <div className="ml-auto flex items-center gap-1 shrink-0" aria-hidden>
+            {steps.map((s) => (
+              <span
+                key={s.num}
+                className={clsx(
+                  "h-1 rounded-full transition-all duration-300",
+                  s.num === activeStep
+                    ? "w-5 bg-brand-500"
+                    : s.num < activeStep
+                    ? "w-1.5 bg-safe-500/60"
+                    : "w-1.5 bg-line-firm"
+                )}
+              />
+            ))}
+          </div>
+        </div>
       )}
     </header>
   );

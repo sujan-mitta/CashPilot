@@ -34,9 +34,9 @@ const toneText: Record<NonNullable<StatTileProps["tone"]>, string> = {
 };
 
 const sizeText: Record<NonNullable<StatTileProps["size"]>, string> = {
-  sm: "text-[1.35rem]",
-  lg: "text-[1.75rem] sm:text-[2.1rem]",
-  xl: "text-[2.4rem] sm:text-[3rem] leading-[1.05]",
+  sm: "text-[17px]",
+  lg: "text-[22px]",
+  xl: "text-[28px] leading-[1.15]",
 };
 
 export function StatTile({
@@ -51,10 +51,10 @@ export function StatTile({
 }: StatTileProps) {
   return (
     <div className={className}>
-      <span className="label block mb-1.5">{label}</span>
+      <span className="label block mb-1">{label}</span>
       <span
         className={clsx(
-          "numeric font-semibold block tracking-[-0.03em]",
+          "numeric font-semibold block tracking-[-0.012em]",
           toneText[tone],
           sizeText[size]
         )}
@@ -66,7 +66,7 @@ export function StatTile({
         )}
       </span>
       {sublabel && (
-        <span className="text-[11.5px] text-ink-400 font-medium mt-1.5 block">{sublabel}</span>
+        <span className="text-[12px] text-ink-400 mt-1 block">{sublabel}</span>
       )}
     </div>
   );

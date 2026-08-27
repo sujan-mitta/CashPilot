@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { formatINR, formatPercent, formatDateTime } from "@/lib/format";
+import { planName } from "@/lib/planNames";
 import { Card } from "@/components/ui/Card";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { Reveal, Stagger, StaggerItem } from "@/components/ui/Reveal";
@@ -12,13 +13,6 @@ import { BarChart2, Clock, ChevronRight, X, ShieldAlert, ArrowLeft } from "lucid
 import clsx from "clsx";
 import { errorMessage } from "@/lib/errors";
 
-function strategyPrettyName(name: string) {
-  if (name === "DO_NOTHING") return "Do Nothing (Control)";
-  if (name === "RECOVER_ONLY") return "Strategy A: Recovery Only";
-  if (name === "RECOVER_AND_COLLECT") return "Strategy B: Recovery + Collections";
-  if (name === "FULL_INTERVENTION") return "Strategy C: Full Intervention";
-  return name;
-}
 
 const FILTERS = ["ALL", "RECOMMENDED", "APPROVED", "REJECTED", "EXECUTED", "SUCCESSFUL", "PENDING_OUTCOME"];
 
@@ -91,14 +85,14 @@ export default function DecisionHistoryPage() {
       {/* Header navigation bar */}
       <Reveal className="flex justify-between items-center flex-wrap gap-4">
         <div>
-          <h1 className="text-xl font-black text-ink-100 tracking-tight">Decision Memory &amp; Strategy Performance</h1>
+          <h1 className="text-xl font-semibold text-ink-100 tracking-tight">Decision Memory &amp; Strategy Performance</h1>
           <p className="text-ink-300 text-xs mt-1">
             Verify intervention predictions against reality. Immutably track historical forecasts.
           </p>
         </div>
         <button
           onClick={() => router.push("/dashboard")}
-          className="flex items-center gap-1.5 px-4 py-2 bg-ground-100 border border-line-soft rounded-xl text-xs font-bold text-ink-200 hover:bg-ground-200 hover:border-line-firm transition-colors duration-150 shadow-sm outline-none"
+          className="flex items-center gap-1.5 px-4 py-2 bg-ground-100 border border-line-soft rounded-md text-xs font-bold text-ink-200 hover:bg-ground-200 hover:border-line-firm transition-colors duration-150 outline-none"
         >
           <ArrowLeft className="w-3.5 h-3.5" /> Back to Runway Dashboard
         </button>
@@ -106,7 +100,7 @@ export default function DecisionHistoryPage() {
 
       {error && (
         <Reveal>
-          <Card className="!rounded-2xl bg-risk-500/10 border-risk-500/25 flex items-center gap-3">
+          <Card className="rounded-md bg-risk-500/10 border-risk-500/25 flex items-center gap-3">
             <ShieldAlert className="w-5 h-5 text-risk-400 flex-shrink-0" />
             <p className="text-xs font-semibold text-risk-400">{error}</p>
           </Card>
@@ -116,10 +110,10 @@ export default function DecisionHistoryPage() {
       <Stagger className="space-y-10" stagger={0.1}>
         {/* SECTION 1: STRATEGY PERFORMANCE GRID */}
         <StaggerItem>
-          <Card className="!rounded-2xl space-y-6">
+          <Card className="rounded-md space-y-6">
             <div className="flex items-center gap-2 border-b border-line-faint pb-4">
               <BarChart2 className="w-5 h-5 text-brand-300" />
-              <h2 className="text-sm font-black text-ink-100 uppercase tracking-wider">
+              <h2 className="text-sm font-semibold text-ink-100">
                 Strategy Success &amp; Prediction Errors
               </h2>
             </div>
@@ -134,10 +128,10 @@ export default function DecisionHistoryPage() {
                     const isSmallSample = p.sampleSize < 5;
 
                     return (
-                      <div key={key} className="bg-ground-200 border border-line-faint rounded-2xl p-5 space-y-4">
+                      <div key={key} className="bg-ground-200 border border-line-faint rounded-md p-5 space-y-4">
                         <div>
-                          <span className="text-[10px] text-ink-400 font-extrabold block uppercase tracking-widest leading-none">
-                            {strategyPrettyName(p.strategyType)}
+                          <span className="label block leading-none">
+                            {planName(p.strategyType)}
                           </span>
                           <span className="text-xs font-bold text-ink-300 mt-1 block">
                             Recs: {p.timesRecommended} • Appr: {p.timesApproved}
@@ -181,11 +175,11 @@ export default function DecisionHistoryPage() {
 
         {/* SECTION 2: DECISIONS HISTORY TABLE */}
         <StaggerItem>
-          <Card className="!rounded-2xl space-y-6">
+          <Card className="rounded-md space-y-6">
             <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b border-line-faint pb-4">
               <div className="flex items-center gap-2">
                 <Clock className="w-5 h-5 text-brand-300" />
-                <h2 className="text-sm font-black text-ink-100 uppercase tracking-wider">
+                <h2 className="text-sm font-semibold text-ink-100">
                   Decision Log Memory (Engine Version 13.0.0)
                 </h2>
               </div>
@@ -196,9 +190,9 @@ export default function DecisionHistoryPage() {
                     key={f}
                     onClick={() => setSelectedFilter(f)}
                     className={clsx(
-                      "px-3 py-1.5 rounded-lg text-[10px] font-bold tracking-wider uppercase border transition-colors duration-150 outline-none select-none",
+                      "px-3 py-1.5 rounded-md text-[11px] font-bold border transition-colors duration-150 outline-none select-none",
                       selectedFilter === f
-                        ? "bg-brand-500 border-brand-500 text-white shadow-sm"
+                        ? "bg-brand-500 border-brand-500 text-white"
                         : "bg-ground-100 border-line-soft text-ink-300 hover:bg-ground-200"
                     )}
                   >
@@ -220,10 +214,10 @@ export default function DecisionHistoryPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
-                    <tr className="border-b border-line-faint text-ink-400 font-extrabold uppercase tracking-wider">
+                    <tr className="border-b border-line-faint text-ink-400 font-semibold">
                       <th className="py-3.5 px-3">Date</th>
                       <th className="py-3.5 px-3">Intervention Action</th>
-                      <th className="py-3.5 px-3">Expected Improvement</th>
+                      <th className="py-3.5 px-3">Difference</th>
                       <th className="py-3.5 px-3">Lifecycle status</th>
                       <th className="py-3.5 px-3">Actual outcome</th>
                       <th className="py-3.5 px-3 text-right">Action</th>
@@ -247,8 +241,8 @@ export default function DecisionHistoryPage() {
                         >
                           <td className="py-4 px-3 font-semibold text-ink-300">{formatDateTime(d.createdAt)}</td>
                           <td className="py-4 px-3">
-                            <span className="font-extrabold text-ink-200 block">{strategyPrettyName(rec?.strategyType)}</span>
-                            <span className="text-[10px] text-ink-400">Version: {d.engineVersion}</span>
+                            <span className="font-semibold text-ink-200 block">{planName(rec?.strategyType)}</span>
+                            <span className="text-[11px] text-ink-400">Version: {d.engineVersion}</span>
                           </td>
                           <td className="py-4 px-3 font-bold text-ink-300">+{formatINR(expectedDiff)}</td>
                           <td className="py-4 px-3">
@@ -268,7 +262,7 @@ export default function DecisionHistoryPage() {
                             )}
                           </td>
                           <td className="py-4 px-3 text-right">
-                            <button className="p-1.5 hover:bg-ground-200 rounded-lg text-ink-400 hover:text-brand-300 transition-colors">
+                            <button className="p-1.5 hover:bg-ground-200 rounded-md text-ink-400 hover:text-brand-300 transition-colors">
                               <ChevronRight className="w-4 h-4" />
                             </button>
                           </td>
@@ -309,20 +303,20 @@ export default function DecisionHistoryPage() {
                 exit={{ x: "100%" }}
                 transition={{ duration: 0.35, ease: EASE_OUT_EXPO }}
                 onClick={(e) => e.stopPropagation()}
-                className="bg-ground-100 w-full max-w-lg h-full p-6 shadow-2xl flex flex-col justify-between overflow-y-auto space-y-6"
+                className="bg-ground-100 w-full max-w-lg h-full p-6 flex flex-col justify-between overflow-y-auto space-y-6"
               >
                 <div className="space-y-6">
                   <div className="flex justify-between items-center border-b pb-4">
                     <div>
-                      <span className="text-[9px] font-black text-brand-300 uppercase tracking-widest">Decision memory deep-dive</span>
-                      <h3 className="text-base font-black text-ink-100 mt-1">{strategyPrettyName(rec?.strategyType)}</h3>
-                      <p className="text-[10px] text-ink-400 mt-0.5">
+                      <span className="text-[11px] font-semibold text-brand-300">Decision memory deep-dive</span>
+                      <h3 className="text-base font-semibold text-ink-100 mt-1">{planName(rec?.strategyType)}</h3>
+                      <p className="text-[11px] text-ink-400 mt-0.5">
                         Decision ID: {d.id} • Engine: v{d.engineVersion}
                       </p>
                     </div>
                     <button
                       onClick={() => setSelectedDecisionId(null)}
-                      className="p-1.5 hover:bg-ground-200 rounded-lg text-ink-400 hover:text-ink-300 transition-colors outline-none"
+                      className="p-1.5 hover:bg-ground-200 rounded-md text-ink-400 hover:text-ink-300 transition-colors outline-none"
                     >
                       <X className="w-5 h-5" />
                     </button>
@@ -330,30 +324,30 @@ export default function DecisionHistoryPage() {
 
                   {/* WHAT WE KNEW VS WHAT WE PREDICTED VS ACTUAL OUTCOME */}
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-ground-200 border border-line-faint p-4 rounded-2xl space-y-2.5">
-                      <span className="text-[9px] font-black text-ink-400 uppercase tracking-widest block leading-none">
+                    <div className="bg-ground-200 border border-line-faint p-4 rounded-md space-y-2.5">
+                      <span className="label block leading-none">
                         Baseline (Do Nothing)
                       </span>
                       <div className="space-y-1.5 text-[11px] font-semibold text-ink-300">
                         <div className="flex justify-between">
-                          <span>Starting Cash:</span>
+                          <span>Cash you start with:</span>
                           <span className="text-ink-100">{formatINR(base.startingCash)}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span>Minimum Balance:</span>
+                          <span>Lowest balance:</span>
                           <span className={clsx(base.minimumBalance < 0 ? "text-risk-400" : "text-ink-100")}>
                             {formatINR(base.minimumBalance)}
                           </span>
                         </div>
                         <div className="flex justify-between">
-                          <span>Deficit Days:</span>
+                          <span>Days in the red:</span>
                           <span className="text-ink-100">{base.deficitDays} days</span>
                         </div>
                       </div>
                     </div>
 
-                    <div className="bg-brand-500/10 border border-brand-500/25 p-4 rounded-2xl space-y-2.5">
-                      <span className="text-[9px] font-black text-brand-300 uppercase tracking-widest block leading-none">
+                    <div className="bg-brand-500/10 border border-brand-500/25 p-4 rounded-md space-y-2.5">
+                      <span className="text-[11px] font-semibold text-brand-300 block leading-none">
                         Predicted Intervention
                       </span>
                       <div className="space-y-1.5 text-[11px] font-semibold text-ink-300">
@@ -362,11 +356,11 @@ export default function DecisionHistoryPage() {
                           <span className="text-ink-100">{formatINR(rec.finalBalance)}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span>Minimum Balance:</span>
+                          <span>Lowest balance:</span>
                           <span className="text-ink-100 font-bold">{formatINR(rec.minimumBalance)}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span>Deficit Days:</span>
+                          <span>Days in the red:</span>
                           <span className="text-ink-100">{rec.deficitDays} days</span>
                         </div>
                       </div>
@@ -376,25 +370,25 @@ export default function DecisionHistoryPage() {
                   {/* ACTUAL OUTCOMES SECTION */}
                   {actualOut && (
                     <div
-                      className={clsx("border p-4 rounded-2xl space-y-3", {
+                      className={clsx("border p-4 rounded-md space-y-3", {
                         "bg-safe-500/10 border-safe-500/25 text-safe-400": actualOut.status === "SUCCESS",
                         "bg-warn-500/10 border-warn-500/25 text-warn-400": actualOut.status === "PARTIAL_SUCCESS" || actualOut.status === "OUTCOME_PENDING",
                         "bg-risk-500/10 border-risk-500/25 text-risk-400": ["FAILED", "REJECTED", "NOT_EXECUTED", "RECONCILIATION_MISMATCH"].includes(actualOut.status),
                       })}
                     >
                       <div className="flex justify-between items-center leading-none">
-                        <span className="text-[9px] font-black uppercase tracking-widest">Actual Outcome Measurement</span>
-                        <span className="text-[9px] font-bold uppercase tracking-wider">{actualOut.status}</span>
+                        <span className="text-[11px] font-semibold">Actual Outcome Measurement</span>
+                        <span className="text-[11px] font-bold">{actualOut.status}</span>
                       </div>
 
                       {actualOut.status === "OUTCOME_PENDING" ? (
-                        <p className="text-[10px] leading-normal font-semibold">
+                        <p className="text-[11px] leading-normal font-semibold">
                           The 14-day outcome tracking window is still open. CashPilot is streaming actual ledger records to measure accuracy.
                         </p>
                       ) : (
                         <div className="space-y-2 text-[11px] font-semibold">
                           <div className="flex justify-between">
-                            <span>Actual Minimum Balance:</span>
+                            <span>Actual Lowest balance:</span>
                             <span>{formatINR(actualOut.actualMinimumBalance)}</span>
                           </div>
                           <div className="flex justify-between">
@@ -402,7 +396,7 @@ export default function DecisionHistoryPage() {
                             <span>{formatINR(actualOut.actualFinalBalance)}</span>
                           </div>
                           <div className="flex justify-between">
-                            <span>Actual Deficit Days:</span>
+                            <span>Actual Days in the red:</span>
                             <span>{actualOut.actualDeficitDays} days</span>
                           </div>
                           <div className="flex justify-between border-t border-line-soft pt-2 font-bold">
@@ -410,10 +404,10 @@ export default function DecisionHistoryPage() {
                             <span>{formatINR(actualOut.predictionError.minimumBalance)}</span>
                           </div>
                           <div className="flex justify-between font-bold">
-                            <span>Deficit Days Variance:</span>
+                            <span>Days in the red Variance:</span>
                             <span>{actualOut.predictionError.deficitDays} days</span>
                           </div>
-                          <div className="text-[9px] italic mt-1 font-bold">
+                          <div className="text-[11px] italic mt-1 font-bold">
                             Variance rating: {actualOut.varianceClassification}
                           </div>
                         </div>
@@ -423,12 +417,12 @@ export default function DecisionHistoryPage() {
 
                   {/* WARNINGS & ALERTS */}
                   {actualOut?.dataWarnings && actualOut.dataWarnings.length > 0 && (
-                    <div className="bg-warn-500/10 border border-warn-500/25 text-warn-400 p-4 rounded-2xl flex gap-2.5 items-start">
+                    <div className="bg-warn-500/10 border border-warn-500/25 text-warn-400 p-4 rounded-md flex gap-2.5 items-start">
                       <ShieldAlert className="w-5 h-5 flex-shrink-0 text-warn-400 mt-0.5" />
                       <div className="space-y-1">
-                        <span className="text-[9px] font-extrabold block uppercase tracking-wider leading-none">Outcome warnings</span>
+                        <span className="text-[11px] font-semibold block leading-none">Outcome warnings</span>
                         {actualOut.dataWarnings.map((w: string, idx: number) => (
-                          <p key={idx} className="text-[10px] leading-normal font-semibold text-warn-400">
+                          <p key={idx} className="text-[11px] leading-normal font-semibold text-warn-400">
                             • {w}
                           </p>
                         ))}
@@ -437,8 +431,8 @@ export default function DecisionHistoryPage() {
                   )}
 
                   {/* ORIGINAL DECISION CONTEXT */}
-                  <div className="bg-ground-200 border border-line-soft p-4 rounded-2xl space-y-2">
-                    <span className="text-[9px] font-black text-ink-400 uppercase tracking-widest block leading-none mb-1">
+                  <div className="bg-ground-200 border border-line-soft p-4 rounded-md space-y-2">
+                    <span className="label block leading-none mb-1">
                       Original Decision Context
                     </span>
                     <div className="space-y-1.5 text-[11px] font-semibold text-ink-300">
@@ -451,7 +445,7 @@ export default function DecisionHistoryPage() {
                         <span className="text-ink-100">{formatINR(base.requiredLiquidity)}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span>Expected Improvement:</span>
+                        <span>Difference:</span>
                         <span className="text-ink-100 font-bold">+{formatINR(expectedDiff)}</span>
                       </div>
                       <div className="flex justify-between">
@@ -463,13 +457,13 @@ export default function DecisionHistoryPage() {
 
                   {/* DECISION TIMELINE */}
                   <div className="space-y-2.5">
-                    <span className="text-[9px] font-black text-ink-400 uppercase tracking-widest block leading-none">
+                    <span className="label block leading-none">
                       Timeline Logs
                     </span>
                     <div className="border-l border-line-soft pl-4 space-y-3.5">
                       <div className="relative">
                         <div className="absolute -left-[21px] top-1 w-2 h-2 rounded-full bg-brand-500" />
-                        <span className="text-[10px] text-ink-400 font-bold block leading-none">{formatDateTime(d.createdAt)}</span>
+                        <span className="text-[11px] text-ink-400 font-bold block leading-none">{formatDateTime(d.createdAt)}</span>
                         <span className="text-xs font-bold text-ink-200 mt-1 block">
                           Intervention Risk Detected &amp; Strategy Presented
                         </span>
@@ -478,14 +472,14 @@ export default function DecisionHistoryPage() {
                       {d.approvalSnapshot && (
                         <div className="relative">
                           <div className="absolute -left-[21px] top-1 w-2 h-2 rounded-full bg-brand-500" />
-                          <span className="text-[10px] text-ink-400 font-bold block leading-none">
+                          <span className="text-[11px] text-ink-400 font-bold block leading-none">
                             {formatDateTime(d.approvalSnapshot.approvedAt || d.approvalSnapshot.rejectedAt)}
                           </span>
                           <span className="text-xs font-bold text-ink-200 mt-1 block">
                             Human Gate Action: {d.approvalSnapshot.status.toUpperCase()} by {d.approvalSnapshot.approvedByName || d.approvalSnapshot.rejectedByName}
                           </span>
                           {d.approvalSnapshot.rejectionReason && (
-                            <span className="text-[10px] text-ink-300 italic mt-0.5 block">
+                            <span className="text-[11px] text-ink-300 italic mt-0.5 block">
                               &ldquo;Reason: {d.approvalSnapshot.rejectionReason}&rdquo;
                             </span>
                           )}
@@ -495,7 +489,7 @@ export default function DecisionHistoryPage() {
                       {d.executionSnapshot && (
                         <div className="relative">
                           <div className="absolute -left-[21px] top-1 w-2 h-2 rounded-full bg-brand-500" />
-                          <span className="text-[10px] text-ink-400 font-bold block leading-none">
+                          <span className="text-[11px] text-ink-400 font-bold block leading-none">
                             {formatDateTime(d.executionSnapshot.timestamp)}
                           </span>
                           <span className="text-xs font-bold text-ink-200 mt-1 block">Execution Confirmed</span>
@@ -505,7 +499,7 @@ export default function DecisionHistoryPage() {
                       {d.reconciliationSnapshot && (
                         <div className="relative">
                           <div className="absolute -left-[21px] top-1 w-2 h-2 rounded-full bg-brand-500" />
-                          <span className="text-[10px] text-ink-400 font-bold block leading-none">
+                          <span className="text-[11px] text-ink-400 font-bold block leading-none">
                             {formatDateTime(d.reconciliationSnapshot.timestamp)}
                           </span>
                           <span className="text-xs font-bold text-ink-200 mt-1 block">Authoritative Ledger Reconciliation Complete</span>
@@ -515,8 +509,8 @@ export default function DecisionHistoryPage() {
                       {d.outcomeMeasuredAt && (
                         <div className="relative">
                           <div className="absolute -left-[21px] top-1 w-2 h-2 rounded-full bg-safe-500" />
-                          <span className="text-[10px] text-ink-400 font-bold block leading-none">{formatDateTime(d.outcomeMeasuredAt)}</span>
-                          <span className="text-xs font-black text-safe-400 mt-1 block">
+                          <span className="text-[11px] text-ink-400 font-bold block leading-none">{formatDateTime(d.outcomeMeasuredAt)}</span>
+                          <span className="text-xs font-semibold text-safe-400 mt-1 block">
                             Outcome measured successfully (14-Day Horizon Complete)
                           </span>
                         </div>
@@ -527,7 +521,7 @@ export default function DecisionHistoryPage() {
 
                 <button
                   onClick={() => setSelectedDecisionId(null)}
-                  className="w-full py-3.5 bg-ground-300 hover:bg-ground-000 text-white font-bold rounded-xl text-xs transition-colors outline-none"
+                  className="w-full py-3.5 bg-ground-300 hover:bg-ground-000 text-white font-bold rounded-md text-xs transition-colors outline-none"
                 >
                   Close Drawer
                 </button>

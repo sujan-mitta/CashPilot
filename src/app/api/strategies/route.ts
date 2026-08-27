@@ -128,7 +128,8 @@ export async function POST() {
     const responseStrategies: any[] = [];
     let recommendedStrategyId = "";
 
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(
+      async (tx) => {
       await tx.agentAction.deleteMany({
         where: { strategy: { businessId: business.id, decision: null } },
       });
@@ -313,7 +314,24 @@ export async function POST() {
           deferredObligations: s.deferredObligations || [],
         });
       }
-    });
+      },
+      {
+        // Prisma's 5s default is a local-database assumption. This transaction
+        // is ~14 sequential round trips (2 deletes, then create + decision +
+        // audit event for each of 4 candidates), and the database is a managed
+        // Postgres in another region — measured at ~300ms per round trip from
+        // here, so the network alone is ~4.2s before any query runs. It was
+        // aborting every simulation with "A query cannot be executed on an
+        // expired transaction" at ~6s.
+        //
+        // The write set is deliberately atomic: a partial run would leave
+        // strategies without their decisions, and the decision ledger is the
+        // one thing that must never be half-written. So the fix is to give the
+        // transaction a realistic budget rather than to split it up.
+        timeout: 30_000,
+        maxWait: 15_000,
+      }
+    );
 
     // 5. Query AI narrative layer
     const recommendedStrategy = responseStrategies.find((s) => s.recommended)!;

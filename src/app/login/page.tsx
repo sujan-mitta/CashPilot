@@ -6,10 +6,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useCashPilot } from "@/context/CashPilotContext";
 import { Eye, EyeOff, Lock, Mail, User, Briefcase, ArrowRight, ShieldCheck } from "lucide-react";
 import { PilotIcon } from "@/components/PilotIcon";
-import { HeroScene } from "@/components/hero/HeroScene";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/Button";
 import { Stagger, StaggerItem } from "@/components/ui/Reveal";
-import { EASE_GLIDE, DUR, focusIn } from "@/components/ui/motion";
+import { EASE_GLIDE, DUR } from "@/components/ui/motion";
 import clsx from "clsx";
 import { errorMessage } from "@/lib/errors";
 
@@ -20,12 +20,12 @@ const highlights = [
 ];
 
 const fieldClass = clsx(
-  "w-full pl-10 pr-4 py-3 rounded-xl text-sm outline-none",
+  "w-full pl-10 pr-4 py-3 rounded-md text-sm outline-none",
   "bg-ground-200/70 border border-line-soft text-ink-100 font-medium",
   "placeholder:text-ink-400 placeholder:font-normal",
   "transition-[border-color,background,box-shadow] duration-200",
   "hover:border-line-firm",
-  "focus:border-brand-500 focus:bg-ground-200 focus:shadow-[0_0_0_3px_rgb(99_102_241/0.18)]"
+  "focus:border-brand-500 focus:bg-ground-200 focus:"
 );
 
 const labelClass = "label block mb-1.5";
@@ -145,45 +145,36 @@ function LoginForm() {
   };
 
   return (
-    <div className="relative min-h-screen flex overflow-hidden bg-ground-000 mesh-bg grain">
-      {/* The runway terrain sits behind everything, anchored to the lower half
-          where there is no text over it. */}
-      <HeroScene className="pointer-events-none absolute inset-x-0 bottom-0 h-[78vh] z-0" />
+    <div className="relative min-h-screen flex overflow-hidden bg-ground-050">
+      {/* Sign-in renders without the app chrome, so the theme control has to
+          live here too — otherwise the first screen anyone sees is the one
+          screen where they cannot change it. */}
+      <ThemeToggle className="absolute top-5 right-5 z-30" />
 
       {/* ══════════════════════════ Brand side ══════════════════════════ */}
       <div className="hidden lg:flex lg:w-[54%] relative z-10 p-12 xl:p-16 flex-col justify-between">
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: DUR.slow, ease: EASE_GLIDE }}
-          className="flex items-center gap-3"
-        >
-          <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-brand-400 via-brand-500 to-violet-500 flex items-center justify-center shadow-[0_1px_0_rgb(255_255_255/0.2)_inset,0_10px_30px_-8px_rgb(99_102_241/0.85)]">
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-md bg-brand-500 flex items-center justify-center">
             <PilotIcon className="w-6 h-6 text-white" />
           </div>
           <div>
             <span className="font-semibold text-[1.35rem] tracking-[-0.035em] text-ink-100 block leading-none">
               CashPilot
             </span>
-            <span className="label block mt-1.5">Cash Intervention Controller</span>
+            <span className="label block mt-1">Cash intervention controller</span>
           </div>
-        </motion.div>
+        </div>
 
         <Stagger className="my-auto max-w-2xl space-y-7" stagger={0.09} delayChildren={0.15}>
           <StaggerItem>
-            <span className="inline-flex items-center gap-2 text-[10px] uppercase font-semibold tracking-[0.1em] glass px-3.5 py-1.5 rounded-full text-brand-300">
-              <span className="pip" aria-hidden />
+            <span className="inline-flex items-center gap-2 text-[12px] font-medium px-2 py-1 rounded border border-line-soft bg-ground-100 text-ink-300">
               Razorpay Buildathon MVP
             </span>
           </StaggerItem>
 
-          <motion.h1 variants={focusIn} className="display max-w-xl">
-            Stop cash crises
-            <br />
-            before they reach
-            <br />
-            <span className="text-gradient">your payroll.</span>
-          </motion.h1>
+          <h1 className="display max-w-xl">
+            Stop cash crises before they reach your payroll.
+          </h1>
 
           <StaggerItem>
             <p className="text-ink-300 text-[0.95rem] leading-relaxed max-w-lg">
@@ -196,9 +187,7 @@ function LoginForm() {
           <StaggerItem className="space-y-3.5 pt-3">
             {highlights.map((h) => (
               <div key={h} className="flex items-start gap-3">
-                <div className="w-5 h-5 mt-px rounded-md bg-safe-500/12 ring-1 ring-inset ring-safe-500/30 flex items-center justify-center shrink-0">
-                  <ShieldCheck className="w-3 h-3 text-safe-400" strokeWidth={2.5} />
-                </div>
+                <ShieldCheck className="w-4 h-4 mt-0.5 text-safe-400 shrink-0" strokeWidth={2} />
                 <span className="text-[13px] text-ink-300 leading-snug">{h}</span>
               </div>
             ))}
@@ -212,15 +201,12 @@ function LoginForm() {
 
       {/* ══════════════════════════ Auth side ═══════════════════════════ */}
       <div className="w-full lg:w-[46%] relative z-10 flex items-center justify-center p-6 sm:p-10">
-        <motion.div
-          initial={{ opacity: 0, y: 20, scale: 0.985 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          transition={{ duration: DUR.deliberate, ease: EASE_GLIDE, delay: 0.1 }}
-          className="max-w-[26rem] w-full glass-strong rounded-2xl p-8 space-y-6 shadow-[var(--lift-4)]"
+        <div
+          className="max-w-[26rem] w-full bg-ground-100 border border-line-soft rounded-md p-7 space-y-5"
         >
           <div className="text-center">
             <div className="lg:hidden flex items-center justify-center gap-2.5 mb-5">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-400 to-violet-500 flex items-center justify-center">
+              <div className="w-9 h-9 rounded-md bg-ground-200 flex items-center justify-center">
                 <PilotIcon className="w-5 h-5 text-white" />
               </div>
               <span className="font-semibold text-[1.15rem] tracking-[-0.03em] text-ink-100">
@@ -251,7 +237,7 @@ function LoginForm() {
           <button
             type="button"
             onClick={handleGoogleSignIn}
-            className="w-full py-3 rounded-xl text-[13px] font-semibold outline-none flex items-center justify-center gap-2.5 bg-ground-200 border border-line-soft text-ink-200 hover:bg-ground-300 hover:border-line-firm transition-colors duration-200"
+            className="w-full py-3 rounded-md text-[13px] font-semibold outline-none flex items-center justify-center gap-2.5 bg-ground-200 border border-line-soft text-ink-200 hover:bg-ground-300 hover:border-line-firm transition-colors duration-200"
           >
             <svg className="w-4 h-4" viewBox="0 0 24 24" aria-hidden>
               <path
@@ -291,7 +277,7 @@ function LoginForm() {
                   role="alert"
                   className="overflow-hidden"
                 >
-                  <div className="p-3.5 rounded-xl bg-risk-500/10 border border-risk-500/25 text-[12.5px] font-medium text-risk-400">
+                  <div className="p-3.5 rounded-md bg-risk-500/10 border border-risk-500/25 text-[12.5px] font-medium text-risk-400">
                     {shownError}
                   </div>
                 </motion.div>
@@ -414,7 +400,7 @@ function LoginForm() {
                 : "Already have an account? Sign in"}
             </button>
           </div>
-        </motion.div>
+        </div>
       </div>
     </div>
   );

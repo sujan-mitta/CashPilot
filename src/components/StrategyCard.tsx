@@ -18,7 +18,7 @@ export function StrategyCard({ strategy, isSelected, onSelect }: StrategyCardPro
       case "DO_NOTHING":
         return "Baseline (Do Nothing)";
       case "RECOVER_ONLY":
-        return "Failed Payment Recovery";
+        return "From failed payments";
       case "RECOVER_AND_COLLECT":
         return "Recovery & Collection Acceleration";
       case "FULL_INTERVENTION":
@@ -32,15 +32,15 @@ export function StrategyCard({ strategy, isSelected, onSelect }: StrategyCardPro
     <div
       onClick={onSelect}
       className={clsx(
-        "cursor-pointer p-5 rounded-xl border-2 transition-all duration-200 bg-ground-100 relative hover:shadow-md",
+        "cursor-pointer p-5 rounded-md border-2 transition-all duration-200 bg-ground-100 relative hover:",
         {
-          "border-brand-500 shadow-md ring-2 ring-brand-500/25": isSelected,
+          "border-brand-500 ring-2 ring-brand-500/25": isSelected,
           "border-line-soft hover:border-line-firm": !isSelected,
         }
       )}
     >
       {strategy.recommended && (
-        <span className="absolute -top-3 left-4 bg-brand-500 text-white px-2.5 py-0.5 rounded-full text-xs font-semibold tracking-wider flex items-center shadow-sm">
+        <span className="absolute -top-3 left-4 bg-brand-500 text-white px-2.5 py-0.5 rounded-full text-xs font-semibold flex items-center">
           ⭐ RECOMMENDED CHOICE
         </span>
       )}
@@ -56,11 +56,11 @@ export function StrategyCard({ strategy, isSelected, onSelect }: StrategyCardPro
         </div>
 
         <div className="flex flex-col items-end">
-          <span className="text-2xl font-black text-ink-100">
+          <span className="text-2xl font-semibold text-ink-100">
             {strategy.scoring.finalScore}
             <span className="text-xs text-ink-400 font-medium ml-0.5">/100</span>
           </span>
-          <span className="text-[10px] text-ink-400 font-bold uppercase tracking-wider">Score</span>
+          <span className="label">Score</span>
         </div>
       </div>
 

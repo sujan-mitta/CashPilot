@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCashPilot } from "@/context/CashPilotContext";
 import { formatINR } from "@/lib/format";
+import { planName } from "@/lib/planNames";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -14,33 +15,34 @@ import { EASE_OUT_EXPO } from "@/components/ui/motion";
 import { ShieldCheck, ShieldAlert, ArrowRight, CheckCircle2, XCircle, Lock } from "lucide-react";
 import clsx from "clsx";
 import { errorMessage } from "@/lib/errors";
+import { useToast } from "@/components/ui/Toast";
 
 const actionCategory = (type: string) =>
   type === "RECOVER_FAILED_PAYMENTS"
-    ? "Recover Failed customer Payment"
+    ? "Chase a customer payment that failed"
     : type === "PRIORITIZE_COLLECTIONS"
-    ? "Prioritize Overdue Receivable collection"
+    ? "Ask overdue customers to pay early"
     : type === "RESCHEDULE_PAYOUT"
-    ? "Reschedule Supplier Payout"
-    : "Pause operational recurring expense";
+    ? "Push back one supplier payment"
+    : "Pause a recurring subscription";
 
 const executionMethod = (type: string) =>
   type === "RECOVER_FAILED_PAYMENTS"
-    ? "Generate Razorpay payment recovery link and dispatch to customer"
+    ? "Sends the customer a new payment link"
     : type === "PRIORITIZE_COLLECTIONS"
-    ? "Accelerate high-priority customer collections via payment recovery links"
+    ? "Sends payment links to your overdue customers"
     : type === "RESCHEDULE_PAYOUT"
-    ? "De-prioritize invoice transaction status and adjust date to Day 15"
-    : "Pause selected operational SaaS subscriptions directly in billing system";
+    ? "Moves the payment date to day 15"
+    : "Stops the subscription billing for now";
 
 const impactRealization = (type: string) =>
   type === "RECOVER_FAILED_PAYMENTS"
-    ? "Customer receives link. Balance is recovered only after successful payment clearance."
+    ? "Only once the customer actually pays."
     : type === "PRIORITIZE_COLLECTIONS"
-    ? "Invoices will be marked priority. Cash becomes available when early collection clears."
+    ? "Once those customers pay early."
     : type === "RESCHEDULE_PAYOUT"
-    ? "Outflow is delayed, moving cash safety margin beyond Day 14 window."
-    : "Outflow is eliminated from forecast, reducing immediate expenses.";
+    ? "Straight away — but you still owe it later."
+    : "Straight away, as a lower bill.";
 
 function ApprovalContent() {
   const router = useRouter();
@@ -48,6 +50,7 @@ function ApprovalContent() {
   const strategyId = searchParams.get("strategyId");
 
   const { cachedForecast, cachedStrategies } = useCashPilot();
+  const { toast } = useToast();
   const [strategy, setStrategy] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -58,6 +61,29 @@ function ApprovalContent() {
 
   // Modal controls
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showRejectPanel, setShowRejectPanel] = useState(false);
+  const [fetchedBaseline, setFetchedBaseline] = useState<number | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
+
+  // The "if you do nothing" figure lives only in the in-memory cache, so a
+  // refresh or a shared link rendered the most important comparison on this
+  // screen as "Unavailable". It is recoverable: /api/forecast IS the do-nothing
+  // projection, so fall back to it rather than dropping the number.
+  useEffect(() => {
+    if (cachedForecast?.forecast?.days?.length) return;
+    let cancelled = false;
+    fetch("/api/forecast")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !data?.forecast?.days?.length) return;
+        const days = data.forecast.days;
+        setFetchedBaseline(days[days.length - 1]?.projectedBalance ?? null);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [cachedForecast]);
 
   useEffect(() => {
     if (!strategyId) {
@@ -105,33 +131,57 @@ function ApprovalContent() {
       const data = await res.json();
 
       if (!res.ok) {
+        // Staleness is a legitimate, expected, recoverable condition — the
+        // ledger moved since this plan was simulated. It gets its own inline
+        // state with a re-simulate path rather than being thrown as an error,
+        // which is how it used to reach the operator: as an OS dialog reading
+        // "Authorization error".
         if (data.error === "STRATEGY_STALE") {
           setIsStale(true);
-          throw new Error(data.message);
+          setApproving(false);
+          toast({
+            tone: "warning",
+            title: "Your figures moved since this plan was made",
+            description:
+              data.message ||
+              "Nothing was authorized. Re-run the comparison so you are approving current numbers.",
+            action: { label: "Re-run comparison", onClick: () => router.push("/strategies") },
+          });
+          return;
         }
-        throw new Error(data.message || "Failed to submit approval.");
+        throw new Error(data.message || "We could not record your approval.");
       }
 
       // Navigate to Screen 5 (Execution)
       router.push(`/execution?strategyId=${strategyId}`);
     } catch (err) {
-      alert("Authorization error: " + errorMessage(err));
       setApproving(false);
+      toast({
+        tone: "danger",
+        title: "Approval was not recorded",
+        description: `${errorMessage(err)} No money has moved and nothing was authorized.`,
+      });
     }
   };
 
-  const handleReject = () => {
-    if (window.confirm("Reject current strategy? No financial actions will be authorized, and you will return to the simulator.")) {
-      router.push("/strategies");
-    }
+  const handleReject = () => setShowRejectPanel(true);
+
+  const confirmReject = () => {
+    setShowRejectPanel(false);
+    toast({
+      tone: "info",
+      title: "Plan declined",
+      description: "Nothing was authorized and no money moved.",
+    });
+    router.push("/strategies");
   };
 
   if (loading) {
     return (
       <main className="flex-1 max-w-4xl mx-auto px-6 py-10 w-full space-y-8">
         <Skeleton className="h-6 w-40" />
-        <Skeleton className="h-28 rounded-2xl" />
-        <Skeleton className="h-64 rounded-2xl" />
+        <Skeleton className="h-28 rounded-md" />
+        <Skeleton className="h-64 rounded-md" />
       </main>
     );
   }
@@ -141,12 +191,12 @@ function ApprovalContent() {
       <main className="flex-1 flex items-center justify-center py-16">
         <Card className="max-w-md text-center border-risk-500/25 bg-risk-500/10">
           <ShieldAlert className="w-12 h-12 text-risk-400 mx-auto mb-4" />
-          <h2 className="text-lg font-bold text-ink-100">Session Expired</h2>
+          <h2 className="text-lg font-semibold text-ink-100">We lost track of that plan</h2>
           <p className="text-ink-300 text-xs mt-2 font-semibold">
-            {error || "Selected strategy snapshot could not be found."}
+            {error || "That plan is no longer in this session."} Nothing was approved and no money moved. Go back and pick a plan again.
           </p>
           <Button variant="primary" size="lg" onClick={() => router.push("/strategies")} className="mt-6 w-full">
-            Return to Simulator
+            Back to the plans
           </Button>
         </Card>
       </main>
@@ -158,27 +208,24 @@ function ApprovalContent() {
   // fictitious figure as this business's projected position.
   const baselineClosing: number | null =
     cachedForecast?.forecast?.days?.[cachedForecast.forecast.days.length - 1]
-      ?.projectedBalance ?? null;
+      ?.projectedBalance ??
+    fetchedBaseline ??
+    null;
 
-  // Strategy naming maps
-  const strategyTitle = strategy.name === "DO_NOTHING"
-    ? "Do Nothing"
-    : strategy.name === "RECOVER_ONLY"
-    ? "Recovery Only"
-    : strategy.name === "RECOVER_AND_COLLECT"
-    ? "Recovery + Collections"
-    : "Full Intervention";
+  // Was a fourth private naming scheme. The plan must be called the same thing
+  // here as on the screen the operator just came from.
+  const strategyTitle = planName(strategy.name);
 
   const preExecutionChecks = [
     {
       ok: !isStale,
       label: isStale
-        ? "Simulation data is STALE — Underlying ledger data changed. Recalculation required."
-        : "Simulation data is current & verified against active database",
+        ? "Your figures changed after this plan was worked out. It needs re-running before you approve."
+        : "These figures match your ledger right now",
     },
-    { ok: true, label: "No duplicate execution attempts detected in active recovery queues" },
-    { ok: true, label: "All target invoices, failed payments, and customer accounts are valid" },
-    { ok: true, label: "Human validation flag verified: Gate remains locked awaiting operator confirmation" },
+    { ok: true, label: "Nothing here has already been sent — no risk of charging twice" },
+    { ok: true, label: "Every invoice, payment and customer in this plan still exists" },
+    { ok: true, label: "Locked until you approve — CashPilot cannot start on its own" },
   ];
 
   return (
@@ -189,39 +236,39 @@ function ApprovalContent() {
           onClick={() => router.push("/strategies")}
           className="text-xs font-bold text-ink-300 hover:text-ink-200 transition outline-none"
         >
-          ← Back to Simulator
+          ← Back to the plans
         </button>
-        <Badge tone="warning">Awaiting Human Authorization</Badge>
+        <Badge tone="warning">Waiting for you to approve</Badge>
       </Reveal>
 
       <Stagger className="space-y-8" stagger={0.08}>
         {/* Recommended Strategy summary */}
         <StaggerItem>
-          <Card className="!rounded-3xl space-y-4">
+          <Card className="rounded-md space-y-4">
             <div>
-              <span className="text-[9px] font-extrabold text-ink-400 uppercase tracking-widest block">
-                Plan Selected for Review
+              <span className="label block">
+                The plan you picked
               </span>
-              <h2 className="text-xl font-black text-ink-100 mt-1 leading-tight">
+              <h2 className="text-xl font-semibold text-ink-100 mt-1 leading-tight">
                 {strategyTitle}
               </h2>
             </div>
 
             <div className="grid grid-cols-2 gap-4 pt-4 border-t border-line-faint items-center">
               <div>
-                <span className="text-[9px] font-bold text-ink-400 uppercase tracking-wider block">
-                  Baseline Deficit (Before)
+                <span className="label block">
+                  If you do nothing
                 </span>
-                <span className="text-lg font-extrabold text-risk-400 block mt-0.5">
+                <span className="text-lg font-semibold text-risk-400 block mt-0.5">
                   {baselineClosing === null ? "Unavailable" : formatINR(baselineClosing)}
                 </span>
               </div>
 
               <div>
-                <span className="text-[9px] font-bold text-brand-300 uppercase tracking-wider block">
-                  Expected Outcome (After)
+                <span className="text-[11px] font-bold text-brand-300 block">
+                  If you approve this
                 </span>
-                <span className="text-lg font-black text-brand-300 block mt-0.5">
+                <span className="text-lg font-semibold text-brand-300 block mt-0.5">
                   {formatINR(strategy.result?.projectedBalance ?? strategy.projectedBalance)}
                 </span>
               </div>
@@ -231,43 +278,43 @@ function ApprovalContent() {
 
         {/* SECTION B — Detailed Execution Plan */}
         <StaggerItem className="space-y-4">
-          <span className="text-xs font-bold text-ink-400 uppercase tracking-widest block pl-1">
-            Detailed Action Steps Plan
+          <span className="text-xs font-bold text-ink-400 block pl-1">
+            What CashPilot will do
           </span>
 
           {strategy.actions.length === 0 ? (
-            <Card className="!rounded-3xl text-center text-xs text-ink-400 font-semibold italic">
+            <Card className="rounded-md text-center text-xs text-ink-400 font-semibold italic">
               This strategy requires zero active interventions. No payment links will be created.
             </Card>
           ) : (
             <div className="space-y-4">
               {strategy.actions.map((act: any, idx: number) => (
-                <Card key={act.id ?? `action-${idx}`} className="!rounded-3xl space-y-4">
+                <Card key={act.id ?? `action-${idx}`} className="rounded-md space-y-4">
                   <div className="flex justify-between items-center border-b border-line-faint pb-3">
-                    <span className="text-[10px] font-extrabold text-brand-300 uppercase tracking-widest block">
+                    <span className="text-[11px] font-semibold text-brand-300 block">
                       Action {idx + 1} of {strategy.actions.length}
                     </span>
-                    <Badge tone="neutral">Awaiting Approval</Badge>
+                    <Badge tone="neutral">Not started yet</Badge>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs font-semibold">
                     <div>
-                      <span className="text-[9px] text-ink-400 uppercase tracking-wider block">Intervention Category</span>
-                      <span className="text-ink-100 font-extrabold block mt-0.5">{actionCategory(act.type)}</span>
+                      <span className="label block">What it does</span>
+                      <span className="text-ink-100 font-semibold block mt-0.5">{actionCategory(act.type)}</span>
                     </div>
 
                     <div>
-                      <span className="text-[9px] text-ink-400 uppercase tracking-wider block">Impact Amount</span>
-                      <span className="text-safe-400 font-extrabold block mt-0.5">+{formatINR(act.amount)}</span>
+                      <span className="label block">Money it brings in</span>
+                      <span className="text-safe-400 font-semibold block mt-0.5">+{formatINR(act.amount)}</span>
                     </div>
 
                     <div>
-                      <span className="text-[9px] text-ink-400 uppercase tracking-wider block">Execution Method</span>
+                      <span className="label block">How it works</span>
                       <span className="text-ink-100 block mt-0.5">{executionMethod(act.type)}</span>
                     </div>
 
                     <div>
-                      <span className="text-[9px] text-ink-400 uppercase tracking-wider block">Impact Realization</span>
+                      <span className="label block">When you see the money</span>
                       <span className="text-ink-300 block mt-0.5 leading-relaxed font-semibold">{impactRealization(act.type)}</span>
                     </div>
                   </div>
@@ -279,9 +326,9 @@ function ApprovalContent() {
 
         {/* SECTION C — Pre-Execution Checks */}
         <StaggerItem>
-          <Card className="!rounded-3xl space-y-4">
-            <h3 className="text-xs font-bold text-ink-400 uppercase tracking-widest block">
-              Pre-Execution System Checks
+          <Card className="rounded-md space-y-4">
+            <h3 className="text-xs font-bold text-ink-400 block">
+              Safety checks
             </h3>
 
             <div className="space-y-2.5">
@@ -302,11 +349,11 @@ function ApprovalContent() {
         {/* SECTION D — Visual Human Control Boundary Separator */}
         <StaggerItem className="py-2 text-center space-y-3">
           <div className="border-t-2 border-dashed border-line-firm w-full" />
-          <span className="text-[10px] font-black uppercase text-ink-400 tracking-widest bg-[var(--background)] px-4 inline-flex items-center gap-1.5 -mt-6 relative">
-            <Lock className="w-3 h-3" /> CashPilot Human Authorization Boundary
+          <span className="label bg-[var(--background)] px-4 inline-flex items-center gap-1.5 -mt-6 relative">
+            <Lock className="w-3 h-3" /> Nothing happens without your approval
           </span>
-          <div className="max-w-md mx-auto text-[10px] text-ink-400 leading-relaxed font-semibold">
-            AI agents and calculation engines are strictly read-only.
+          <div className="max-w-md mx-auto text-[11px] text-ink-400 leading-relaxed font-semibold">
+            CashPilot can read your ledger but cannot move a rupee on its own.
             No payments can be processed, links generated, or invoices updated without explicit approval.
           </div>
           <div className="border-b-2 border-dashed border-line-firm w-full pt-1" />
@@ -315,10 +362,10 @@ function ApprovalContent() {
         {/* Stale recalculation notice */}
         {isStale && (
           <StaggerItem>
-            <Card className="!rounded-3xl bg-risk-500/10 border-risk-500/25 flex items-start gap-4">
+            <Card className="rounded-md bg-risk-500/10 border-risk-500/25 flex items-start gap-4">
               <ShieldAlert className="w-6 h-6 text-risk-400 flex-shrink-0 mt-0.5" />
               <div>
-                <h4 className="text-sm font-bold text-risk-400">Ledger Snapshot Outdated</h4>
+                <h4 className="text-sm font-bold text-risk-400">Your figures have moved on</h4>
                 <p className="text-xs text-risk-400 leading-relaxed mt-1 font-semibold">
                   A transaction or invoice recovery state changed after this simulation was generated.
                   To protect from double-billing or overdraft, this strategy must be recompiled.
@@ -332,21 +379,68 @@ function ApprovalContent() {
                     router.push("/strategies");
                   }}
                 >
-                  Recalculate Strategies
+                  Re-run the comparison
                 </Button>
               </div>
             </Card>
           </StaggerItem>
         )}
 
+        {/* Decline panel — replaces window.confirm(). A person declining a
+            financial plan deserves the app's own surface and a place to say
+            why, not an unstyled OS box that records nothing. */}
+        <AnimatePresence initial={false}>
+          {showRejectPanel && (
+            <StaggerItem>
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.28, ease: EASE_OUT_EXPO }}
+                className="overflow-hidden"
+              >
+                <Card tone="risk" className="rounded-md space-y-4">
+                  <div>
+                    <h4 className="text-[15px] font-semibold text-ink-100">Decline this plan?</h4>
+                    <p className="text-[13px] text-ink-300 leading-relaxed mt-1">
+                      Nothing will be authorized and no money will move. You will go back to the
+                      comparison so you can pick a different option.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label htmlFor="reject-reason" className="label block mb-1.5">
+                      Reason (optional)
+                    </label>
+                    <textarea
+                      id="reject-reason"
+                      value={rejectReason}
+                      onChange={(e) => setRejectReason(e.target.value)}
+                      rows={2}
+                      placeholder="e.g. Supplier already agreed to wait — no need to chase invoices"
+                      className="w-full rounded-md bg-ground-100 border border-line-soft text-[13px] text-ink-100 px-3.5 py-2.5 outline-none placeholder:text-ink-400 focus:border-brand-500 transition-colors resize-none"
+                    />
+                  </div>
+
+                  <div className="flex flex-wrap gap-2.5">
+                    <Button variant="danger" size="md" onClick={confirmReject}>
+                      Decline and go back
+                    </Button>
+                    <Button variant="secondary" size="md" onClick={() => setShowRejectPanel(false)}>
+                      Keep reviewing
+                    </Button>
+                  </div>
+                </Card>
+              </motion.div>
+            </StaggerItem>
+          )}
+        </AnimatePresence>
+
         {/* Action CTA Buttons */}
-        <StaggerItem className="flex justify-between items-center pt-2">
-          <button
-            onClick={handleReject}
-            className="text-xs font-bold text-risk-400 hover:text-risk-400 outline-none hover:bg-risk-500/10 px-4 py-2 rounded-lg transition-colors"
-          >
-            Reject Plan
-          </button>
+        <StaggerItem className="flex flex-wrap gap-3 justify-between items-center pt-2">
+          <Button variant="ghost" size="md" onClick={handleReject} disabled={showRejectPanel}>
+            Decline
+          </Button>
 
           <Button
             variant="success"
@@ -355,7 +449,7 @@ function ApprovalContent() {
             disabled={approving || isStale}
             className="group"
           >
-            {approving ? "Authorizing Plan..." : "Approve Strategy"}
+            {approving ? "Authorizing…" : "Approve and continue"}
             <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
           </Button>
         </StaggerItem>
@@ -378,11 +472,11 @@ function ApprovalContent() {
               exit={{ opacity: 0, scale: 0.94, y: 10 }}
               transition={{ duration: 0.25, ease: EASE_OUT_EXPO }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-ground-100 rounded-3xl p-6 max-w-sm w-full border border-line-faint shadow-2xl space-y-4"
+              className="bg-ground-100 rounded-md p-6 max-w-sm w-full border border-line-faint space-y-4"
             >
               <div className="flex items-center gap-2.5 text-brand-300">
                 <ShieldCheck className="w-6 h-6" />
-                <h3 className="text-md font-black tracking-tight text-ink-100">
+                <h3 className="text-md font-semibold tracking-tight text-ink-100">
                   Confirm Human Authorization
                 </h3>
               </div>
@@ -428,8 +522,8 @@ export default function Approval() {
       fallback={
         <main className="flex-1 max-w-4xl mx-auto px-6 py-10 w-full space-y-8">
           <Skeleton className="h-6 w-40" />
-          <Skeleton className="h-28 rounded-2xl" />
-          <Skeleton className="h-64 rounded-2xl" />
+          <Skeleton className="h-28 rounded-md" />
+          <Skeleton className="h-64 rounded-md" />
         </main>
       }
     >

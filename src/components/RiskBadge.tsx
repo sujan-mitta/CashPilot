@@ -20,7 +20,7 @@ export function RiskBadge({ level }: { level: string }) {
   return (
     <span
       className={clsx(
-        "inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider",
+        "inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold",
         {
           "bg-risk-500/15 text-risk-400 border border-risk-500/25": isHigh,
           "bg-warn-500/15 text-warn-400 border border-warn-500/25": isMedium,
