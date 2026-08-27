@@ -25,7 +25,7 @@ const fieldClass = clsx(
   "placeholder:text-ink-400 placeholder:font-normal",
   "transition-[border-color,background,box-shadow] duration-200",
   "hover:border-line-firm",
-  "focus:border-brand-500 focus:bg-ground-200 focus:"
+  "focus:border-brand-500 focus:bg-ground-200 focus:shadow-[var(--glow-brand)]"
 );
 
 const labelClass = "label block mb-1.5";
