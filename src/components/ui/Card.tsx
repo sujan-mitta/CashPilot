@@ -3,7 +3,6 @@
 import React from "react";
 import clsx from "clsx";
 import { motion, type HTMLMotionProps } from "framer-motion";
-import { useSpotlight } from "./useInteraction";
 
 /**
  * The panel every surface is built from.
@@ -17,7 +16,7 @@ interface CardProps extends Omit<HTMLMotionProps<"div">, "children"> {
   children?: React.ReactNode;
   /** Lift + shadow on hover. For cards that are clickable or selectable. */
   hoverable?: boolean;
-  /** Cursor-following highlight. Reserve for large hero or feature cards. */
+  /** Accepted and ignored: the cursor-following wash was removed. */
   spotlight?: boolean;
   padding?: "none" | "sm" | "md" | "lg";
   tone?: "default" | "raised" | "glass" | "brand" | "safe" | "warn" | "risk" | "unknown";
@@ -25,15 +24,17 @@ interface CardProps extends Omit<HTMLMotionProps<"div">, "children"> {
 
 const paddingMap: Record<NonNullable<CardProps["padding"]>, string> = {
   none: "",
-  sm: "p-4",
-  md: "p-6",
-  lg: "p-8",
+  sm: "p-3",
+  md: "p-4",
+  lg: "p-5",
 };
 
 const toneMap: Record<NonNullable<CardProps["tone"]>, string> = {
-  default: "bg-ground-100 border-line-soft shadow-[var(--lift-1)]",
-  raised: "bg-ground-200 border-line-soft shadow-[var(--lift-2)]",
-  glass: "glass",
+  // A border defines the card. The shadow underneath it was doing the same job
+  // twice, and at rounded-md it read as a floating tile rather than a panel.
+  default: "bg-ground-100 border-line-soft",
+  raised: "bg-ground-200 border-line-soft",
+  glass: "bg-ground-100 border-line-soft",
   brand: "bg-brand-500/[0.07] border-brand-500/25",
   safe: "bg-safe-500/[0.07] border-safe-500/25",
   warn: "bg-warn-500/[0.07] border-warn-500/25",
@@ -45,7 +46,8 @@ export const Card = React.forwardRef<HTMLDivElement, CardProps>(function Card(
   {
     className,
     hoverable = false,
-    spotlight = false,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    spotlight,
     padding = "md",
     tone = "default",
     children,
@@ -54,37 +56,19 @@ export const Card = React.forwardRef<HTMLDivElement, CardProps>(function Card(
   },
   ref
 ) {
-  const spot = useSpotlight<HTMLDivElement>();
-
   return (
     <motion.div
       ref={ref}
       className={clsx(
-        "relative rounded-2xl border",
+        "relative rounded-md border",
         toneMap[tone],
         paddingMap[padding],
         hoverable && "lift",
-        spotlight && "overflow-hidden",
         className
       )}
       style={style}
       {...rest}
     >
-      {spotlight && (
-        // Sits behind content, follows the cursor, and fades out on leave.
-        // Driven by CSS custom properties written from a pointer handler, so
-        // moving the cursor never causes a React render.
-        <span
-          ref={spot.ref}
-          {...spot.handlers}
-          aria-hidden
-          className="pointer-events-none absolute inset-0 rounded-[inherit] opacity-[var(--spot-on,0)] transition-opacity duration-300"
-          style={{
-            background:
-              "radial-gradient(22rem 22rem at var(--spot-x, 50%) var(--spot-y, 50%), rgb(99 102 241 / 0.16), transparent 68%)",
-          }}
-        />
-      )}
       {children}
     </motion.div>
   );
@@ -110,7 +94,7 @@ export function CardHeader({
       <div className="min-w-0">
         {label && <div className="label mb-1.5">{label}</div>}
         {title && (
-          <h3 className="text-[0.95rem] font-semibold text-ink-100 truncate">{title}</h3>
+          <h3 className="text-[14px] font-semibold text-ink-100 truncate">{title}</h3>
         )}
       </div>
       {trailing && <div className="shrink-0">{trailing}</div>}

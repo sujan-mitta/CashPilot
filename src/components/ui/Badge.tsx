@@ -20,13 +20,13 @@ export type BadgeTone =
   | "live";
 
 const toneClasses: Record<BadgeTone, string> = {
-  brand: "bg-brand-500/12 text-brand-300 ring-1 ring-inset ring-brand-500/25",
-  success: "bg-safe-500/12 text-safe-400 ring-1 ring-inset ring-safe-500/25",
-  warning: "bg-warn-500/12 text-warn-400 ring-1 ring-inset ring-warn-500/25",
-  danger: "bg-risk-500/12 text-risk-400 ring-1 ring-inset ring-risk-500/25",
-  unknown: "bg-unknown-500/12 text-unknown-400 ring-1 ring-inset ring-unknown-500/25",
-  neutral: "bg-ground-300 text-ink-300 ring-1 ring-inset ring-line-soft",
-  live: "bg-live-500/12 text-live-400 ring-1 ring-inset ring-live-500/30",
+  brand: "bg-brand-500/10 text-brand-400 border border-brand-500/25",
+  success: "bg-safe-500/10 text-safe-400 border border-safe-500/25",
+  warning: "bg-warn-500/10 text-warn-400 border border-warn-500/25",
+  danger: "bg-risk-500/10 text-risk-400 border border-risk-500/25",
+  unknown: "bg-unknown-500/10 text-unknown-400 border border-unknown-500/25",
+  neutral: "bg-ground-200 text-ink-300 border border-line-soft",
+  live: "bg-live-500/10 text-live-400 border border-live-500/25",
 };
 
 const dotClasses: Record<BadgeTone, string> = {
@@ -58,9 +58,11 @@ export function Badge({
   return (
     <span
       className={clsx(
-        "inline-flex items-center rounded-full font-semibold uppercase whitespace-nowrap tracking-[0.08em]",
+        // Sentence case, 4px corners, normal tracking. The tracked
+        // pill is a styling tic; a status chip should read as a word.
+        "inline-flex items-center rounded font-medium whitespace-nowrap",
         toneClasses[tone],
-        size === "xs" ? "text-[10px] px-2.5 py-1" : "text-[11px] px-3 py-1.5",
+        size === "xs" ? "text-[12px] px-1.5 py-0.5" : "text-[12.5px] px-2 py-1",
         className
       )}
     >

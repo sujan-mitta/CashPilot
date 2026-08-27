@@ -2,6 +2,10 @@ import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient, TransactionType, TransactionStatus, InvoiceStatus, Priority, PayoutCriticality, PayoutStatus, RecoveryStatus } from "../generated/prisma/client";
 import { addDays } from "date-fns";
+import { hashPassword } from "../src/lib/auth/password";
+
+/** Password for every seeded demo account. Printed at the end of the seed. */
+const DEMO_PASSWORD = "cashpilot2026";
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
@@ -24,6 +28,12 @@ async function main() {
   await prisma.transaction.deleteMany();
   await prisma.business.deleteMany();
 
+  // Seeded users were written with the literal string "mock-password-hash",
+  // which is not a scrypt hash — verifyPassword parses it, finds no "scrypt$"
+  // prefix and rejects it. So a freshly seeded database had three users and
+  // nobody who could sign in. The demo password is hashed properly here.
+  const demoPasswordHash = await hashPassword(DEMO_PASSWORD);
+
   console.log("Seeding canonical scenario data...");
   const business = await prisma.business.create({
     data: {
@@ -34,12 +44,12 @@ async function main() {
           {
             name: "Aryan Mittal",
             email: "mittal@company.com",
-            password: "mock-password-hash",
+            password: demoPasswordHash,
           },
           {
             name: "Demo Guest",
             email: "demo-guest@cashpilot.ai",
-            password: "mock-password-hash",
+            password: demoPasswordHash,
           },
         ],
       },
@@ -56,7 +66,7 @@ async function main() {
           {
             name: "Malicious User",
             email: "attacker@company.com",
-            password: "mock-password-hash",
+            password: demoPasswordHash,
           },
         ],
         connect: [
@@ -206,6 +216,8 @@ async function main() {
   });
 
   console.log("Database seeded successfully!");
+  console.log(`Sign in with any seeded email and password: ${DEMO_PASSWORD}`);
+  console.log("  mittal@company.com  |  demo-guest@cashpilot.ai");
   console.log("Business ID:", business.id);
 }
 

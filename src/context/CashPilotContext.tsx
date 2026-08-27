@@ -126,16 +126,6 @@ interface CashPilotState {
   setCachedRecommendationNarration: (n: string | null) => void;
   cachedInvestigation: InvestigationResponse | null;
   setCachedInvestigation: (i: InvestigationResponse | null) => void;
-  executionResult: {
-    steps: { action: string; status: string; result: string; narration: string }[];
-    before: number;
-    after: number;
-  } | null;
-  setExecutionResult: (r: {
-    steps: { action: string; status: string; result: string; narration: string }[];
-    before: number;
-    after: number;
-  } | null) => void;
 }
 
 const CashPilotContext = createContext<CashPilotState | null>(null);
@@ -147,11 +137,6 @@ export function CashPilotProvider({ children }: { children: ReactNode }) {
   const [cachedStrategies, setCachedStrategies] = useState<Strategy[] | null>(null);
   const [cachedRecommendationNarration, setCachedRecommendationNarration] = useState<string | null>(null);
   const [cachedInvestigation, setCachedInvestigation] = useState<InvestigationResponse | null>(null);
-  const [executionResult, setExecutionResult] = useState<{
-    steps: { action: string; status: string; result: string; narration: string }[];
-    before: number;
-    after: number;
-  } | null>(null);
 
   // Load session from localStorage on client-side mount
   useEffect(() => {
@@ -187,7 +172,6 @@ export function CashPilotProvider({ children }: { children: ReactNode }) {
     setCachedStrategies(null);
     setCachedRecommendationNarration(null);
     setCachedInvestigation(null);
-    setExecutionResult(null);
   };
 
   return (
@@ -206,8 +190,6 @@ export function CashPilotProvider({ children }: { children: ReactNode }) {
         setCachedRecommendationNarration,
         cachedInvestigation,
         setCachedInvestigation,
-        executionResult,
-        setExecutionResult,
       }}
     >
       {children}

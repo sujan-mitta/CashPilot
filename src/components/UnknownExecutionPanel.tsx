@@ -113,10 +113,10 @@ export function UnknownExecutionPanel({
   if (intents.length === 0 && !error) return null;
 
   return (
-    <Card className="!rounded-3xl border-warn-500/25 bg-warn-500/10 space-y-4">
+    <Card className="rounded-md border-warn-500/25 bg-warn-500/10 space-y-4">
       <div className="flex items-center gap-2.5">
         <ShieldAlert className="w-5 h-5 text-warn-400 flex-shrink-0" />
-        <h3 className="text-sm font-black text-warn-400 uppercase tracking-tight">
+        <h3 className="text-sm font-semibold text-warn-400 tracking-tight">
           Execution status could not be determined
         </h3>
       </div>
@@ -138,18 +138,18 @@ export function UnknownExecutionPanel({
         {intents.map((intent) => (
           <div
             key={intent.intentId}
-            className="rounded-2xl border border-warn-500/25 bg-ground-100 p-4 space-y-3"
+            className="rounded-md border border-warn-500/25 bg-ground-100 p-4 space-y-3"
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <span className="text-[10px] font-extrabold text-warn-400 uppercase tracking-widest block">
+                <span className="text-[11px] font-semibold text-warn-400 block">
                   {ACTION_LABEL[intent.actionType ?? ""] ?? intent.operation}
                 </span>
-                <span className="text-ink-100 font-extrabold block mt-0.5">
+                <span className="text-ink-100 font-semibold block mt-0.5">
                   {formatINR(intent.amount)}
                 </span>
               </div>
-              <span className="text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-full bg-warn-500/15 text-warn-400">
+              <span className="text-[11px] font-semibold px-2 py-1 rounded-full bg-warn-500/15 text-warn-400">
                 {intent.status === "UNKNOWN" ? "Undetermined" : intent.status}
               </span>
             </div>
@@ -167,8 +167,8 @@ export function UnknownExecutionPanel({
             </dl>
 
             {intent.lastReconciliation ? (
-              <div className="rounded-xl bg-ground-200 border border-line-soft p-3 space-y-1.5 text-[11px]">
-                <p className="font-black text-ink-200 uppercase tracking-widest text-[9px]">
+              <div className="rounded-md bg-ground-200 border border-line-soft p-3 space-y-1.5 text-[11px]">
+                <p className="font-semibold text-ink-200 text-[11px]">
                   Last reconciliation — {intent.lastReconciliation.status}
                 </p>
                 <p className="text-ink-300 font-semibold">{intent.lastReconciliation.reason}</p>
@@ -230,8 +230,8 @@ export function UnknownExecutionPanel({
 function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div>
-      <dt className="text-ink-400 font-bold uppercase tracking-wider text-[9px]">{label}</dt>
-      <dd className={`text-ink-200 ${mono ? "font-mono text-[10px] break-all" : ""}`}>{value}</dd>
+      <dt className="label">{label}</dt>
+      <dd className={`text-ink-200 ${mono ? "font-mono text-[11px] break-all" : ""}`}>{value}</dd>
     </div>
   );
 }

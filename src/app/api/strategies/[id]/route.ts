@@ -5,7 +5,11 @@ import { errorMessage } from "@/lib/errors";
 
 export async function GET(
   req: NextRequest,
-  context: { params: Promise<{ id: string }> | { id: string } }
+  // Next 16 types the second argument's `params` as a Promise. The previous
+  // union also allowed a bare object, which no longer satisfies the generated
+  // RouteContext constraint and failed `tsc --noEmit`. Awaiting a non-promise
+  // is a no-op at runtime, so callers passing a plain object still work.
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getSession();
@@ -13,8 +17,7 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const resolvedParams = "then" in context.params ? await context.params : context.params;
-    const { id } = resolvedParams;
+    const { id } = await context.params;
 
     const business = await prisma.business.findUnique({
       where: { id: session.businessId },

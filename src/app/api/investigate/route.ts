@@ -101,7 +101,7 @@ export async function POST() {
         severity: "HIGH" as const,
         amount: timingGap,
         classification: "ROOT_CAUSE" as const,
-        title: "CRITICAL OBLIGATION GAP",
+        title: "Bills fall due before the money arrives",
         deterministicExplanation: "Upcoming obligations exceed committed inflows.",
         evidence: {
           events: timingEvents,
@@ -114,7 +114,7 @@ export async function POST() {
         severity: "HIGH" as const,
         amount: failedPaymentAmount,
         classification: "INTERVENTION_OPPORTUNITY" as const,
-        title: "FAILED PAYMENT RECOVERY",
+        title: "A customer payment failed and is still unpaid",
         deterministicExplanation: "Recoverable cash currently unresolved.",
         evidence: {
           transactions: failedTxList,
@@ -127,7 +127,7 @@ export async function POST() {
         severity: "MEDIUM" as const,
         amount: overdueReceivablesAmount,
         classification: "INTERVENTION_OPPORTUNITY" as const,
-        title: "OVERDUE RECEIVABLES",
+        title: "Customers are late paying you",
         deterministicExplanation: "Customer payments overdue and potentially acceleratable.",
         evidence: {
           invoices: overdueInvoiceList,

@@ -24,10 +24,10 @@ export function AgentActivityFeed({
   }, [currentStepIndex, steps.length, onComplete]);
 
   return (
-    <div className="space-y-4 p-6 bg-ground-200 border border-line-soft rounded-xl max-w-lg mx-auto shadow-sm">
+    <div className="space-y-4 p-6 bg-ground-200 border border-line-soft rounded-md max-w-lg mx-auto">
       <div className="flex items-center justify-between border-b border-line-soft pb-3 mb-2">
-        <span className="text-xs font-bold text-ink-400 uppercase tracking-widest">
-          CashPilot Ledger Diagnostics
+        <span className="text-xs font-bold text-ink-400">
+          CashPilot Checking your ledger
         </span>
         <span className="flex h-2 w-2 relative">
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-400 opacity-75"></span>

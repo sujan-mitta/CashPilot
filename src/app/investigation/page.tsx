@@ -24,6 +24,21 @@ export default function Investigation() {
 
   // Track which root cause card is expanded
   const [expandedCauseId, setExpandedCauseId] = useState<string | null>(null);
+  const [fetchedDays, setFetchedDays] = useState<{ openingBalance: number; expectedInflows: number; expectedOutflows: number }[]>([]);
+
+  useEffect(() => {
+    if (cachedForecast?.forecast?.days?.length) return;
+    let cancelled = false;
+    fetch("/api/forecast")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data?.forecast?.days?.length) setFetchedDays(data.forecast.days);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [cachedForecast]);
 
   const fetchInvestigation = async () => {
     setLoading(true);
@@ -55,9 +70,9 @@ export default function Investigation() {
     return (
       <main className="flex-1 max-w-4xl mx-auto px-6 py-10 w-full space-y-8">
         <Skeleton className="h-6 w-32" />
-        <Skeleton className="h-28 rounded-2xl" />
-        <Skeleton className="h-40 rounded-2xl" />
-        <Skeleton className="h-80 rounded-2xl" />
+        <Skeleton className="h-28 rounded-md" />
+        <Skeleton className="h-40 rounded-md" />
+        <Skeleton className="h-80 rounded-md" />
       </main>
     );
   }
@@ -65,7 +80,7 @@ export default function Investigation() {
   if (error || !cachedInvestigation) {
     return (
       <main className="flex-1 flex flex-col items-center justify-center p-6 text-center">
-        <Card className="max-w-md border-risk-500/25 bg-risk-500/10 shadow-sm">
+        <Card className="max-w-md border-risk-500/25 bg-risk-500/10">
           <AlertTriangle className="w-12 h-12 text-risk-400 mx-auto mb-4" />
           <h2 className="text-lg font-bold text-risk-400">Diagnostic investigation failed</h2>
           <p className="text-risk-400 text-xs mt-2 leading-relaxed font-semibold">
@@ -88,7 +103,10 @@ export default function Investigation() {
   // Every figure below is derived from this business's own forecast. They were
   // previously hardcoded to the seed dataset, so any other business was shown
   // somebody else's balance sheet as if it were their own.
-  const forecastDays = cachedForecast?.forecast?.days ?? [];
+  // Same recovery as the approval screen: these figures live only in the
+  // in-memory cache, so a refresh or a shared link rendered the whole causal
+  // chain as "Unavailable". /api/forecast holds exactly this data.
+  const forecastDays = cachedForecast?.forecast?.days ?? fetchedDays;
   const startingCash = forecastDays[0]?.openingBalance ?? null;
   const committedInflows = forecastDays.reduce(
     (sum: number, d: any) => sum + (d.expectedInflows ?? 0),
@@ -106,10 +124,10 @@ export default function Investigation() {
   const money = (v: number | null) => (v === null ? "Unavailable" : formatINR(v));
 
   const causalMap = [
-    { label: "Starting Cash", value: money(startingCash), tone: "bg-ground-200 border-line-soft text-ink-200" },
-    { label: "Committed Inflows", value: forecastDays.length ? `+${formatINR(committedInflows)}` : "Unavailable", tone: "bg-safe-500/10 border-safe-500/25 text-safe-400" },
-    { label: "Available Liquidity", value: money(availableLiquidity), tone: "bg-brand-500/10 border-brand-500/25 text-brand-300" },
-    { label: "Upcoming Obligations", value: forecastDays.length ? `-${formatINR(upcomingObligations)}` : "Unavailable", tone: "bg-risk-500/10 border-risk-500/25 text-risk-400" },
+    { label: "Cash you start with", value: money(startingCash), tone: "bg-ground-200 border-line-soft text-ink-200" },
+    { label: "Money due in", value: forecastDays.length ? `+${formatINR(committedInflows)}` : "Unavailable", tone: "bg-safe-500/10 border-safe-500/25 text-safe-400" },
+    { label: "Total available", value: money(availableLiquidity), tone: "bg-brand-500/10 border-brand-500/25 text-brand-300" },
+    { label: "Money you owe", value: forecastDays.length ? `-${formatINR(upcomingObligations)}` : "Unavailable", tone: "bg-risk-500/10 border-risk-500/25 text-risk-400" },
   ];
 
   return (
@@ -122,46 +140,46 @@ export default function Investigation() {
         >
           <ArrowLeft className="w-3.5 h-3.5" /> Dashboard
         </button>
-        <span className="text-[10px] uppercase font-bold text-ink-400 block tracking-wider">
-          {causes.length} Root Causes Identified • Analysis Complete
+        <span className="label block">
+          {causes.length} causes found
         </span>
       </Reveal>
 
       <Stagger className="space-y-8" stagger={0.08}>
         {/* SECTION B — Crisis Summary */}
         <StaggerItem>
-          <Card padding="md" className="!rounded-3xl grid grid-cols-1 sm:grid-cols-3 gap-6 items-center">
+          <Card padding="md" className="rounded-md grid grid-cols-1 sm:grid-cols-3 gap-6 items-center">
             <div>
-              <span className="text-[10px] font-extrabold text-ink-400 uppercase tracking-widest block mb-1">
-                Projected Cash Deficit
+              <span className="label block mb-1">
+                How much you will be short
               </span>
-              <span className="text-3xl font-black text-risk-400 block">
+              <span className="text-3xl font-semibold text-risk-400 block">
                 {formatINR(deficit)}
               </span>
-              <span className="text-[10px] text-ink-400 font-semibold mt-1 block">
-                Expected net shortfall on crisis date
+              <span className="text-[11px] text-ink-400 font-semibold mt-1 block">
+                The gap you need to close
               </span>
             </div>
 
             <div className="border-t sm:border-t-0 sm:border-l sm:border-r border-line-faint py-4 sm:py-0 sm:px-6">
-              <span className="text-[10px] font-extrabold text-ink-400 uppercase tracking-widest block mb-1">
-                Crisis Day
+              <span className="label block mb-1">
+                When it happens
               </span>
-              <span className="text-xl font-black text-ink-100 block">
+              <span className="text-xl font-semibold text-ink-100 block">
                 {crisisDayText}
               </span>
-              <span className="text-[10px] text-ink-400 font-semibold mt-1.5 block">
-                Days until first negative balance
+              <span className="text-[11px] text-ink-400 font-semibold mt-1.5 block">
+                First day your balance goes negative
               </span>
             </div>
 
             <div>
-              <span className="text-[10px] font-extrabold text-ink-400 uppercase tracking-widest block mb-1">
-                Current Risk Level
+              <span className="label block mb-1">
+                How serious
               </span>
               <Badge tone="danger">{summary.riskLevel} Risk</Badge>
-              <span className="text-[10px] text-ink-400 font-semibold mt-2.5 block leading-relaxed">
-                Crisis confirmed in committed cash runway forecast.
+              <span className="text-[11px] text-ink-400 font-semibold mt-2.5 block leading-relaxed">
+                Based on payments already committed — not estimates.
               </span>
             </div>
           </Card>
@@ -169,12 +187,12 @@ export default function Investigation() {
 
         {/* SECTION C — AI Diagnostic Narrative */}
         <StaggerItem>
-          <Card className="!rounded-3xl border-brand-500/25 border-l-4 border-l-indigo-600 relative overflow-hidden">
-            <div className="absolute top-0 right-0 p-3 bg-brand-500/10 text-brand-300 rounded-bl-2xl font-bold text-[9px] uppercase tracking-wider">
-              Analyst Insights
+          <Card className="rounded-md border-brand-500/25 border-l-4 border-l-indigo-600 relative overflow-hidden">
+            <div className="absolute top-0 right-0 p-3 bg-brand-500/10 text-brand-300 rounded-bl-2xl font-bold text-[11px]">
+              AI summary
             </div>
-            <h3 className="text-[10px] font-extrabold text-brand-300 uppercase tracking-widest mb-3 flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4" /> AI Ledger Diagnostics Explanation
+            <h3 className="text-[11px] font-semibold text-brand-300 mb-3 flex items-center gap-1.5">
+              <ShieldCheck className="w-4 h-4" /> What this means
             </h3>
             <p className="text-ink-200 text-sm leading-relaxed font-semibold italic">
               &ldquo;{aiNarrative}&rdquo;
@@ -184,25 +202,25 @@ export default function Investigation() {
 
         {/* SECTION D — Root Cause Ranking (with SECTION E Expandable Evidence) */}
         <StaggerItem className="space-y-4">
-          <h3 className="text-xs font-bold text-ink-400 uppercase tracking-widest block pl-1">
-            Root Causes &amp; Intervention Opportunities
+          <h3 className="text-xs font-bold text-ink-400 block pl-1">
+            What is causing this, and what you can do
           </h3>
 
           {causes.map((cause: any) => {
             const isExpanded = expandedCauseId === cause.id;
 
             return (
-              <Card key={cause.id} padding="none" className="!rounded-3xl overflow-hidden">
+              <Card key={cause.id} padding="none" className="rounded-md overflow-hidden">
                 {/* Header Row */}
                 <div
                   onClick={() => toggleExpand(cause.id)}
                   className="p-5 flex items-center justify-between cursor-pointer hover:bg-ground-200/70 transition-colors duration-150 select-none"
                 >
                   <div className="flex items-center gap-4">
-                    <span className="text-lg font-black text-ink-400">0{cause.rank}</span>
+                    <span className="text-lg font-semibold text-ink-400">0{cause.rank}</span>
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm font-black text-ink-100 tracking-tight">
+                        <span className="text-sm font-semibold text-ink-100 tracking-tight">
                           {cause.title}
                         </span>
                         <Badge tone={cause.classification === "ROOT_CAUSE" ? "danger" : "brand"} size="xs">
@@ -216,7 +234,7 @@ export default function Investigation() {
                   </div>
 
                   <div className="flex items-center gap-4">
-                    <span className="text-md font-black text-ink-100">
+                    <span className="text-md font-semibold text-ink-100">
                       {formatINR(cause.amount)}
                     </span>
                     <button className="text-ink-400 hover:text-ink-300 outline-none">
@@ -239,8 +257,8 @@ export default function Investigation() {
                         {/* Cause 1: Timing mismatch evidence */}
                         {cause.type === "TIMING_MISMATCH" && (
                           <div className="space-y-3">
-                            <span className="text-[10px] font-extrabold text-ink-400 uppercase tracking-wider block">
-                              Committed Flow Movements Gap
+                            <span className="label block">
+                              Money in versus money out
                             </span>
                             <div className="space-y-2 max-h-52 overflow-y-auto">
                               {cause.evidence.events.map((e: any, idx: number) => {
@@ -265,7 +283,7 @@ export default function Investigation() {
                                         <Badge tone="danger" size="xs">High Criticality</Badge>
                                       )}
                                     </div>
-                                    <span className={clsx("font-extrabold", isNegative ? "text-risk-400" : "text-safe-400")}>
+                                    <span className={clsx("font-semibold", isNegative ? "text-risk-400" : "text-safe-400")}>
                                       {isNegative ? "-" : "+"}
                                       {formatINR(Math.abs(e.amount))}
                                     </span>
@@ -279,7 +297,7 @@ export default function Investigation() {
                               const timingGap = inflows + outflows;
                               return (
                                 <div className="pt-2 border-t border-line-soft flex flex-wrap justify-between gap-2 text-xs font-bold text-ink-300">
-                                  <span>Committed Inflows: {formatINR(inflows)}</span>
+                                  <span>Money due in: {formatINR(inflows)}</span>
                                   <span>Committed Outflows: {formatINR(Math.abs(outflows))}</span>
                                   <span className="text-risk-400">Projected Shortfall: {formatINR(Math.abs(timingGap))}</span>
                                 </div>
@@ -291,26 +309,27 @@ export default function Investigation() {
                         {/* Cause 2: Failed payment evidence */}
                         {cause.type === "FAILED_PAYMENT" && (
                           <div className="space-y-3">
-                            <span className="text-[10px] font-extrabold text-ink-400 uppercase tracking-wider block">
-                              Unresolved Recovery Candidate
+                            <span className="label block">
+                              A payment that failed
                             </span>
                             {cause.evidence.transactions.map((tx: any, idx: number) => (
                               <div
                                 key={idx}
-                                className="bg-ground-100 border border-line-soft p-4 rounded-2xl flex items-center justify-between"
+                                className="bg-ground-100 border border-line-soft p-4 rounded-md flex items-center justify-between"
                               >
                                 <div>
-                                  <span className="text-xs font-extrabold text-ink-100 block">
+                                  <span className="text-xs font-semibold text-ink-100 block">
                                     {tx.description}
                                   </span>
-                                  <span className="text-[9px] text-ink-400 block mt-0.5">
-                                    Transaction ID: {tx.id} • Attempted 2 days ago
+                                  <span className="text-[11px] text-ink-400 block mt-1">
+                                    Was due {new Date(tx.expectedDate).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                                    <span className="hidden sm:inline"> · ref {tx.id.slice(-8)}</span>
                                   </span>
                                 </div>
-                                <span className="text-sm font-black text-ink-200">{formatINR(tx.amount)}</span>
+                                <span className="text-sm font-semibold text-ink-200">{formatINR(tx.amount)}</span>
                               </div>
                             ))}
-                            <p className="text-[10px] text-ink-400 font-semibold leading-relaxed flex items-start gap-1.5">
+                            <p className="text-[11px] text-ink-400 font-semibold leading-relaxed flex items-start gap-1.5">
                               <Lightbulb className="w-3.5 h-3.5 text-warn-400 flex-shrink-0 mt-0.5" />
                               <span><strong className="text-ink-300">Why this matters:</strong> This payment failed card processor authorizations and is not included
                               in your committed cash forecast. Recovering it via a dynamic checkout link represents direct,
@@ -322,8 +341,8 @@ export default function Investigation() {
                         {/* Cause 3: Overdue invoices evidence */}
                         {cause.type === "OVERDUE_RECEIVABLE" && (
                           <div className="space-y-3">
-                            <span className="text-[10px] font-extrabold text-ink-400 uppercase tracking-wider block">
-                              Overdue Customer Ledger Invoices
+                            <span className="label block">
+                              Invoices past their due date
                             </span>
                             <div className="space-y-2">
                               {cause.evidence.invoices.map((inv: any, idx: number) => {
@@ -334,11 +353,11 @@ export default function Investigation() {
                                 return (
                                   <div
                                     key={idx}
-                                    className="bg-ground-100 border border-line-soft p-3 rounded-2xl flex items-center justify-between text-xs"
+                                    className="bg-ground-100 border border-line-soft p-3 rounded-md flex items-center justify-between text-xs"
                                   >
                                     <div>
                                       <span className="font-bold text-ink-200 block">{inv.customerName}</span>
-                                      <span className="text-[10px] text-ink-400 font-semibold block mt-0.5">
+                                      <span className="text-[11px] text-ink-400 font-semibold block mt-0.5">
                                         Invoice ID: {inv.id} • Due date:{" "}
                                         {new Date(inv.dueDate).toLocaleDateString("en-IN", {
                                           day: "2-digit",
@@ -347,7 +366,7 @@ export default function Investigation() {
                                       </span>
                                     </div>
                                     <div className="text-right">
-                                      <span className="font-extrabold text-ink-200 block">
+                                      <span className="font-semibold text-ink-200 block">
                                         {formatINR(inv.amount)}
                                       </span>
                                       <Badge tone={isHigh ? "danger" : "warning"} size="xs" className="mt-1">
@@ -358,7 +377,7 @@ export default function Investigation() {
                                 );
                               })}
                             </div>
-                            <p className="text-[10px] text-ink-400 font-semibold leading-relaxed flex items-start gap-1.5">
+                            <p className="text-[11px] text-ink-400 font-semibold leading-relaxed flex items-start gap-1.5">
                               <AlertTriangle className="w-3.5 h-3.5 text-warn-400 flex-shrink-0 mt-0.5" />
                               <span><strong className="text-ink-300">Note on collection:</strong> Overdue receivables are marked as potentially acceleratable.
                               They represent customer balances that we can pursue immediately via early-settlement prompts,
@@ -377,29 +396,23 @@ export default function Investigation() {
 
         {/* SECTION F — Cash Causal Map */}
         <StaggerItem>
-          <Card className="!rounded-3xl space-y-6">
+          <Card className="rounded-md space-y-6">
             <div>
-              <h3 className="text-xs font-bold text-ink-400 uppercase tracking-widest block">
-                Cash Flow Causal Map
+              <h3 className="text-xs font-bold text-ink-400 block">
+                How the shortfall builds up
               </h3>
-              <span className="text-[11px] text-ink-400 font-semibold">
-                Visual ledger trace mapping how starting liquidity reaches the Day 8 crisis.
+              <span className="text-[12px] text-ink-400 font-medium">
+                How the money you start with turns into the shortfall below.
               </span>
             </div>
 
             <div className="flex flex-col items-center py-4">
               {causalMap.map((step, idx) => (
                 <React.Fragment key={step.label}>
-                  <motion.div
-                    initial={{ opacity: 0, y: 8 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true, margin: "-40px" }}
-                    transition={{ delay: idx * 0.1, duration: 0.35, ease: EASE_OUT_EXPO }}
-                    className={clsx("border px-4 py-2.5 rounded-2xl text-center w-56 shadow-sm", step.tone)}
-                  >
-                    <span className="text-[9px] font-bold uppercase tracking-wider block opacity-70">{step.label}</span>
-                    <span className="text-sm font-black">{step.value}</span>
-                  </motion.div>
+                  <div className={clsx("border px-4 py-2.5 rounded-md text-center w-56", step.tone)}>
+                    <span className="text-[12px] block mb-0.5">{step.label}</span>
+                    <span className="numeric text-[15px] font-semibold">{step.value}</span>
+                  </div>
                   {idx < causalMap.length - 1 && <div className="h-6 w-0.5 bg-brand-500/30 my-1" />}
                 </React.Fragment>
               ))}
@@ -410,58 +423,54 @@ export default function Investigation() {
               </div>
 
               {/* Cash Deficit */}
-              <motion.div
-                initial={{ opacity: 0, scale: 0.94 }}
-                whileInView={{ opacity: 1, scale: 1 }}
-                viewport={{ once: true, margin: "-40px" }}
-                transition={{ delay: causalMap.length * 0.1, duration: 0.35, ease: EASE_OUT_EXPO }}
-                className="bg-risk-500/15 border border-risk-500/25 px-6 py-3 rounded-2xl text-center w-64 shadow-md"
-              >
-                <span className="text-[10px] font-black text-risk-400 uppercase tracking-wider block">
-                  Projected Day 8 Deficit
+              <div className="bg-risk-500/10 border border-risk-500/25 px-6 py-3 rounded-md text-center w-64">
+                <span className="label !text-risk-400 block">
+                  {summary.crisisDay ? `Shortfall on day ${summary.crisisDay}` : "Projected shortfall"}
                 </span>
-                <span className="text-base font-black text-risk-400 mt-0.5 block">₹-4,20,000</span>
-              </motion.div>
+                <span className="numeric text-lg font-semibold text-risk-400 mt-1 block">
+                  -{formatINR(deficit)}
+                </span>
+              </div>
             </div>
           </Card>
         </StaggerItem>
 
         {/* SECTION G — Intervention Opportunities */}
         <StaggerItem>
-          <Card className="!rounded-3xl space-y-4">
-            <h3 className="text-xs font-bold text-ink-400 uppercase tracking-widest block border-b border-line-faint pb-3">
-              Actionable Liquidity Capacity Identified
+          <Card className="rounded-md space-y-4">
+            <h3 className="text-xs font-bold text-ink-400 block border-b border-line-faint pb-3">
+              Cash you could bring in
             </h3>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="p-4 bg-ground-200 border border-line-faint rounded-2xl">
-                <span className="text-[9px] font-bold text-ink-400 uppercase tracking-widest block">
-                  Failed Payment Recovery
+              <div className="p-4 bg-ground-200 border border-line-faint rounded-md">
+                <span className="label block">
+                  From failed payments
                 </span>
-                <span className="text-lg font-black text-ink-100 mt-1 block">
+                <span className="text-lg font-semibold text-ink-100 mt-1 block">
                   {formatINR(opportunities.failedPaymentRecovery)}
                 </span>
-                <span className="text-[9px] text-ink-400 font-semibold mt-1 block">
-                  Recoverable card balances
+                <span className="text-[11px] text-ink-400 font-semibold mt-1 block">
+                  Card payments that did not go through
                 </span>
               </div>
 
-              <div className="p-4 bg-ground-200 border border-line-faint rounded-2xl">
-                <span className="text-[9px] font-bold text-ink-400 uppercase tracking-widest block">
-                  Overdue Receivables
+              <div className="p-4 bg-ground-200 border border-line-faint rounded-md">
+                <span className="label block">
+                  From overdue invoices
                 </span>
-                <span className="text-lg font-black text-ink-100 mt-1 block">
+                <span className="text-lg font-semibold text-ink-100 mt-1 block">
                   {formatINR(opportunities.overdueReceivables)}
                 </span>
-                <span className="text-[9px] text-ink-400 font-semibold mt-1 block">
-                  Acceleratable invoice settlements
+                <span className="text-[11px] text-ink-400 font-semibold mt-1 block">
+                  Invoices you could chase early
                 </span>
               </div>
             </div>
 
-            <div className="pt-2 flex items-center justify-between text-xs font-extrabold text-ink-200 bg-brand-500/10 p-3 rounded-2xl">
-              <span>Total Actionable Capacity</span>
-              <span className="text-sm font-black text-brand-300">
+            <div className="pt-2 flex items-center justify-between text-xs font-semibold text-ink-200 bg-brand-500/10 p-3 rounded-md">
+              <span>Total you could bring in</span>
+              <span className="text-sm font-semibold text-brand-300">
                 {formatINR(opportunities.totalPotentialLiquidity)}
               </span>
             </div>
@@ -478,7 +487,7 @@ export default function Investigation() {
           </button>
 
           <Button variant="primary" size="lg" onClick={() => router.push("/strategies")} className="group">
-            Explore Intervention Strategies
+            See your options
             <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
           </Button>
         </StaggerItem>

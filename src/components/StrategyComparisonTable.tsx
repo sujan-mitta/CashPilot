@@ -8,7 +8,7 @@ export function StrategyComparisonTable({ strategies }: { strategies: Strategy[]
       case "DO_NOTHING":
         return "Baseline (Do Nothing)";
       case "RECOVER_ONLY":
-        return "Failed Payment Recovery";
+        return "From failed payments";
       case "RECOVER_AND_COLLECT":
         return "Recovery & Collections";
       case "FULL_INTERVENTION":
@@ -19,7 +19,7 @@ export function StrategyComparisonTable({ strategies }: { strategies: Strategy[]
   };
 
   return (
-    <div className="overflow-hidden border border-line-soft rounded-xl bg-ground-100 shadow-sm">
+    <div className="overflow-hidden border border-line-soft rounded-md bg-ground-100">
       <table className="min-w-full divide-y divide-line-soft text-left text-sm text-ink-300">
         <thead className="bg-ground-200 font-semibold text-ink-200">
           <tr>
@@ -39,7 +39,7 @@ export function StrategyComparisonTable({ strategies }: { strategies: Strategy[]
               <td className="px-6 py-4 flex items-center gap-1.5">
                 {getStrategyDisplayName(s.name)}
                 {s.recommended && (
-                  <span className="bg-brand-500/15 text-brand-300 text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider">
+                  <span className="bg-brand-500/15 text-brand-300 text-[11px] px-2 py-0.5 rounded font-bold">
                     Recommended
                   </span>
                 )}

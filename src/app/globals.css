@@ -1,137 +1,348 @@
 @import "tailwindcss";
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   CASHPILOT DESIGN SYSTEM — "Command Deck"
+   CASHPILOT — INTERFACE TOKENS
    ───────────────────────────────────────────────────────────────────────────
-   Dark-first. The product is a financial control surface: the operator is
-   reading numbers under pressure and deciding whether to move real money.
-   That drives every choice here.
+   This is a finance tool. It should look like the other software an accounts
+   team already has open: plain surfaces, hairline rules, small radii, one
+   accent colour, and type that gets out of the way.
 
-     · Deep, desaturated ground so luminous data is the brightest thing on
-       screen. Nothing competes with a figure.
-     · Colour carries MEANING, never decoration. Emerald is solvent, rose is
-       deficit, amber is unresolved. A colour is never chosen because it looks
-       nice in a spot where it would imply a financial state.
-     · Motion is short, springy and purposeful. It shows causality — this came
-       from that — and gets out of the way. Nothing loops in the operator's
-       peripheral vision while they read.
-     · Every figure uses tabular numerals so digits never jitter mid-update.
+   Deliberately NOT here: gradient fills, coloured glow shadows, mesh
+   backgrounds, film grain, specular sweeps, and a violet/cyan secondary
+   palette. Those read as decoration, and on a screen where somebody is about
+   to move twenty lakh rupees, decoration reads as unserious.
+
+   Light is the primary design. Dark is a proper counterpart, not an inversion:
+   the accent is lifted for legibility on a dark ground and the semantic
+   colours are re-picked, because the light-mode green would fail on it.
+
+   Three states, since "system" stamps no attribute:
+     :root                                       → light (default)
+     @media (dark) :root:not([data-theme=light])  → dark when the OS says so
+     :root[data-theme="dark"]                    → explicit dark wins
+     :root[data-theme="light"]                   → explicit light wins
    ═══════════════════════════════════════════════════════════════════════════ */
 
+
 :root {
-  /* ── Ground ─────────────────────────────────────────────────────────────
-     Four steps of elevation. Each is a real surface, not a tint: a panel
-     lifted one step must read as lifted without needing a border. */
-  --ground-000: #05070d;   /* page floor, behind everything */
-  --ground-050: #080b14;   /* app background */
-  --ground-100: #0c111d;   /* panels */
-  --ground-200: #121829;   /* raised panels, popovers */
-  --ground-300: #1a2133;   /* hover state of a raised panel */
-  --ground-400: #232c42;   /* pressed / active */
+  /* Surfaces. A page ground, a card, and two steps of recess — that is all a
+     screen like this needs. */
+  --ground-000: #eceef1;
+  --ground-050: #f6f7f9;   /* page */
+  --ground-100: #ffffff;   /* cards, panels */
+  --ground-200: #f4f5f7;   /* recessed rows, inputs */
+  --ground-300: #eaecef;   /* hover */
+  --ground-400: #dfe2e6;   /* pressed */
 
-  /* ── Ink ────────────────────────────────────────────────────────────────
-     Deliberately not pure white. #F8FAFF at full strength keeps large
-     numerals from blooming against the dark ground. */
-  /* ink-400 is measured, not picked: it labels every figure on screen, and at
-     11px that is small text needing 4.5:1. #6b7799 landed at 3.98-4.24 against
-     the card grounds - close enough to look fine and still fail. */
-  --ink-100: #f8faff;      /* primary — figures, headings */
-  --ink-200: #d5dcec;      /* body copy */
-  --ink-300: #9aa6c2;      /* secondary, labels */
-  --ink-400: #8492ad;      /* tertiary, captions, labels */
-  --ink-500: #4a5470;      /* disabled */
+  /* Text. Near-black rather than black; pure #000 on white is harsh at size. */
+  --ink-100: #1a1d21;      /* headings, figures */
+  --ink-200: #3c4149;      /* body */
+  --ink-300: #596070;      /* secondary */
+  /* Labels sit on three grounds, and the recessed one is the tightest:
+     #6b7280 measures 4.83 on white but 4.43 on #f4f5f7, so it failed exactly
+     where most captions live. #636b78 clears 4.5 on all three (worst 4.93). */
+  --ink-400: #636b78;
+  --ink-500: #9aa1ab;      /* disabled */
 
-  /* ── Lines ─────────────────────────────────────────────────────────────── */
-  --line-faint: rgb(255 255 255 / 0.05);
-  --line-soft: rgb(255 255 255 / 0.08);
-  --line-firm: rgb(255 255 255 / 0.14);
-  --line-loud: rgb(255 255 255 / 0.22);
+  --line-faint: #eef0f2;
+  --line-soft: #e2e5e9;
+  --line-firm: #d2d6dc;
+  --line-loud: #b6bcc5;
 
-  /* ── Brand ──────────────────────────────────────────────────────────────
-     Indigo→violet is the product. Cyan is reserved for LIVE — something is
-     happening right now. Never use cyan for a static accent; it stops
-     meaning anything. */
-  --brand-300: #a5b4fc;
-  --brand-400: #818cf8;
-  --brand-500: #6366f1;
-  --brand-600: #4f46e5;
-  --brand-700: #4338ca;
-  --violet-500: #8b5cf6;
-  --live-400: #22d3ee;
-  --live-500: #06b6d4;
+  /* One accent. Indigo-violet with a glow is the single strongest "generated"
+     signal in a UI; a plain corporate blue is what this kind of software has
+     used for twenty years, and it stays out of the way of the semantic colours. */
+  --brand-300: #1d4ed8;
+  --brand-400: #1d4ed8;
+  --brand-500: #2563eb;
+  --brand-600: #1d4ed8;
+  --brand-700: #1e40af;
+  --violet-500: #2563eb;   /* retained for compatibility; no longer a second hue */
+  --live-400: #0f766e;
+  --live-500: #0d9488;
 
-  /* ── Financial semantics ───────────────────────────────────────────────
-     These are load-bearing. Emerald means the business is solvent across the
-     horizon. Rose means a deficit day exists. Amber means we do not yet know,
-     which is a distinct state from either and must never be shown as green. */
-  --safe-400: #34d399;
-  --safe-500: #10b981;
-  --safe-glow: rgb(16 185 129 / 0.35);
+  /* Status. Only these carry meaning. */
+  --safe-400: #15803d;
+  --safe-500: #16a34a;
+  --safe-glow: rgb(22 163 74 / 0.18);
 
-  --warn-400: #fbbf24;
-  --warn-500: #f59e0b;
-  --warn-glow: rgb(245 158 11 / 0.35);
+  --warn-400: #a16207;
+  --warn-500: #ca8a04;
+  --warn-glow: rgb(202 138 4 / 0.18);
 
-  --risk-400: #fb7185;
-  --risk-500: #f43f5e;
-  --risk-glow: rgb(244 63 94 / 0.35);
+  --risk-400: #b91c1c;
+  --risk-500: #dc2626;
+  --risk-glow: rgb(220 38 38 / 0.18);
 
-  --unknown-400: #a78bfa;   /* provider outcome undetermined */
-  --unknown-500: #8b5cf6;
+  --unknown-400: #6d28d9;
+  --unknown-500: #7c3aed;
 
-  /* ── Depth ──────────────────────────────────────────────────────────────
-     Dark UI gets depth from LIGHT, not from shadow — a black shadow on a near
-     black ground is invisible. Each elevation pairs a cast shadow with an
-     inset top highlight, which is what actually reads as "raised". */
-  --lift-1:
-    0 1px 2px rgb(0 0 0 / 0.4),
-    inset 0 1px 0 rgb(255 255 255 / 0.04);
-  --lift-2:
-    0 4px 12px -2px rgb(0 0 0 / 0.5),
-    0 2px 4px rgb(0 0 0 / 0.3),
-    inset 0 1px 0 rgb(255 255 255 / 0.06);
-  --lift-3:
-    0 12px 32px -8px rgb(0 0 0 / 0.6),
-    0 4px 8px rgb(0 0 0 / 0.35),
-    inset 0 1px 0 rgb(255 255 255 / 0.07);
-  --lift-4:
-    0 24px 64px -12px rgb(0 0 0 / 0.7),
-    0 8px 16px rgb(0 0 0 / 0.4),
-    inset 0 1px 0 rgb(255 255 255 / 0.09);
+  /* Fills for SOLID controls, separate from the semantic scale.
+     A filled button needs 4.5:1 against its white label; the tint used behind
+     text at 10% opacity does not. Sharing one value meant the success button
+     shipped at 3.3:1. */
+  --safe-solid: #15803d;
+  --safe-solid-hover: #116534;
+  --risk-solid: #b91c1c;
+  --risk-solid-hover: #991b1b;
 
-  --glow-brand: 0 0 0 1px rgb(99 102 241 / 0.4), 0 8px 32px -8px rgb(99 102 241 / 0.5);
-  --glow-live: 0 0 0 1px rgb(34 211 238 / 0.4), 0 8px 32px -8px rgb(34 211 238 / 0.45);
+  /* Elevation. A border does most of the work; the shadow is a hint, not a
+     drop. Nothing on a normal page needs more than lift-1. */
+  --lift-1: 0 1px 2px rgb(16 24 40 / 0.04);
+  --lift-2: 0 1px 3px rgb(16 24 40 / 0.08), 0 1px 2px rgb(16 24 40 / 0.04);
+  --lift-3: 0 4px 10px -2px rgb(16 24 40 / 0.10), 0 2px 4px rgb(16 24 40 / 0.05);
+  --lift-4: 0 12px 28px -8px rgb(16 24 40 / 0.16), 0 4px 8px rgb(16 24 40 / 0.06);
 
-  /* ── Motion ─────────────────────────────────────────────────────────────
-     One vocabulary, used everywhere. `swift` for state changes the operator
-     caused, `glide` for things entering, `spring` only where an element should
-     feel physical (a toggle, a card lifting to meet the cursor). */
-  --ease-swift: cubic-bezier(0.32, 0.72, 0, 1);
-  --ease-glide: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
-  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --glow-brand: 0 0 0 1px var(--brand-500);
+  --glow-live: 0 0 0 1px var(--live-500);
 
-  --t-instant: 90ms;
-  --t-fast: 160ms;
-  --t-base: 260ms;
-  --t-slow: 420ms;
-  --t-deliberate: 680ms;
+  --glass-bg: #ffffff;
+  --glass-strong-bg: #ffffff;
+  --scroll-thumb: #c9ced6;
+  --scroll-thumb-hover: #aeb5c0;
+  --sheen-tint: transparent;
+  --skeleton-sweep: rgb(16 24 40 / 0.05);
+  --grain-opacity: 0;
+  --grain-blend: normal;
+  --mesh-indigo: transparent;
+  --mesh-violet: transparent;
+  --mesh-cyan: transparent;
+  --spotlight-tint: transparent;
 
-  /* ── Type ───────────────────────────────────────────────────────────────
-     Display sizes get negative tracking; small caps labels get positive.
-     Both are what separates considered typography from default typography. */
-  --track-display: -0.035em;
-  --track-title: -0.02em;
-  --track-body: -0.005em;
-  --track-label: 0.08em;
+  --chart-grid: #e8eaed;
+  --chart-axis: #6b7280;
+  --chart-tooltip-bg: #ffffff;
+  --chart-tooltip-line: #d2d6dc;
+  --chart-tooltip-ink: #1a1d21;
+  --chart-cursor: #b6bcc5;
+  --chart-line: #2563eb;
+  --chart-line-fill: #2563eb;
+  --chart-baseline: #dc2626;
+  --chart-dot-ring: #ffffff;
 
-  /* Radii */
-  --r-sm: 8px;
-  --r-md: 12px;
-  --r-lg: 16px;
-  --r-xl: 22px;
-  --r-2xl: 28px;
+  /* Motion. Short, and only where it clarifies. Nothing eases in from below. */
+  --ease-swift: cubic-bezier(0.2, 0, 0.2, 1);
+  --ease-glide: cubic-bezier(0.2, 0, 0.2, 1);
+  --ease-spring: cubic-bezier(0.2, 0, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+  --t-instant: 60ms;
+  --t-fast: 100ms;
+  --t-base: 140ms;
+  --t-slow: 180ms;
+  --t-deliberate: 220ms;
+
+  /* Type. Tracking near zero; the wide-tracked uppercase caption is another
+     signal we are dropping. */
+  --track-display: -0.02em;
+  --track-title: -0.011em;
+  --track-body: 0;
+  --track-label: 0;
+
+  /* Type scale. Six steps, and nothing between them. Most of the "designed"
+     feeling in an interface comes from a small scale used consistently rather
+     than from any individual size. */
+  --fs-display: 30px;   /* the one figure a screen is about */
+  --fs-figure: 20px;    /* supporting figures */
+  --fs-title: 20px;     /* page title */
+  --fs-section: 14px;   /* card / section heading */
+  --fs-body: 14px;      /* running text */
+  --fs-label: 12px;     /* captions */
+
+  /* Spacing. A 4px grid, named so layout reads as intent. */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+
+  /* Radii. 8px containers, 6px controls, 4px chips. */
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 8px;
+  --r-xl: 10px;
+  --r-2xl: 12px;
   --r-full: 999px;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+  --ground-000: #0e1014;
+  --ground-050: #14161a;
+  --ground-100: #1a1d23;
+  --ground-200: #21252c;
+  --ground-300: #2a2f38;
+  --ground-400: #343a45;
+
+  --ink-100: #e9ebee;
+  --ink-200: #c6cad1;
+  --ink-300: #9aa1ad;
+  --ink-400: #8b929e;
+  --ink-500: #5d646f;
+
+  --line-faint: rgb(255 255 255 / 0.06);
+  --line-soft: rgb(255 255 255 / 0.10);
+  --line-firm: rgb(255 255 255 / 0.16);
+  --line-loud: rgb(255 255 255 / 0.26);
+
+  --brand-300: #7aa9f7;
+  --brand-400: #6098f0;
+  --brand-500: #3b82f6;   /* accents, links, focus — on a dark ground */
+  /* Button fills. White on #3b82f6 measures 3.68:1; #2563eb measures 5.3:1.
+     The accent stays bright, the filled control goes one step deeper. */
+  --brand-600: #2563eb;
+  --brand-700: #1d4ed8;
+  --violet-500: #3b82f6;
+  --live-400: #2dd4bf;
+  --live-500: #14b8a6;
+
+  --safe-400: #4ec27a;
+  --safe-500: #3fa863;
+  --safe-glow: rgb(63 168 99 / 0.22);
+
+  --warn-400: #d9a441;
+  --warn-500: #c08a2e;
+  --warn-glow: rgb(192 138 46 / 0.22);
+
+  --risk-400: #f0736a;
+  --risk-500: #db5b52;
+  --risk-glow: rgb(219 91 82 / 0.22);
+
+  --unknown-400: #a98bf5;
+  --unknown-500: #8b6ee8;
+
+  --safe-solid: #2a7d48;
+  --safe-solid-hover: #23693d;
+  --risk-solid: #c2453d;
+  --risk-solid-hover: #a9352e;
+
+  --lift-1: 0 1px 2px rgb(0 0 0 / 0.28);
+  --lift-2: 0 1px 3px rgb(0 0 0 / 0.36), 0 1px 2px rgb(0 0 0 / 0.24);
+  --lift-3: 0 4px 10px -2px rgb(0 0 0 / 0.44), 0 2px 4px rgb(0 0 0 / 0.28);
+  --lift-4: 0 12px 28px -8px rgb(0 0 0 / 0.52), 0 4px 8px rgb(0 0 0 / 0.32);
+
+  --glow-brand: 0 0 0 1px var(--brand-500);
+  --glow-live: 0 0 0 1px var(--live-500);
+
+  --glass-bg: #1a1d23;
+  --glass-strong-bg: #1a1d23;
+  --scroll-thumb: #3a4048;
+  --scroll-thumb-hover: #4c525c;
+  --sheen-tint: transparent;
+  --skeleton-sweep: rgb(255 255 255 / 0.05);
+  --grain-opacity: 0;
+  --grain-blend: normal;
+  --mesh-indigo: transparent;
+  --mesh-violet: transparent;
+  --mesh-cyan: transparent;
+  --spotlight-tint: transparent;
+
+  --chart-grid: rgb(255 255 255 / 0.08);
+  --chart-axis: #8b929e;
+  --chart-tooltip-bg: #21252c;
+  --chart-tooltip-line: rgb(255 255 255 / 0.16);
+  --chart-tooltip-ink: #e9ebee;
+  --chart-cursor: #5d646f;
+  --chart-line: #6098f0;
+  --chart-line-fill: #3b82f6;
+  --chart-baseline: #f0736a;
+  --chart-dot-ring: #1a1d23;
+
+  color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --ground-000: #0e1014;
+  --ground-050: #14161a;
+  --ground-100: #1a1d23;
+  --ground-200: #21252c;
+  --ground-300: #2a2f38;
+  --ground-400: #343a45;
+
+  --ink-100: #e9ebee;
+  --ink-200: #c6cad1;
+  --ink-300: #9aa1ad;
+  --ink-400: #8b929e;
+  --ink-500: #5d646f;
+
+  --line-faint: rgb(255 255 255 / 0.06);
+  --line-soft: rgb(255 255 255 / 0.10);
+  --line-firm: rgb(255 255 255 / 0.16);
+  --line-loud: rgb(255 255 255 / 0.26);
+
+  --brand-300: #7aa9f7;
+  --brand-400: #6098f0;
+  --brand-500: #3b82f6;   /* accents, links, focus — on a dark ground */
+  /* Button fills. White on #3b82f6 measures 3.68:1; #2563eb measures 5.3:1.
+     The accent stays bright, the filled control goes one step deeper. */
+  --brand-600: #2563eb;
+  --brand-700: #1d4ed8;
+  --violet-500: #3b82f6;
+  --live-400: #2dd4bf;
+  --live-500: #14b8a6;
+
+  --safe-400: #4ec27a;
+  --safe-500: #3fa863;
+  --safe-glow: rgb(63 168 99 / 0.22);
+
+  --warn-400: #d9a441;
+  --warn-500: #c08a2e;
+  --warn-glow: rgb(192 138 46 / 0.22);
+
+  --risk-400: #f0736a;
+  --risk-500: #db5b52;
+  --risk-glow: rgb(219 91 82 / 0.22);
+
+  --unknown-400: #a98bf5;
+  --unknown-500: #8b6ee8;
+
+  --safe-solid: #2a7d48;
+  --safe-solid-hover: #23693d;
+  --risk-solid: #c2453d;
+  --risk-solid-hover: #a9352e;
+
+  --lift-1: 0 1px 2px rgb(0 0 0 / 0.28);
+  --lift-2: 0 1px 3px rgb(0 0 0 / 0.36), 0 1px 2px rgb(0 0 0 / 0.24);
+  --lift-3: 0 4px 10px -2px rgb(0 0 0 / 0.44), 0 2px 4px rgb(0 0 0 / 0.28);
+  --lift-4: 0 12px 28px -8px rgb(0 0 0 / 0.52), 0 4px 8px rgb(0 0 0 / 0.32);
+
+  --glow-brand: 0 0 0 1px var(--brand-500);
+  --glow-live: 0 0 0 1px var(--live-500);
+
+  --glass-bg: #1a1d23;
+  --glass-strong-bg: #1a1d23;
+  --scroll-thumb: #3a4048;
+  --scroll-thumb-hover: #4c525c;
+  --sheen-tint: transparent;
+  --skeleton-sweep: rgb(255 255 255 / 0.05);
+  --grain-opacity: 0;
+  --grain-blend: normal;
+  --mesh-indigo: transparent;
+  --mesh-violet: transparent;
+  --mesh-cyan: transparent;
+  --spotlight-tint: transparent;
+
+  --chart-grid: rgb(255 255 255 / 0.08);
+  --chart-axis: #8b929e;
+  --chart-tooltip-bg: #21252c;
+  --chart-tooltip-line: rgb(255 255 255 / 0.16);
+  --chart-tooltip-ink: #e9ebee;
+  --chart-cursor: #5d646f;
+  --chart-line: #6098f0;
+  --chart-line-fill: #3b82f6;
+  --chart-baseline: #f0736a;
+  --chart-dot-ring: #1a1d23;
+
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
 }
 
 @theme inline {
@@ -141,7 +352,9 @@
   --font-mono: var(--font-geist-mono);
 
   /* Expose the system to Tailwind so utilities compose with it:
-     bg-ground-200, text-ink-300, border-line-soft, text-safe-400 … */
+     bg-ground-200, text-ink-300, border-line-soft, text-safe-400 …
+     Because these reference var() rather than literals, every utility follows
+     the active theme with no dark: variants anywhere in the app. */
   --color-ground-000: var(--ground-000);
   --color-ground-050: var(--ground-050);
   --color-ground-100: var(--ground-100);
@@ -175,6 +388,10 @@
   --color-warn-500: var(--warn-500);
   --color-risk-400: var(--risk-400);
   --color-risk-500: var(--risk-500);
+  --color-safe-solid: var(--safe-solid);
+  --color-safe-solid-hover: var(--safe-solid-hover);
+  --color-risk-solid: var(--risk-solid);
+  --color-risk-solid-hover: var(--risk-solid-hover);
   --color-unknown-400: var(--unknown-400);
   --color-unknown-500: var(--unknown-500);
 
@@ -184,6 +401,24 @@
      stylesheet's own rules. */
 }
 
+
+/* ═══════════════════════════ CASCADE LAYERS ════════════════════════════
+   Everything below lives in a layer, and that is load-bearing.
+
+   Tailwind v4 puts its utilities in `@layer utilities`. CSS gives UNLAYERED
+   rules higher priority than ANY layered rule, whatever the specificity — so
+   while `h1, h2, h3, h4 { color: var(--ink-100) }` sat outside a layer, it beat
+   every `text-*` utility in the app. 48 headings carried a colour utility that
+   silently did nothing: a heading marked `text-risk-400` rendered in full-
+   strength ink, and headings meant to recede at `text-ink-400` rendered at
+   maximum brightness. That is a large part of why every card read as shouting.
+
+   Base element defaults go in `@layer base`, our own classes go in
+   `@layer components`, and Tailwind utilities beat both — which is the
+   mental model every component in this codebase was already written against.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+@layer base {
 /* ═══════════════════════════════════════ BASE ═══════════════════════════ */
 
 *,
@@ -195,18 +430,29 @@
 html {
   scroll-behavior: smooth;
   background: var(--ground-000);
-  color-scheme: dark;
 }
 
 body {
   background: var(--ground-050);
   color: var(--ink-200);
+  font-size: var(--fs-body);
+  line-height: 1.55;
   font-feature-settings: "cv11", "ss01", "cv02";
   letter-spacing: var(--track-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
   overflow-x: hidden;
+  /* NO transition on background/color here, deliberately.
+     Easing the theme swap looked better and broke it: switching themes
+     rewrites --ground-050 rather than assigning background-color directly,
+     and a transition over a var()-derived value leaves the computed
+     background stuck on the previous theme's colour indefinitely — dark ink
+     on a light ground, or the reverse. Measured: with the transition, body
+     reported rgb(244,245,250) while --ground-050 resolved to #080b14;
+     removing it snapped body to the correct rgb(8,11,20).
+     The swap is instant, which is also the honest thing for a control that
+     the operator toggled on purpose. */
 }
 
 h1, h2, h3, h4 {
@@ -215,7 +461,7 @@ h1, h2, h3, h4 {
 }
 
 ::selection {
-  background: rgb(99 102 241 / 0.35);
+  background: color-mix(in srgb, var(--brand-500) 35%, transparent);
   color: var(--ink-100);
 }
 
@@ -223,39 +469,148 @@ h1, h2, h3, h4 {
 ::-webkit-scrollbar { width: 11px; height: 11px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: rgb(255 255 255 / 0.1);
+  background: var(--scroll-thumb);
   border-radius: var(--r-full);
   border: 3px solid transparent;
   background-clip: padding-box;
   transition: background var(--t-fast) var(--ease-swift);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgb(255 255 255 / 0.2);
+  background: var(--scroll-thumb-hover);
   background-clip: padding-box;
 }
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgb(255 255 255 / 0.12) transparent;
+  scrollbar-color: var(--scroll-thumb) transparent;
 }
 
-/* A focus ring that is unmistakable without being ugly. Two rings: a dark
-   separator so the bright ring reads on any surface underneath it. */
+/* Focus ring. One ring, offset from the control, in the accent colour. */
 :focus-visible {
-  outline: none;
-  box-shadow:
-    0 0 0 2px var(--ground-050),
-    0 0 0 4px var(--brand-500);
+  outline: 2px solid var(--brand-500);
+  outline-offset: 2px;
   border-radius: var(--r-sm);
 }
 
+
+}
+
+@layer components {
 /* ═══════════════════════════════════ SURFACES ═══════════════════════════ */
+
+/* ── Card ───────────────────────────────────────────────────────────────
+   One structure, used everywhere: an optional header separated by a hairline,
+   then a body. Consistent internal structure is what stops a page of boxes
+   from looking like a page of boxes. */
+.card {
+  background: var(--ground-100);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  padding: var(--sp-3) var(--sp-5);
+  border-bottom: 1px solid var(--line-faint);
+  background: var(--ground-200);
+}
+.card-head h2,
+.card-head h3 {
+  font-size: var(--fs-section);
+  font-weight: 600;
+  letter-spacing: var(--track-title);
+  margin: 0;
+}
+.card-body { padding: var(--sp-5); }
+.card-body-tight { padding: var(--sp-3) var(--sp-5); }
+
+/* ── KPI band ───────────────────────────────────────────────────────────
+   A row of figures where ONE of them is the point. The dominant tile is set
+   at display size; the rest recede. When every figure is the same size the
+   reader has to work out which one matters, and that is the job of the
+   design, not the reader. */
+.kpi-row {
+  display: grid;
+  gap: var(--sp-5);
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  align-items: start;
+}
+.kpi-label {
+  font-size: var(--fs-label);
+  font-weight: 500;
+  color: var(--ink-400);
+  display: block;
+  margin-bottom: var(--sp-1);
+}
+.kpi-value {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+  font-size: var(--fs-figure);
+  font-weight: 600;
+  letter-spacing: -0.014em;
+  color: var(--ink-100);
+  display: block;
+  line-height: 1.2;
+}
+.kpi-value-lead {
+  font-size: var(--fs-display);
+  letter-spacing: -0.022em;
+  line-height: 1.1;
+}
+.kpi-note {
+  font-size: var(--fs-label);
+  color: var(--ink-400);
+  display: block;
+  margin-top: var(--sp-1);
+}
+
+/* ── Data table ─────────────────────────────────────────────────────────
+   Figures right-aligned and tabular so columns of money line up on the
+   decimal; header in the recessed ground; rows separated by hairlines rather
+   than boxed. */
+.dtable { width: 100%; border-collapse: collapse; font-size: var(--fs-body); }
+.dtable thead th {
+  text-align: left;
+  font-size: var(--fs-label);
+  font-weight: 500;
+  color: var(--ink-400);
+  padding: var(--sp-2) var(--sp-4);
+  background: var(--ground-200);
+  border-bottom: 1px solid var(--line-soft);
+  white-space: nowrap;
+}
+.dtable tbody td {
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--line-faint);
+  color: var(--ink-200);
+  vertical-align: top;
+}
+.dtable tbody tr:last-child td { border-bottom: 0; }
+.dtable tbody tr:hover td { background: var(--ground-200); }
+.dtable .num,
+.dtable th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* A row of label/value pairs inside a card. */
+.field-grid {
+  display: grid;
+  gap: var(--sp-4) var(--sp-6);
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+.field-label { font-size: var(--fs-label); color: var(--ink-400); display: block; margin-bottom: 2px; }
+.field-value { font-size: var(--fs-body); color: var(--ink-100); font-weight: 500; }
 
 /* The workhorse panel. */
 .panel {
   background: var(--ground-100);
   border: 1px solid var(--line-soft);
   border-radius: var(--r-lg);
-  box-shadow: var(--lift-1);
+  box-shadow: none;
 }
 
 .panel-raised {
@@ -267,14 +622,14 @@ h1, h2, h3, h4 {
 
 /* Frosted glass, for anything floating above content: nav, modals, drawers. */
 .glass {
-  background: rgb(12 17 29 / 0.72);
+  background: var(--glass-bg);
   backdrop-filter: blur(24px) saturate(180%);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
   border: 1px solid var(--line-soft);
 }
 
 .glass-strong {
-  background: rgb(8 11 20 / 0.88);
+  background: var(--glass-strong-bg);
   backdrop-filter: blur(32px) saturate(200%);
   -webkit-backdrop-filter: blur(32px) saturate(200%);
   border: 1px solid var(--line-firm);
@@ -300,7 +655,12 @@ h1, h2, h3, h4 {
   inset: 0;
   border-radius: inherit;
   padding: 1px;
-  background: linear-gradient(135deg, rgb(99 102 241 / 0.5), rgb(139 92 246 / 0.18) 40%, transparent 70%);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--brand-500) 50%, transparent),
+    color-mix(in srgb, var(--violet-500) 18%, transparent) 40%,
+    transparent 70%
+  );
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
@@ -310,38 +670,11 @@ h1, h2, h3, h4 {
 
 /* ═══════════════════════════════ ATMOSPHERE ════════════════════════════ */
 
-/* Soft coloured light sources. Placed behind content, never over it.
-   `--mesh-o` lets a page dim the whole atmosphere in one variable. */
-.mesh-bg {
-  position: relative;
-  isolation: isolate;
-}
-.mesh-bg::before {
-  content: "";
-  position: absolute;
-  inset: -30% -10%;
-  z-index: -1;
-  opacity: var(--mesh-o, 1);
-  background:
-    radial-gradient(48rem 32rem at 12% 8%, rgb(99 102 241 / 0.16), transparent 60%),
-    radial-gradient(40rem 30rem at 88% 12%, rgb(139 92 246 / 0.13), transparent 62%),
-    radial-gradient(52rem 34rem at 50% 100%, rgb(6 182 212 / 0.10), transparent 65%);
-  filter: blur(12px);
-  pointer-events: none;
-}
+/* Mesh gradient removed — the class is kept so callers do not break. */
+.mesh-bg { position: relative; }
 
-/* Film grain. A single tiny SVG, tiled. Removes the plasticky flatness that
-   large dark gradients otherwise have on a big display. */
-.grain::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  opacity: 0.16;
-  pointer-events: none;
-  mix-blend-mode: overlay;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.42'/%3E%3C/svg%3E");
-}
+/* Film grain removed. */
+.grain { position: relative; }
 
 /* Faint engineering grid — hints at instrumentation without becoming a texture. */
 .grid-field {
@@ -361,19 +694,26 @@ h1, h2, h3, h4 {
 /* ══════════════════════════════════ TEXT ═══════════════════════════════ */
 
 .display {
-  font-size: clamp(2.4rem, 4.4vw, 3.9rem);
-  line-height: 1.02;
+  font-size: clamp(1.75rem, 3vw, 2.35rem);
+  line-height: 1.15;
   letter-spacing: var(--track-display);
-  font-weight: 700;
+  font-weight: 600;
   color: var(--ink-100);
 }
 
+/* Field captions. Sentence case, normal tracking, one step down in size.
+
+   This used to be 11px uppercase at +0.08em, applied to every caption on every
+   screen. Wide-tracked uppercase micro-type is a styling tic: it makes a label
+   compete with the number it labels, and 136 of them made the whole product
+   read as generated rather than written. */
 .label {
-  font-size: 0.6875rem;
-  font-weight: 650;
-  letter-spacing: var(--track-label);
-  text-transform: uppercase;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--ink-400);
+  line-height: 1.5;
 }
 
 /* Money and any figure that updates. Tabular so digits never shift width. */
@@ -383,51 +723,28 @@ h1, h2, h3, h4 {
   letter-spacing: -0.02em;
 }
 
-/* Brand gradient text. Needs a solid fallback colour first: if the clip fails
-   the text must still be readable, not invisible. */
+/* Was a four-stop clipped gradient. A heading is not a place for a gradient. */
 .text-gradient {
-  color: var(--brand-300);
-  background: linear-gradient(115deg, #c7d2fe 0%, #a5b4fc 30%, #818cf8 55%, #22d3ee 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: var(--brand-500);
 }
 
 /* ══════════════════════════════ INTERACTION ════════════════════════════ */
 
-/* Card that lifts toward the cursor. Paired with useTilt() for the rotation. */
+/* Interactive surfaces change their border and ground on hover. They do not
+   rise off the page — the translate was the tell, and it made every list of
+   cards feel like a marketing site. */
 .lift {
   transition:
-    transform var(--t-base) var(--ease-glide),
-    box-shadow var(--t-base) var(--ease-glide),
-    border-color var(--t-base) var(--ease-glide),
-    background-color var(--t-base) var(--ease-glide);
-  will-change: transform;
+    border-color var(--t-fast) var(--ease-swift),
+    background-color var(--t-fast) var(--ease-swift);
 }
 .lift:hover {
-  transform: translateY(-3px);
   border-color: var(--line-firm);
-  box-shadow: var(--lift-3);
+  background: var(--ground-200);
 }
 
-/* Specular sweep across a surface on hover. Purely decorative, so it is
-   masked to the element and never affects layout. */
-.sheen {
-  position: relative;
-  overflow: hidden;
-}
-.sheen::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(105deg, transparent 35%, rgb(255 255 255 / 0.07) 48%, transparent 62%);
-  transform: translateX(-120%);
-  transition: transform var(--t-deliberate) var(--ease-glide);
-  pointer-events: none;
-}
-.sheen:hover::after {
-  transform: translateX(120%);
-}
+/* Specular sweep removed. */
+.sheen { position: relative; }
 
 /* Perspective container. 3D children rotate inside this. */
 .scene {
@@ -457,7 +774,7 @@ h1, h2, h3, h4 {
   position: absolute;
   inset: 0;
   transform: translateX(-100%);
-  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.06), transparent);
+  background: linear-gradient(90deg, transparent, var(--skeleton-sweep), transparent);
   animation: sweep 1.7s var(--ease-in-out) infinite;
 }
 
@@ -479,6 +796,9 @@ h1, h2, h3, h4 {
   animation: ping 1.9s var(--ease-in-out) infinite;
 }
 
+
+}
+
 /* ═══════════════════════════════ KEYFRAMES ═════════════════════════════ */
 
 @keyframes sweep {
@@ -489,6 +809,12 @@ h1, h2, h3, h4 {
   0%   { transform: scale(1);   opacity: 0.7; }
   70%  { transform: scale(2.6); opacity: 0; }
   100% { transform: scale(2.6); opacity: 0; }
+}
+
+@keyframes pulse-ring {
+  0%   { box-shadow: 0 0 0 0 var(--safe-glow); opacity: 1; }
+  70%  { box-shadow: 0 0 0 9px transparent;    opacity: 0.85; }
+  100% { box-shadow: 0 0 0 0 transparent;      opacity: 1; }
 }
 
 @keyframes drift {
@@ -506,9 +832,13 @@ h1, h2, h3, h4 {
   to   { opacity: 1; transform: translateY(0); }
 }
 
-.anim-drift   { animation: drift 9s var(--ease-in-out) infinite; }
-.anim-breathe { animation: breathe 5.5s var(--ease-in-out) infinite; }
+.anim-drift   { animation: none; }
+.anim-breathe { animation: none; }
 .anim-slide-in { animation: slide-in var(--t-slow) var(--ease-glide) both; }
+
+/* Was referenced by the dashboard and execution screens but never defined, so
+   both indicators rendered as static dots. */
+.animate-pulse-ring { animation: pulse-ring 2s var(--ease-in-out) infinite; }
 
 /* ══════════════════════════════ ACCESSIBILITY ══════════════════════════ */
 
@@ -527,6 +857,7 @@ h1, h2, h3, h4 {
 
   .anim-drift,
   .anim-breathe,
+  .animate-pulse-ring,
   .skeleton::after,
   .pip::after {
     animation: none !important;

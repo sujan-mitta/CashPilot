@@ -219,7 +219,7 @@ describe("Decision Memory, Outcome Measurement & Strategy Aggregates", () => {
 
     // Request detail route for decision belonging to biz-1
     const request = new NextRequest("http://localhost/api/decisions/dec-1");
-    const response = await handleDecisionDetail(request as any, { params: { id: "dec-1" } });
+    const response = await handleDecisionDetail(request as any, { params: Promise.resolve({ id: "dec-1" }) });
     expect(response.status).toBe(404); // Not found under user's tenant
   });
 

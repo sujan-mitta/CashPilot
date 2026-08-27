@@ -84,39 +84,34 @@ function CheckoutContent() {
 
   if (error && !success) {
     return (
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="bg-risk-500/10 p-6 rounded-2xl border border-risk-500/25 text-center max-w-sm space-y-4"
+      <div
+        className="bg-risk-500/10 p-6 rounded-md border border-risk-500/25 text-center max-w-sm space-y-4"
       >
         <AlertTriangle className="w-10 h-10 text-risk-400 mx-auto" />
         <h3 className="text-md font-bold text-risk-400">Checkout Session Failure</h3>
         <p className="text-xs text-risk-400 font-medium leading-relaxed">{error}</p>
-      </motion.div>
+      </div>
     );
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 16, scale: 0.98 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{ duration: 0.45, ease: EASE_OUT_EXPO }}
-      className="bg-ground-100 border border-line-soft rounded-3xl w-full max-w-md overflow-hidden shadow-2xl shadow-black/50"
+    <div
+      className="bg-ground-100 border border-line-soft rounded-md w-full max-w-md overflow-hidden shadow-black/50"
     >
       {/* simulated payment gateway header */}
-      <div className="bg-gradient-to-r from-brand-500 to-brand-600 text-white p-6 flex items-center justify-between">
+      <div className="bg-brand-500 text-white p-6 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center backdrop-blur-md border border-white/10">
+          <div className="w-8 h-8 rounded-md bg-white/10 flex items-center justify-center backdrop-blur-md border border-white/10">
             <PilotIcon className="w-4 h-4" />
           </div>
           <div>
-            <span className="font-extrabold text-sm block">CashPilot Checkout Sandbox</span>
-            <span className="text-[9px] uppercase tracking-widest text-brand-300 block -mt-0.5">
+            <span className="font-semibold text-sm block">CashPilot Checkout Sandbox</span>
+            <span className="text-[11px] text-brand-300 block -mt-0.5">
               Razorpay Simulation Mode
             </span>
           </div>
         </div>
-        <div className="text-[10px] bg-white/10 px-2 py-0.5 rounded font-black tracking-wider uppercase">
+        <div className="text-[11px] bg-white/10 px-2 py-0.5 rounded font-semibold">
           Demo Card
         </div>
       </div>
@@ -124,36 +119,30 @@ function CheckoutContent() {
       <div className="p-6 space-y-6">
         <AnimatePresence mode="wait">
           {success ? (
-            <motion.div
+            <div
               key="success"
-              initial={{ opacity: 0, scale: 0.94 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.35, ease: EASE_OUT_EXPO }}
               className="text-center py-6 space-y-4"
             >
-              <motion.div
-                initial={{ scale: 0.6, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ delay: 0.1, type: "spring", stiffness: 260, damping: 16 }}
+              <div
               >
                 <CheckCircle2 className="w-16 h-16 text-safe-400 mx-auto" />
-              </motion.div>
+              </div>
               <div>
-                <h3 className="text-lg font-black text-ink-100">✓ Test Payment Completed</h3>
+                <h3 className="text-lg font-semibold text-ink-100">✓ Test Payment Completed</h3>
                 <p className="text-xs text-ink-300 font-semibold leading-relaxed mt-2">
                   Simulated transaction approved successfully. The recovery record has transitioned to{" "}
                   <span className="text-safe-400 font-bold">RECOVERED</span>, and the action status is updated to{" "}
                   <span className="text-safe-400 font-bold">COMPLETED</span> in the ledger database.
                 </p>
               </div>
-              <div className="pt-4 border-t border-line-faint text-[10px] text-ink-400 font-semibold leading-normal">
+              <div className="pt-4 border-t border-line-faint text-[11px] text-ink-400 font-semibold leading-normal">
                 You can now close this window, return to the CashPilot execution control center tab, and click
                 &quot;Verify Status&quot; to fetch the updated balance.
               </div>
-            </motion.div>
+            </div>
           ) : (
-            <motion.div key="form" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
-              <div className="bg-ground-200 p-4 rounded-2xl border border-line-faint space-y-2 text-xs text-ink-300 font-semibold">
+            <div key="form" className="space-y-6">
+              <div className="bg-ground-200 p-4 rounded-md border border-line-faint space-y-2 text-xs text-ink-300 font-semibold">
                 <div className="flex justify-between">
                   <span>Payment Link reference:</span>
                   <span className="font-mono text-ink-100">{paymentLinkId}</span>
@@ -166,11 +155,11 @@ function CheckoutContent() {
 
               {/* Simulated credit card fields */}
               <div className="space-y-3.5">
-                <span className="text-[10px] font-extrabold text-ink-400 uppercase tracking-widest block pl-1">
+                <span className="label block pl-1">
                   Enter simulated Card Details
                 </span>
 
-                <div className="space-y-3 p-4 bg-ground-200 rounded-2xl border border-line-soft">
+                <div className="space-y-3 p-4 bg-ground-200 rounded-md border border-line-soft">
                   <div className="flex items-center gap-2 border-b pb-2 border-line-soft">
                     <CreditCard className="w-4 h-4 text-ink-400" />
                     <input
@@ -197,14 +186,14 @@ function CheckoutContent() {
                 )}
               </Button>
 
-              <div className="flex items-center justify-center gap-1.5 text-[9px] font-black text-ink-400 uppercase tracking-widest">
+              <div className="label flex items-center justify-center gap-1.5">
                 <ShieldCheck className="w-3.5 h-3.5" /> SECURE TEST-MODE ENVIRONMENT
               </div>
-            </motion.div>
+            </div>
           )}
         </AnimatePresence>
       </div>
-    </motion.div>
+    </div>
   );
 }
 

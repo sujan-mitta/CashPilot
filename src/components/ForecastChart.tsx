@@ -14,6 +14,27 @@ export interface ForecastPoint {
   closingBalance?: number;
 }
 
+/**
+ * Colours come from CSS custom properties rather than literals.
+ *
+ * recharts takes colours as props, not classes, so this file was missed when
+ * every screen was converted to the dark palette — it kept drawing a white
+ * tooltip with near-black text and a #eef0f5 grid on a near-black page.
+ * `var()` resolves inside SVG paint attributes and inline styles alike, so the
+ * chart now follows the active theme with no JavaScript theme awareness.
+ */
+const C = {
+  grid: "var(--chart-grid)",
+  axis: "var(--chart-axis)",
+  line: "var(--chart-line)",
+  lineFill: "var(--chart-line-fill)",
+  baseline: "var(--chart-baseline)",
+  cursor: "var(--chart-cursor)",
+  dotRing: "var(--chart-dot-ring)",
+  risk: "var(--risk-400)",
+  brand: "var(--brand-400)",
+} as const;
+
 export function ForecastChart({
   data,
   baselineData,
@@ -31,8 +52,8 @@ export function ForecastChart({
 
   if (!mounted) {
     return (
-      <div className="h-[280px] skeleton rounded-2xl border border-line-faint flex items-center justify-center text-ink-400 text-xs font-semibold">
-        Constructing runway timeline comparison...
+      <div className="h-[280px] skeleton rounded-md border border-line-faint flex items-center justify-center text-ink-400 text-xs font-medium">
+        Drawing your cash timeline…
       </div>
     );
   }
@@ -60,18 +81,18 @@ export function ForecastChart({
 
   return (
     <ResponsiveContainer width="100%" height={280}>
-      <AreaChart data={formattedData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
-        <CartesianGrid vertical={false} stroke="#eef0f5" strokeDasharray="4 4" />
+      <AreaChart data={formattedData} margin={{ top: 14, right: 10, left: 10, bottom: 0 }}>
+        <CartesianGrid vertical={false} stroke={C.grid} strokeDasharray="4 4" />
         <XAxis
           dataKey="dateStr"
-          tick={{ fill: "#94a3b8", fontSize: 11, fontWeight: 600 }}
+          tick={{ fill: C.axis, fontSize: 11, fontWeight: 500 }}
           axisLine={false}
           tickLine={false}
           tickMargin={10}
         />
         <YAxis
           tickFormatter={(v) => `₹${(v / 100000).toFixed(1)}L`}
-          tick={{ fill: "#94a3b8", fontSize: 11, fontWeight: 600 }}
+          tick={{ fill: C.axis, fontSize: 11, fontWeight: 500 }}
           axisLine={false}
           tickLine={false}
           width={56}
@@ -79,25 +100,38 @@ export function ForecastChart({
         <Tooltip
           formatter={(v, name) => [
             `₹${Number(v).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`,
-            name === "balance" ? "Selected Strategy" : "Baseline (Do Nothing)"
+            // Plain language: "baseline" is jargon for "if you do nothing".
+            name === "balance" ? "With this plan" : "If you do nothing",
           ]}
-          labelStyle={{ fontWeight: 700, color: "#0f172a", marginBottom: 4 }}
-          contentStyle={{
-            borderRadius: 14,
-            border: "1px solid #e2e8f0",
-            boxShadow: "0 12px 24px -8px rgb(15 23 42 / 0.16)",
-            fontSize: 12,
+          labelStyle={{
             fontWeight: 600,
+            color: "var(--chart-tooltip-ink)",
+            marginBottom: 4,
+          }}
+          itemStyle={{ color: "var(--ink-200)" }}
+          contentStyle={{
+            background: "var(--chart-tooltip-bg)",
+            borderRadius: 14,
+            border: "1px solid var(--chart-tooltip-line)",
+            boxShadow: "var(--lift-3)",
+            fontSize: 12,
+            fontWeight: 500,
             padding: "10px 14px",
           }}
-          cursor={{ stroke: "#c7d2fe", strokeWidth: 1.5, strokeDasharray: "3 3" }}
+          cursor={{ stroke: C.cursor, strokeWidth: 1.5, strokeDasharray: "3 3" }}
         />
-        {/* Deficit reference line */}
+        {/* Deficit reference line — the point where the account runs dry. */}
         <ReferenceLine
           y={0}
-          stroke="#f87171"
+          stroke={C.baseline}
           strokeDasharray="4 4"
-          label={{ value: "Deficit Line", fill: "#ef4444", fontSize: 10, fontWeight: 700, position: "top" }}
+          label={{
+            value: "Out of cash",
+            fill: C.risk,
+            fontSize: 10,
+            fontWeight: 600,
+            position: "insideBottomRight",
+          }}
         />
         {/* Safety threshold reference line. Drawn from this business's own
             adaptive buffer; a fixed ₹2.5L line was previously drawn for every
@@ -105,13 +139,13 @@ export function ForecastChart({
         {typeof safetyThreshold === "number" && (
           <ReferenceLine
             y={safetyThreshold / 100}
-            stroke="#a5b4fc"
+            stroke={C.brand}
             strokeDasharray="3 3"
             label={{
-              value: `Safety (${formatLakhs(safetyThreshold)})`,
-              fill: "#818cf8",
+              value: `Safe minimum (${formatLakhs(safetyThreshold)})`,
+              fill: C.brand,
               fontSize: 10,
-              fontWeight: 700,
+              fontWeight: 600,
               position: "insideTopRight",
             }}
           />
@@ -122,12 +156,12 @@ export function ForecastChart({
           <Area
             type="monotone"
             dataKey="baseline"
-            stroke="#f87171"
+            stroke={C.baseline}
             strokeWidth={1.5}
             strokeDasharray="5 5"
             fill="url(#colorBaseline)"
             name="baseline"
-            animationDuration={900}
+            animationDuration={320}
             animationEasing="ease-out"
           />
         )}
@@ -136,24 +170,24 @@ export function ForecastChart({
         <Area
           type="monotone"
           dataKey="balance"
-          stroke="#4f46e5"
+          stroke={C.line}
           strokeWidth={2.5}
           fill="url(#colorBalance)"
           name="balance"
-          animationDuration={900}
+          animationDuration={320}
           animationEasing="ease-out"
           dot={{ r: 0 }}
-          activeDot={{ r: 5, fill: "#4f46e5", stroke: "#fff", strokeWidth: 2 }}
+          activeDot={{ r: 5, fill: C.line, stroke: C.dotRing, strokeWidth: 2 }}
         />
 
         <defs>
           <linearGradient id="colorBalance" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.28} />
-            <stop offset="95%" stopColor="#4f46e5" stopOpacity={0} />
+            <stop offset="5%" stopColor={C.lineFill} stopOpacity={0.28} />
+            <stop offset="95%" stopColor={C.lineFill} stopOpacity={0} />
           </linearGradient>
           <linearGradient id="colorBaseline" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="#ef4444" stopOpacity={0.06} />
-            <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
+            <stop offset="5%" stopColor={C.baseline} stopOpacity={0.08} />
+            <stop offset="95%" stopColor={C.baseline} stopOpacity={0} />
           </linearGradient>
         </defs>
       </AreaChart>
