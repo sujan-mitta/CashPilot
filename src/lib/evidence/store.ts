@@ -1,6 +1,6 @@
 import { Prisma, Claim, Evidence, ClaimType } from "../../../generated/prisma/client";
 import { logger } from "@/lib/observability";
-import { provisionalConfidence, aggregateClaimConfidence } from "./confidence";
+import { computeConfidence, aggregateClaimConfidence } from "./confidence";
 
 /**
  * Phase 2 - idempotent writers for the Claim/Evidence layer.
@@ -33,6 +33,14 @@ export interface EvidenceDescriptor {
   effectiveAt?: Date | null;
   financialEventId?: string | null;
   metadata?: Prisma.InputJsonValue;
+  /** The observation carries an exact monetary amount (raises specificity). */
+  hasExactAmount?: boolean;
+  /** The observation carries an exact date, not a vague window. */
+  hasExactDate?: boolean;
+  /** Source's historical prediction accuracy in [0,1], or null if unknown (P9). */
+  historicalAccuracyScore?: number | null;
+  /** Cross-source agreement in [0,1], or null if unknown (P5). */
+  consistencyScore?: number | null;
 }
 
 export type ClaimClient = Pick<Prisma.TransactionClient, "claim">;
@@ -120,13 +128,18 @@ export interface RecordEvidenceResult {
 /**
  * Append one piece of evidence to a claim, idempotent on (businessId, claimId,
  * sourceType, sourceRecordId, evidenceType). Re-recording the same observation
- * resolves to the existing row; a genuinely new observation is added. Confidence
- * components are computed provisionally (Phase 3 replaces the model).
+ * resolves to the existing row; a genuinely new observation is added.
+ *
+ * The full multi-dimensional, claim-aware confidence (Phase 3) is computed here,
+ * which is why the claim's type is required: the same bank observation is a fact
+ * for an ACTUAL claim but a prediction for an EXPECTED one, and those get very
+ * different confidence.
  */
 export async function recordEvidence(
   client: EvidenceClient,
   tenantId: string,
   claimId: string,
+  claimType: ClaimType,
   input: EvidenceDescriptor,
   now: Date = new Date()
 ): Promise<RecordEvidenceResult> {
@@ -136,7 +149,15 @@ export async function recordEvidence(
     throw new Error("recordEvidence requires sourceType, sourceRecordId and evidenceType.");
   }
 
-  const c = provisionalConfidence(input.sourceType, input.observedAt, now);
+  const c = computeConfidence({
+    sourceType: input.sourceType,
+    claimType,
+    observedAt: input.observedAt,
+    now,
+    specificity: { hasExactAmount: input.hasExactAmount, hasExactDate: input.hasExactDate },
+    historicalAccuracyScore: input.historicalAccuracyScore ?? null,
+    consistencyScore: input.consistencyScore ?? null,
+  });
 
   try {
     const evidence = await client.evidence.create({
@@ -151,6 +172,9 @@ export async function recordEvidence(
         effectiveAt: input.effectiveAt ?? null,
         reliabilityScore: c.reliabilityScore,
         freshnessScore: c.freshnessScore,
+        specificityScore: c.specificityScore,
+        historicalAccuracyScore: c.historicalAccuracyScore,
+        consistencyScore: c.consistencyScore,
         derivedConfidence: c.derivedConfidence,
         metadata: input.metadata,
       },
@@ -190,8 +214,9 @@ export interface ClaimWithEvidenceResult {
 
 /**
  * Record a claim together with its supporting evidence, then set the claim's
- * confidence to the provisional aggregate of that evidence. This is the unit a
- * source-ingest produces: one claim, one or more evidence.
+ * confidence to the aggregate of that evidence. This is the unit a source-ingest
+ * produces: one claim, one or more evidence. Each evidence is scored against the
+ * claim's type, so a prediction and a fact are weighted differently.
  */
 export async function recordClaimWithEvidence(
   client: ClaimEvidenceClient,
@@ -205,7 +230,7 @@ export async function recordClaimWithEvidence(
   const evidenceRows: Evidence[] = [];
   let evidenceCreated = 0;
   for (const e of evidence) {
-    const { evidence: row, created } = await recordEvidence(client, tenantId, stored.id, e, now);
+    const { evidence: row, created } = await recordEvidence(client, tenantId, stored.id, claim.claimType, e, now);
     evidenceRows.push(row);
     if (created) evidenceCreated++;
   }

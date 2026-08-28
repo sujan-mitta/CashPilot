@@ -68,25 +68,29 @@ describe("recordEvidence - append-only idempotency (spec §46)", () => {
     claimId = claim.id;
   });
 
-  it("records evidence with provisional confidence components", async () => {
-    const { evidence, created } = await recordEvidence(asClient(mock), "biz-A", claimId, EVIDENCE, OBSERVED);
+  it("records evidence with the full confidence components", async () => {
+    const { evidence, created } = await recordEvidence(asClient(mock), "biz-A", claimId, "CONTRACTUAL", EVIDENCE, OBSERVED);
     expect(created).toBe(true);
     expect(evidence.reliabilityScore).toBeGreaterThan(0);
     expect(evidence.freshnessScore).toBe(1);
-    expect(evidence.derivedConfidence).toBe(evidence.reliabilityScore);
+    expect(evidence.specificityScore).toBeGreaterThan(0);
+    // A factual claim with partial specificity: positive, and no higher than
+    // the source reliability.
+    expect(evidence.derivedConfidence).toBeGreaterThan(0);
+    expect(evidence.derivedConfidence ?? 0).toBeLessThanOrEqual(evidence.reliabilityScore ?? 1);
   });
 
   it("does not duplicate the same observation (2x, 10x)", async () => {
     for (let i = 0; i < 10; i++) {
-      await recordEvidence(asClient(mock), "biz-A", claimId, EVIDENCE, OBSERVED);
+      await recordEvidence(asClient(mock), "biz-A", claimId, "CONTRACTUAL", EVIDENCE, OBSERVED);
     }
     expect(mock.evidenceRows).toHaveLength(1);
   });
 
   it("ADDS a genuinely new observation for the same claim (does not overwrite)", async () => {
-    await recordEvidence(asClient(mock), "biz-A", claimId, EVIDENCE, OBSERVED);
+    await recordEvidence(asClient(mock), "biz-A", claimId, "CONTRACTUAL", EVIDENCE, OBSERVED);
     // A customer email arrives - new source/evidenceType - preserving the old.
-    await recordEvidence(asClient(mock), "biz-A", claimId, {
+    await recordEvidence(asClient(mock), "biz-A", claimId, "CONTRACTUAL", {
       sourceType: "EMAIL",
       sourceRecordId: "email-42",
       evidenceType: "CUSTOMER_COMMUNICATION",
@@ -101,7 +105,7 @@ describe("recordEvidence - append-only idempotency (spec §46)", () => {
       e.code = "P1001";
       throw e;
     });
-    await expect(recordEvidence(asClient(mock), "biz-A", claimId, EVIDENCE, OBSERVED)).rejects.toThrow("db down");
+    await expect(recordEvidence(asClient(mock), "biz-A", claimId, "CONTRACTUAL", EVIDENCE, OBSERVED)).rejects.toThrow("db down");
   });
 });
 
@@ -122,8 +126,12 @@ describe("recordClaimWithEvidence - aggregate + isolation", () => {
       ],
       OBSERVED
     );
-    // BANK (0.98) beats EMAIL (0.5).
-    expect(res.claim.confidence).toBeCloseTo(0.98, 5);
+    // The claim takes the strongest supporting evidence; BANK outscores EMAIL.
+    const derived = res.evidence.map((e) => e.derivedConfidence ?? 0);
+    expect(res.claim.confidence).toBeCloseTo(Math.max(...derived), 5);
+    const bank = res.evidence.find((e) => e.sourceType === "BANK");
+    const email = res.evidence.find((e) => e.sourceType === "EMAIL");
+    expect(bank?.derivedConfidence ?? 0).toBeGreaterThan(email?.derivedConfidence ?? 0);
     expect(res.evidence).toHaveLength(2);
     expect(res.evidenceCreated).toBe(2);
   });

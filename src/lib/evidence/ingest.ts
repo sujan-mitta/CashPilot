@@ -76,6 +76,8 @@ export function deriveFromInvoice(inv: InvoiceRow, observedAt: Date): DerivedCla
         evidenceType: "ERP_INVOICE",
         observedAt,
         effectiveAt: inv.dueDate,
+        hasExactAmount: true,
+        hasExactDate: true,
       },
     ],
   };
@@ -107,6 +109,8 @@ export function deriveFromTransaction(tx: TransactionRow, observedAt: Date): Der
         evidenceType: "BANK_TRANSACTION",
         observedAt,
         effectiveAt: tx.expectedDate,
+        hasExactAmount: true,
+        hasExactDate: true,
       },
     ],
   };
@@ -137,6 +141,8 @@ export function deriveFromPayout(po: PayoutRow, observedAt: Date): DerivedClaim 
         evidenceType: "ERP_PAYOUT",
         observedAt,
         effectiveAt: po.scheduledDate,
+        hasExactAmount: true,
+        hasExactDate: true,
       },
     ],
   };

@@ -1,20 +1,25 @@
+import { ClaimType } from "../../../generated/prisma/client";
+
 /**
- * Phase 2 - PROVISIONAL evidence confidence.
+ * Phase 3 - source-specific, multi-dimensional, claim-aware confidence
+ * (spec §10-12).
  *
- * The real multi-dimensional confidence model is Phase 3 (spec §10-12): source
- * reliability, freshness, specificity, historical accuracy and cross-source
- * consistency, each tracked separately and combined by a justified formula.
+ * The core distinction the whole product depends on (spec §12): the reliability
+ * of a SOURCE is not the confidence of a CLAIM. A bank reliably reports that
+ * money moved, but a bank record of a *pending* inflow says little about whether
+ * the future payment will land on time. So confidence is computed in two steps:
  *
- * Phase 2 needs *something* to store so the pipeline is exercisable, but must
- * not manufacture precision (spec §11, §64). So it computes only the two
- * components it can derive honestly today - source reliability and freshness -
- * leaves the predictive components null, and sets the aggregate to reliability
- * alone. Phase 3 replaces `provisionalConfidence` wholesale.
+ *   sourceConfidence  = reliability x freshness           (trust in the observation)
+ *   derivedConfidence = sourceConfidence, modulated by...
+ *       - specificity                          (how precise the observation is)
+ *       - and, for PREDICTIVE claims only, historical accuracy + cross-source
+ *         consistency                          (can we trust the prediction?)
  *
- * Critically (spec §12): these are SOURCE reliabilities - how much we trust that
- * the source correctly reports what it observed - NOT prediction confidence. A
- * bank reliably reports that money moved; it says nothing about whether a future
- * payment will arrive on time.
+ * Dimensions we cannot compute honestly yet are carried as null rather than
+ * invented (spec §11, §64): historical accuracy needs the behaviour model
+ * (Phase 9) and consistency needs cross-source reconciliation (Phase 5). Until
+ * those arrive, a prediction with no track record is capped conservatively
+ * instead of being assumed reliable.
  */
 
 /** Source reliability for *reporting an observation*, in [0,1]. Not prediction. */
@@ -24,11 +29,26 @@ const SOURCE_RELIABILITY: Record<string, number> = {
   ERP: 0.9, // invoice/bill existence, contractual terms
   INVOICE: 0.85, // extracted invoice document fields
   USER: 0.8, // explicit user-confirmed expectation
-  HISTORICAL: 0.6, // behavioural model (depends on sample size - refined in P9)
+  HISTORICAL: 0.6, // behavioural model (sharpened by sample size in P9)
   EMAIL: 0.5, // customer/supplier stated intention
 };
 
 const DEFAULT_RELIABILITY = 0.5;
+
+/** Claim types that assert a KNOWN fact rather than a prediction (spec §13). */
+const FACTUAL_CLAIMS: ReadonlySet<ClaimType> = new Set<ClaimType>([
+  "ACTUAL",
+  "CONFIRMED",
+  "CONTRACTUAL",
+  "RECONCILED",
+  "CONTRADICTED",
+  "EXPIRED",
+]);
+
+/** EXPECTED / PREDICTED / UNCERTAIN carry genuine prediction uncertainty. */
+export function isPredictiveClaim(claimType: ClaimType): boolean {
+  return !FACTUAL_CLAIMS.has(claimType);
+}
 
 /** Reliability of a source for reporting what it observed, in [0,1]. */
 export function sourceReliability(sourceType: string): number {
@@ -44,42 +64,127 @@ export function freshnessScore(observedAt: Date, now: Date, halfLifeDays = 7): n
   const ageMs = now.getTime() - observedAt.getTime();
   if (!Number.isFinite(ageMs) || ageMs <= 0) return 1;
   const ageDays = ageMs / (1000 * 60 * 60 * 24);
-  const score = Math.pow(0.5, ageDays / halfLifeDays);
-  return Math.min(1, Math.max(0, score));
+  return clamp01(Math.pow(0.5, ageDays / halfLifeDays));
 }
 
-export interface ProvisionalConfidence {
-  reliabilityScore: number;
-  freshnessScore: number;
-  /** Aggregate in [0,1]. Provisional: equals reliability until Phase 3. */
-  derivedConfidence: number;
+/** Signals that make an observation more or less specific/precise. */
+export interface SpecificitySignals {
+  /** The observation carries an exact monetary amount. */
+  hasExactAmount?: boolean;
+  /** The observation carries an exact date, not a vague window. */
+  hasExactDate?: boolean;
 }
 
 /**
- * Provisional confidence for one piece of evidence. Phase 3 will combine the
- * components (and add specificity / historical accuracy / consistency); today
- * the aggregate is reliability alone so we never pretend to more certainty than
- * a single honestly-known dimension supports.
+ * Specificity in [0,1]: a bank line with an exact amount and date is fully
+ * specific; a vague "we'll pay soon" is not. Base 0.4, +0.3 for an exact amount,
+ * +0.3 for an exact date.
  */
-export function provisionalConfidence(
-  sourceType: string,
-  observedAt: Date,
-  now: Date = new Date()
-): ProvisionalConfidence {
-  const reliability = sourceReliability(sourceType);
-  const freshness = freshnessScore(observedAt, now);
+export function specificityScore(signals: SpecificitySignals): number {
+  let s = 0.4;
+  if (signals.hasExactAmount) s += 0.3;
+  if (signals.hasExactDate) s += 0.3;
+  return clamp01(s);
+}
+
+export interface ConfidenceInput {
+  sourceType: string;
+  claimType: ClaimType;
+  observedAt: Date;
+  now?: Date;
+  specificity?: SpecificitySignals;
+  /** Source's historical prediction accuracy in [0,1], or null if unknown (P9). */
+  historicalAccuracyScore?: number | null;
+  /** Cross-source agreement in [0,1], or null if unknown (P5). */
+  consistencyScore?: number | null;
+}
+
+export interface ConfidenceResult {
+  reliabilityScore: number;
+  freshnessScore: number;
+  specificityScore: number;
+  historicalAccuracyScore: number | null;
+  consistencyScore: number | null;
+  /** reliability x freshness - trust in the observation itself (§12). */
+  sourceConfidence: number;
+  /** Claim-appropriate confidence in [0,1]. */
+  derivedConfidence: number;
+  /** True if prediction uncertainty was applied. */
+  isPrediction: boolean;
+  /** Which predictive dimensions were available. */
+  completeness: "FULL" | "PARTIAL" | "MINIMAL";
+}
+
+/** A prediction with no track record and no corroboration cannot exceed this. */
+const UNKNOWN_PREDICTION_CAP = 0.6;
+
+function clamp01(x: number): number {
+  return Math.min(1, Math.max(0, x));
+}
+
+function geometricMean(xs: number[]): number {
+  if (xs.length === 0) return 1;
+  const product = xs.reduce((a, b) => a * b, 1);
+  return Math.pow(product, 1 / xs.length);
+}
+
+/**
+ * Compute the full, claim-aware confidence for one piece of evidence.
+ *
+ * Factual claims (a settled transaction, a contractual due date) are sharpened
+ * by specificity but carry no prediction penalty - a fact is a fact. Predictive
+ * claims are additionally modulated by whatever predictive signal exists
+ * (specificity + historical accuracy + consistency); with none of the verifiable
+ * signals present, the prediction is capped conservatively rather than trusted.
+ */
+export function computeConfidence(input: ConfidenceInput): ConfidenceResult {
+  const now = input.now ?? new Date();
+  const reliability = sourceReliability(input.sourceType);
+  const freshness = freshnessScore(input.observedAt, now);
+  const specificity = specificityScore(input.specificity ?? {});
+  const hist = input.historicalAccuracyScore ?? null;
+  const cons = input.consistencyScore ?? null;
+
+  const sourceConfidence = clamp01(reliability * freshness);
+  const isPrediction = isPredictiveClaim(input.claimType);
+
+  let derivedConfidence: number;
+  if (!isPrediction) {
+    // Known fact: specificity sharpens, but no prediction penalty (§12).
+    derivedConfidence = clamp01(sourceConfidence * (0.7 + 0.3 * specificity));
+  } else {
+    const predictiveDims = [specificity];
+    if (hist !== null) predictiveDims.push(hist);
+    if (cons !== null) predictiveDims.push(cons);
+    let predictionFactor = geometricMean(predictiveDims);
+    if (hist === null && cons === null) {
+      // No verifiable prediction signal beyond specificity: stay conservative.
+      predictionFactor = Math.min(predictionFactor, UNKNOWN_PREDICTION_CAP);
+    }
+    derivedConfidence = clamp01(sourceConfidence * predictionFactor);
+  }
+
+  const knownPredictive = (hist !== null ? 1 : 0) + (cons !== null ? 1 : 0);
+  const completeness = knownPredictive === 2 ? "FULL" : knownPredictive === 1 ? "PARTIAL" : "MINIMAL";
+
   return {
     reliabilityScore: reliability,
     freshnessScore: freshness,
-    derivedConfidence: reliability,
+    specificityScore: specificity,
+    historicalAccuracyScore: hist,
+    consistencyScore: cons,
+    sourceConfidence,
+    derivedConfidence,
+    isPrediction,
+    completeness,
   };
 }
 
 /**
- * Aggregate a claim's confidence from its evidence. Provisional (spec §14, §5
- * cross-source resolution is Phase 5): the strongest supporting evidence wins,
- * which is a defensible floor - a claim is at least as trustworthy as its best
- * evidence - without inventing a fusion formula. Returns 0 for no evidence.
+ * Aggregate a claim's confidence from its evidence. The strongest supporting
+ * evidence wins - a claim is at least as trustworthy as its best evidence -
+ * which is a defensible floor without inventing a fusion formula. Cross-source
+ * corroboration/contradiction is Phase 5. Returns 0 for no evidence.
  */
 export function aggregateClaimConfidence(evidenceConfidences: number[]): number {
   if (evidenceConfidences.length === 0) return 0;
