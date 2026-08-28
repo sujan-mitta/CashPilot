@@ -9,6 +9,12 @@ import {
   type StateTransitionVerdict,
   type VersionedState,
 } from "@/lib/state/stateTransition";
+import {
+  checkDecisionValidity,
+  tightenForValidity,
+  type DecisionValidityVerdict,
+} from "./decisionValidity";
+import { currentForecastVersion } from "@/lib/forecast/forecastEvent";
 
 /**
  * Server-side strategy freshness gate (PART 11 / PART 14).
@@ -34,6 +40,12 @@ export interface FreshnessGateResult {
    * recorded no state version - which is every decision made before Phase 7.
    */
   stateVerdict: StateTransitionVerdict;
+  /**
+   * Phase 11. The method-and-age half, reported separately like the state half.
+   * `UNTRACKED` whenever the decision recorded neither a forecast method nor an
+   * expiry - which is every decision made before Phase 11.
+   */
+  validityVerdict: DecisionValidityVerdict;
 }
 
 export async function checkStrategyFreshness(
@@ -66,9 +78,22 @@ export async function checkStrategyFreshness(
   // offsetting record-level changes the fingerprint catches; combining takes
   // the more conservative verdict, so this can only ever tighten the gate.
   const stateVerdict = await checkStateFreshness(client, params.businessId, decision);
-  const verdict = combineFreshness(fingerprintVerdict, stateVerdict);
 
-  return { verdict, blocked: verdict.blocksExecution, stateVerdict };
+  // Phase 11: the two axes neither of the above can see - the forecasting
+  // METHOD changing underneath an unchanged set of facts, and plain AGE. Both
+  // read from columns that are null on every pre-Phase-11 decision, so they
+  // contribute nothing until something starts recording them.
+  const validityVerdict = checkDecisionValidity(decision, {
+    now: params.today,
+    currentForecastVersion: currentForecastVersion(),
+  });
+
+  const verdict = tightenForValidity(
+    combineFreshness(fingerprintVerdict, stateVerdict),
+    validityVerdict
+  );
+
+  return { verdict, blocked: verdict.blocksExecution, stateVerdict, validityVerdict };
 }
 
 /**

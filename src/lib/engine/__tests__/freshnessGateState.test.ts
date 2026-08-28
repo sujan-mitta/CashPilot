@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { checkStrategyFreshness } from "../freshnessGate";
 import { computeFinancialState, type FinancialStateInputs } from "@/lib/state/financialState";
+import { currentForecastVersion } from "@/lib/forecast/forecastEvent";
 import { buildDecisionContext } from "../decisionContext";
 import type { Prisma } from "../../../../generated/prisma/client";
 
@@ -64,6 +65,8 @@ async function makeClient(opts: {
   financialStateVersion: number | null;
   states?: ReturnType<typeof stateRow>[];
   omitStateTable?: boolean;
+  forecastVersion?: string | null;
+  expiresAt?: Date | null;
 }) {
   const base = {
     business: { findUnique: vi.fn(async () => BUSINESS_ROW) },
@@ -104,6 +107,8 @@ async function makeClient(opts: {
         strategyId: "strat_1",
         fingerprintDetail: detail,
         financialStateVersion: opts.financialStateVersion,
+        forecastVersion: opts.forecastVersion ?? null,
+        expiresAt: opts.expiresAt ?? null,
       })),
     },
     ...(opts.omitStateTable ? {} : { financialState }),
@@ -229,5 +234,68 @@ describe("the state check fires once a decision records a state", () => {
 
     expect(result.stateVerdict.fromVersion).toBe(1);
     expect(result.stateVerdict.toVersion).toBe(4);
+  });
+});
+
+
+describe("Phase 11: forecast method and expiry at the gate", () => {
+  it("is UNTRACKED and inert for a decision that recorded neither", async () => {
+    // Every decision made before Phase 11. The money path is unchanged.
+    const { client } = await makeClient({ financialStateVersion: null });
+    const result = await checkStrategyFreshness(client, params);
+
+    expect(result.validityVerdict.classification).toBe("UNTRACKED");
+    expect(result.blocked).toBe(false);
+    expect(result.verdict.classification).toBe("NO_CHANGE");
+  });
+
+  it("passes a decision recorded under the pipeline still in force", async () => {
+    const { client } = await makeClient({
+      financialStateVersion: null,
+      forecastVersion: currentForecastVersion(),
+      expiresAt: new Date(TODAY.getTime() + 48 * 3600_000),
+    });
+    const result = await checkStrategyFreshness(client, params);
+
+    expect(result.validityVerdict.classification).toBe("VALID");
+    expect(result.blocked).toBe(false);
+  });
+
+  it("blocks a decision produced by a different forecasting method", async () => {
+    // Fingerprint clean, state untracked - the block can only come from here.
+    const { client } = await makeClient({
+      financialStateVersion: null,
+      forecastVersion: "some-other-pipeline",
+    });
+    const result = await checkStrategyFreshness(client, params);
+
+    expect(result.validityVerdict.classification).toBe("INVALID");
+    expect(result.verdict.classification).toBe("MATERIAL_CHANGE");
+    expect(result.blocked).toBe(true);
+  });
+
+  it("blocks an expired recommendation even though nothing changed", async () => {
+    const { client } = await makeClient({
+      financialStateVersion: null,
+      expiresAt: new Date(TODAY.getTime() - 3600_000),
+    });
+    const result = await checkStrategyFreshness(client, params);
+
+    expect(result.blocked).toBe(true);
+    expect(result.verdict.changes.some((c) => c.field === "expiresAt")).toBe(true);
+  });
+
+  it("expires against the caller's clock, not the wall clock", async () => {
+    const expiresAt = new Date(TODAY.getTime() + 3600_000);
+    const { client } = await makeClient({ financialStateVersion: null, expiresAt });
+
+    const inTime = await checkStrategyFreshness(client, params);
+    const late = await checkStrategyFreshness(client, {
+      ...params,
+      today: new Date(expiresAt.getTime() + 3600_000),
+    });
+
+    expect(inTime.blocked).toBe(false);
+    expect(late.blocked).toBe(true);
   });
 });

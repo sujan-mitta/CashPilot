@@ -375,6 +375,25 @@ model Decision {
   outcomePhase           OutcomePhase        @default(NOT_STARTED)
   finalOutcomeMeasuredAt DateTime?
 
+  /// ---- Phase 11 (spec §32) ----
+
+  /// Which forecasting method produced this recommendation.
+  ///
+  /// Not a second copy of `contextFingerprint`: that hashes the FACTS the
+  /// forecast consumed, this records the METHOD that consumed them. Flipping
+  /// FORECAST_EVENT_PIPELINE changes the method while leaving every fact
+  /// identical, which the fingerprint by construction cannot see. Null on every
+  /// decision made before this existed, which the gate reads as untracked.
+  forecastVersion        String?
+
+  /// When this recommendation stops being executable on age alone.
+  ///
+  /// The fingerprint blocks on facts changing and Phase 7 blocks on state
+  /// changing; both are silent when the world moved in a way no source has
+  /// reported yet (spec §55-56). Age is the third axis. Null means no expiry -
+  /// every decision made before this existed keeps its old behaviour.
+  expiresAt              DateTime?
+
   /// ---- Phase 7 ----
 
   /// The materialised financial state this recommendation was generated

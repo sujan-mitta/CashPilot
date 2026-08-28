@@ -6,6 +6,8 @@ import { runAgent } from "@/lib/ai/agents";
 import { recommenderPrompt } from "@/lib/ai/prompts";
 import { buildForecast, calculateRunway } from "@/lib/engine/forecast";
 import { buildMovementsForBusiness } from "@/lib/forecast/movements";
+import { currentForecastVersion } from "@/lib/forecast/forecastEvent";
+import { decisionExpiryFrom } from "@/lib/engine/decisionValidity";
 import { calculateRisk } from "@/lib/engine/riskDetector";
 import { addDays } from "date-fns";
 import { getSession } from "@/lib/auth";
@@ -332,6 +334,12 @@ export async function POST() {
               scoringConfigVersion: FINANCIAL_CONFIG.SCORING_CONFIG_VERSION,
               liquidityConfigVersion: FINANCIAL_CONFIG.LIQUIDITY_CONFIG_VERSION,
               outcomeRulesVersion: FINANCIAL_CONFIG.OUTCOME_RULES_VERSION,
+              // Phase 11 (spec §32). The METHOD that produced this, and when it
+              // stops being executable on age alone. Recorded here so the gate
+              // can catch a pipeline flip or a stale plan that no fact change
+              // would reveal.
+              forecastVersion: currentForecastVersion(),
+              expiresAt: decisionExpiryFrom(today),
               contextFingerprint: fingerprint.fingerprint,
               fingerprintDetail: fingerprint as unknown as Prisma.InputJsonValue,
               obligationSnapshot: buildObligationSnapshot(

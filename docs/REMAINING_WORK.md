@@ -259,7 +259,7 @@ Worth a human glance on the next login — particularly the degenerate case, whi
 | 1 | Migrations applied (`paidAt`, `counterpartyId` exist) | 🔴 A-1 |
 | 2 | Counterparty backfill run, so invoices are linked | 🟡 B-4 |
 | 3 | Enough settled history for the model to act (5+ payments per customer) | accumulates from B-10 |
-| 4 | `SCORING_CONFIG_VERSION` / `LIQUIDITY_CONFIG_VERSION` bumped | 🟡 C-11 |
+| 4 | ~~Config versions bumped~~ | ✅ **Now automatic** — P11's `forecastVersion` invalidates old decisions by itself (C-11) |
 | 5 | Manual-settlement timestamp skew reviewed | 🟡 C-13 |
 
 Until (1)–(3) hold the flag is *also* inert in practice — `loadPaymentBehavior` returns an empty map — so flipping it early is safe but pointless. Flipping it after (1)–(3) but without (4) is the actual hazard: forecasts would change while existing strategies kept passing the freshness gate.
@@ -278,7 +278,23 @@ Two consequences to keep in view:
 
 Minimum 3 payments for any opinion and 5 to move a forecast; a 90-day recency window; a 0.7 cap on recency weight; a 7-day stability reference; a 3-day accuracy half-life. Each is defended in the code and each is deliberately conservative, but **none is fitted to real data** — there is none yet. They should be revisited once B-10 produces actual payment history, and calibrated in P15.
 
-### C-11 🟡 Turning on the forecast pipeline will eventually need a config bump
+### C-11 ✅ Turning on the forecast pipeline needs a config bump — **NOW AUTOMATIC**
+
+Closed by P11. Every decision records the forecasting method that produced it (`ledger-v1` / `event-v1`), and the freshness gate refuses one produced by a method no longer in force. Flipping `FORECAST_EVENT_PIPELINE.enabled` now invalidates the old recommendations by itself.
+
+Bumping `SCORING_CONFIG_VERSION` alongside remains good practice, but forgetting it is no longer the hazard it was — which removes precondition (4) from C-14.
+
+### C-16 🟡 Recommendations now expire after 7 days
+
+`DECISION_TTL_HOURS = 168`. A recommendation older than that is refused at approval and execution even when nothing changed, because a week of total silence in a live ledger is a reason to distrust the inputs (§55–56).
+
+Two things to know:
+- **Existing decisions are unaffected** — the column is not backfilled, so nothing is retroactively expired.
+- **The user sees this only as a refusal.** Expiry is not surfaced in the UI before it bites (part of P13's remainder).
+
+The 7-day figure is reasoned against the 14-day horizon, not calibrated (C-12).
+
+### C-11b 🟡 (historical) Turning on the forecast pipeline will eventually need a config bump
 
 `FORECAST_EVENT_PIPELINE.enabled` is off. It is still a no-op **in practice**, because no counterparty has enough history for P9 to shift anything (B-10) — but `applyExpectedTiming` is now capable of moving dates, so this is no longer a no-op *by construction*.
 
@@ -338,7 +354,7 @@ From `UNIFIED_BRAIN_AUDIT.md` §5. P0–P4 are done; everything below is untouch
 | ~~**P8**~~ | ~~ForecastEvent seam~~ | ✅ **Done.** See §13. Parity-proven identical; no call site switched over yet (B-9). |
 | ~~**P9**~~ | ~~Behaviour model~~ | ✅ **Done.** See §14. Completes the C-1 mechanism. Inert until `paidAt` is populated (B-10). |
 | ~~**P10**~~ | ~~Scenario forecasting~~ | ✅ **Done.** See §15. Not surfaced by any route (B-12). |
-| **P11** ◑ | Freshness ↔ `stateVersion` | Core delivered by P7. **Remaining work is NOT blocked by anything**: strategy `expiresAt` and `forecastVersion` (§32). Smallest unblocked item on this list. |
+| ~~**P11**~~ | ~~Freshness ↔ `stateVersion`~~ | ✅ **Done.** See §18. `forecastVersion` + `expiresAt` recorded and enforced; closes C-11 mechanically. |
 | **P12** ◑ | Execution/webhook hardening | Certified in Phases 17/18. A fresh code audit against §37/§38 is unblocked; only the *live* verification needs A-2/A-3/A-5. |
 | **P13** ◑ | Surface it in the UI | Forecast half done (§16). Remaining — evidence trails, conflicts, the "why?" drill-down — reads tables that stay empty until A-1 + `brain:sync`, so the screens could not be verified against real data. |
 | **P14** ◑ | Outcome measurement → behaviour model | Per-**decision** calibration (`Decision.actualOutcome` → `computePredictionAccuracy`) is unblocked. Per-**counterparty** grouping needs the P4 links, so needs A-1. |
@@ -382,7 +398,7 @@ Any change must keep this green.
 |---|---|
 | `npm run typecheck` | clean |
 | `npm run lint` | 0 problems |
-| `npm test` | 90 files, **1298 passed**, 5 skipped |
+| `npm test` | 91 files, **1322 passed**, 5 skipped |
 | `npm run build` | OK — 24 routes + middleware |
 
 The 5 skipped are A-5.

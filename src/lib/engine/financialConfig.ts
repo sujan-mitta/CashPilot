@@ -15,6 +15,7 @@ export interface FinancialConfig {
   RESCHEDULE_DELAY_DAYS: number;
   HISTORICAL_LOOKBACK_DAYS: number;
   BEHAVIOR_HISTORY_LOOKBACK_DAYS: number;
+  DECISION_TTL_HOURS: number;
   OUTCOME_WINDOW_DAYS: number;
   OUTCOME_VARIANCE_THRESHOLD: number;
   EXECUTION_DRIFT_THRESHOLD: number;
@@ -89,6 +90,17 @@ export const FINANCIAL_CONFIG: FinancialConfig = {
    * never reach the five payments the model requires before it will act.
    */
   BEHAVIOR_HISTORY_LOOKBACK_DAYS: 365,
+
+  /**
+   * How long a recommendation stays executable on age alone (spec §32).
+   *
+   * Seven days, chosen against the 14-day forecast horizon: a plan built to
+   * protect a fortnight has spent half of it before it expires. Content and
+   * state changes already block sooner than this in any active ledger; the TTL
+   * only catches the case where nothing OBSERVED changed for a week, which is
+   * itself a reason to distrust the inputs rather than the arithmetic.
+   */
+  DECISION_TTL_HOURS: 168,
 
   /**
    * Outcome measurement window in days. Deliberately equal to the forecast

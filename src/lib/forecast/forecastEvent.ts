@@ -103,6 +103,28 @@ export const FORECAST_EVENT_PIPELINE = {
   enabled: false,
 } as const;
 
+/**
+ * Identity of the forecasting METHOD, recorded on every decision (spec §32).
+ *
+ * This is what makes C-11 mechanical instead of a note someone has to remember:
+ * when the pipeline is flipped, decisions built by the old method carry the old
+ * identity, the freshness gate sees the mismatch and marks them stale. Without
+ * it, flipping the flag would silently carry strategies into a forecast that no
+ * longer matches them.
+ *
+ * Bump the string whenever the method changes in a way that can move a number -
+ * P9's behavioural timing did exactly that, which is why the event pipeline is
+ * a separate identity rather than a flag on one.
+ */
+export const FORECAST_PIPELINE_LEDGER = "ledger-v1";
+export const FORECAST_PIPELINE_EVENT = "event-v1";
+
+/** The method in force right now. */
+export function currentForecastVersion(useEventPipeline?: boolean): string {
+  const useEvents = useEventPipeline ?? FORECAST_EVENT_PIPELINE.enabled;
+  return useEvents ? FORECAST_PIPELINE_EVENT : FORECAST_PIPELINE_LEDGER;
+}
+
 /** Transactions the ledger has settled or abandoned are not future movements. */
 function isForecastable(t: { status: string }): boolean {
   // Mirrors transactionsToMovements exactly: FAILED is not a committed inflow.
