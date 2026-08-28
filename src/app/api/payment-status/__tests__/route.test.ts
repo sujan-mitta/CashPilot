@@ -311,7 +311,11 @@ describe("Payment Status Verification Route", () => {
     const body = await res.json();
 
     expect(res.status).toBe(500);
-    expect(body.error).toBe("Database connection lost during update");
+    // The raw driver message used to be returned verbatim. A Prisma/pg error
+    // carries table names, column names and sometimes connection detail, none
+    // of which belongs in a response body. It is logged server-side instead.
+    expect(body.error).toBe("Could not check the payment status. Please try again.");
+    expect(JSON.stringify(body)).not.toContain("Database connection lost");
   });
 
   it("Concurrency: simultaneous requests only increment cash once", async () => {

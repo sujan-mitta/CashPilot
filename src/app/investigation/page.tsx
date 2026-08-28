@@ -136,7 +136,7 @@ export default function Investigation() {
       <Reveal className="flex items-center justify-between">
         <button
           onClick={() => router.push("/dashboard")}
-          className="flex items-center gap-1.5 text-xs font-bold text-ink-300 hover:text-ink-200 transition outline-none"
+          className="flex items-center gap-1.5 text-xs font-bold text-ink-300 hover:text-ink-200 transition focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 focus-visible:ring-offset-ground-050"
         >
           <ArrowLeft className="w-3.5 h-3.5" /> Dashboard
         </button>
@@ -237,7 +237,7 @@ export default function Investigation() {
                     <span className="text-md font-semibold text-ink-100">
                       {formatINR(cause.amount)}
                     </span>
-                    <button className="text-ink-400 hover:text-ink-300 outline-none">
+                    <button className="text-ink-400 hover:text-ink-300 focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 focus-visible:ring-offset-ground-050">
                       <ChevronDown className={clsx("w-4 h-4 transition-transform duration-300", isExpanded && "rotate-180")} />
                     </button>
                   </div>
@@ -481,7 +481,7 @@ export default function Investigation() {
         <StaggerItem className="flex items-center justify-between pt-2">
           <button
             onClick={() => router.push("/dashboard")}
-            className="text-xs font-bold text-ink-300 hover:text-ink-200 outline-none"
+            className="text-xs font-bold text-ink-300 hover:text-ink-200 focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 focus-visible:ring-offset-ground-050"
           >
             ← Back to Dashboard
           </button>

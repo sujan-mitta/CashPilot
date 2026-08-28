@@ -1,6 +1,7 @@
 import { addDays } from "date-fns";
 import { buildForecast, DailyMovement, calculateRunway, ForecastDay, RunwayMetrics } from "./forecast";
 import { calculateRisk, RiskLevel } from "./riskDetector";
+import { FINANCIAL_CONFIG } from "./financialConfig";
 
 /**
  * The canonical strategy names. Single source of truth (PART 37): anything that
@@ -96,8 +97,13 @@ export function applyActionsToMovements(
           ...originalMovement,
           outflows: originalMovement.outflows - action.amount,
         };
-        // Add to new rescheduled date (default Day 15)
-        const delayDays = action.rescheduleDelayDays !== undefined ? action.rescheduleDelayDays : 15;
+        // Add to the new rescheduled date. The default is the SAME constant the
+        // executor applies, so the simulated date and the date the ledger
+        // actually receives can no longer disagree.
+        const delayDays =
+          action.rescheduleDelayDays !== undefined
+            ? action.rescheduleDelayDays
+            : FINANCIAL_CONFIG.RESCHEDULE_DELAY_DAYS;
         movements.push({
           date: addDays(startDate, delayDays),
           inflows: 0,
@@ -214,12 +220,17 @@ export function generateStrategies(
   return strategies.map((s) => {
     try {
       const simulatedMovements = applyActionsToMovements(baseMovements, s.actions, startDate);
-      const forecast = buildForecast(currentCash, simulatedMovements, 14, startDate);
+      const forecast = buildForecast(
+        currentCash,
+        simulatedMovements,
+        FINANCIAL_CONFIG.FORECAST_HORIZON_DAYS,
+        startDate
+      );
       const runway = calculateRunway(forecast, safetyThreshold);
       const projectedBalance = forecast[forecast.length - 1]?.closingBalance ?? 0;
 
       const deferredObligations: DeferredObligation[] = [];
-      const horizonDate = addDays(startDate, 14);
+      const horizonDate = addDays(startDate, FINANCIAL_CONFIG.FORECAST_HORIZON_DAYS);
 
       s.actions.forEach((action) => {
         if (action.type === "RESCHEDULE_PAYOUT") {
@@ -231,7 +242,10 @@ export function generateStrategies(
 
           if (originalMovement) {
             const originalDueDate = originalMovement.date;
-            const delayDays = action.rescheduleDelayDays !== undefined ? action.rescheduleDelayDays : 15;
+            const delayDays =
+              action.rescheduleDelayDays !== undefined
+                ? action.rescheduleDelayDays
+                : FINANCIAL_CONFIG.RESCHEDULE_DELAY_DAYS;
             const newDueDate = addDays(startDate, delayDays);
 
             if (newDueDate.getTime() > horizonDate.getTime()) {

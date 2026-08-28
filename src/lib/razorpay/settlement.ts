@@ -1,5 +1,10 @@
 import { logger } from "@/lib/observability";
 import { prisma } from "@/lib/prisma";
+import {
+  validateSettlementAmount,
+  describeRejection,
+  type SettledAmountRejection,
+} from "./amounts";
 import { validateActionTransition, validateRecoveryTransition } from "../engine/stateTransitions";
 import {
   transitionDecision,
@@ -189,6 +194,61 @@ export async function reconcileDecisionForStrategy(
 interface InvoiceLink {
   invoiceId: string;
   paymentLinkId: string;
+}
+
+/**
+ * Decides what figure may actually be added to a balance.
+ *
+ * `actualAmount` is what an EXTERNAL party asserted was paid. It used to be
+ * applied to `currentCash: { increment }` with no validation at all, so a
+ * negative, fractional, NaN or absurd value from a payload would have moved a
+ * real balance by exactly that much.
+ *
+ * The rules, in order:
+ *   - No provider figure at all -> settle the expected amount. This is the
+ *     poll/manual path, where we only know what was owed.
+ *   - A provider figure we cannot trust -> throw. Refusing to settle is the
+ *     only safe answer; the caller's transaction rolls back and the delivery is
+ *     recorded as failed so the provider retries.
+ *   - A trustworthy figure -> use it, even when it differs from the expectation.
+ *     The DIFFERENCE is what marks the action RECONCILIATION_MISMATCH; the
+ *     ledger still records what genuinely arrived.
+ */
+export class UnsafeSettlementAmountError extends Error {
+  readonly code = "UNSAFE_SETTLEMENT_AMOUNT";
+  constructor(readonly reason: SettledAmountRejection) {
+    super(describeRejection(reason));
+    this.name = "UnsafeSettlementAmountError";
+  }
+}
+
+export function resolveSettlementAmount(
+  actualAmount: number | undefined,
+  expectedAmount: number,
+  context: { paymentLinkId: string; businessId: string; targetKind: string; targetId: string }
+): number {
+  if (actualAmount === undefined) return expectedAmount;
+
+  const validated = validateSettlementAmount(actualAmount);
+  if (!validated.ok) {
+    logger.error("Refusing to settle an unusable provider amount", {
+      ...context,
+      rejection: validated.reason,
+      expectedAmount,
+    });
+    throw new UnsafeSettlementAmountError(validated.reason);
+  }
+
+  if (validated.amount !== expectedAmount) {
+    // Not an error - a partial or over-payment is a real thing that happens.
+    // It is recorded here and drives RECONCILIATION_MISMATCH downstream.
+    logger.warn("Settled amount differs from the expected amount", {
+      ...context,
+      expectedAmount,
+      settledAmount: validated.amount,
+    });
+  }
+  return validated.amount;
 }
 
 /**
@@ -400,7 +460,11 @@ export async function settlePayment(
           });
         }
 
-        const finalSettleAmount = actualAmount !== undefined ? actualAmount : freshRecovery.amount;
+        const finalSettleAmount = resolveSettlementAmount(
+          actualAmount,
+          freshRecovery.amount,
+          { paymentLinkId, businessId, targetKind: "PAYMENT_RECOVERY", targetId: freshRecovery.id }
+        );
 
         // Increment cash of the exact same business derived from the database model
         await tx.business.update({
@@ -518,11 +582,38 @@ export async function settlePayment(
   }
 
   if (action && action.actionType === "PRIORITIZE_COLLECTIONS" && action.result) {
+    // Parsing is the ONLY thing allowed to fail silently here.
+    //
+    // This try used to wrap the entire settlement below, including the write
+    // transaction, and its catch fell through to `return "created"`. So a
+    // database error, a lost concurrency race, or any throw inside the
+    // transaction was reported to the caller as a successful no-op: the webhook
+    // route then answered HTTP 200, Razorpay never retried, and a real payment
+    // was credited to nobody with nothing flagged anywhere.
+    //
+    // An unparseable `result` genuinely is "this action does not describe the
+    // link we were asked about", which is what "created" means. Everything
+    // after it must be allowed to throw.
+    let parsed: { links?: InvoiceLink[] } | null = null;
     try {
-      const parsed = JSON.parse(action.result);
-      const matchingLink = parsed.links?.find((l: InvoiceLink) => l.paymentLinkId === paymentLinkId);
+      parsed = JSON.parse(action.result);
+    } catch (parseError) {
+      logger.warn("Collections action result is not parseable link JSON", {
+        paymentLinkId,
+        actionId: action.id,
+        error: parseError instanceof Error ? parseError.message : String(parseError),
+      });
+      return "created";
+    }
 
-      if (matchingLink) {
+    const matchingLink = parsed?.links?.find((l: InvoiceLink) => l.paymentLinkId === paymentLinkId);
+
+    if (matchingLink && parsed) {
+      {
+        // Hoisted so the closures below do not depend on TypeScript narrowing
+        // surviving into an async callback.
+        const parsedResult = parsed;
+        const links: InvoiceLink[] = Array.isArray(parsed.links) ? parsed.links : [];
         const invoice = await prisma.invoice.findFirst({
           where: { id: matchingLink.invoiceId, businessId },
         });
@@ -604,7 +695,11 @@ export async function settlePayment(
               });
             }
 
-            const finalSettleAmount = actualAmount !== undefined ? actualAmount : freshInvoice.amount;
+            const finalSettleAmount = resolveSettlementAmount(
+              actualAmount,
+              freshInvoice.amount,
+              { paymentLinkId, businessId, targetKind: "INVOICE", targetId: freshInvoice.id }
+            );
 
             // Increment cash of the exact same business derived from the database model
             await tx.business.update({
@@ -615,7 +710,7 @@ export async function settlePayment(
             });
 
             let allPaid = true;
-            for (const l of parsed.links) {
+            for (const l of links) {
               const inv = await tx.invoice.findFirst({
                 where: { id: l.invoiceId, businessId },
               });
@@ -684,7 +779,7 @@ export async function settlePayment(
                     // second settlement attempt unparseable and therefore
                     // undetectable - verified live in Phase 20, where a duplicate
                     // settlement was correctly prevented but could not be recorded.
-                    result: JSON.stringify({ ...parsed, settlement: resultDetail }),
+                    result: JSON.stringify({ ...parsedResult, settlement: resultDetail }),
                     predictionActual: updatedPrediction as Prisma.InputJsonValue,
                     auditLog: [...existingAudit, auditEntry] as Prisma.InputJsonValue,
                   },
@@ -706,8 +801,6 @@ export async function settlePayment(
         await convergeSiblingCollectionActions(paymentLinkId, businessId, action.id, trigger);
         return "paid";
       }
-    } catch (e) {
-      console.error("Error parsing invoice links in settle:", e);
     }
   }
 

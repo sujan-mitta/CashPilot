@@ -92,7 +92,7 @@ export default function DecisionHistoryPage() {
         </div>
         <button
           onClick={() => router.push("/dashboard")}
-          className="flex items-center gap-1.5 px-4 py-2 bg-ground-100 border border-line-soft rounded-md text-xs font-bold text-ink-200 hover:bg-ground-200 hover:border-line-firm transition-colors duration-150 outline-none"
+          className="flex items-center gap-1.5 px-4 py-2 bg-ground-100 border border-line-soft rounded-md text-xs font-bold text-ink-200 hover:bg-ground-200 hover:border-line-firm transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 focus-visible:ring-offset-ground-050"
         >
           <ArrowLeft className="w-3.5 h-3.5" /> Back to Runway Dashboard
         </button>
@@ -190,7 +190,7 @@ export default function DecisionHistoryPage() {
                     key={f}
                     onClick={() => setSelectedFilter(f)}
                     className={clsx(
-                      "px-3 py-1.5 rounded-md text-[11px] font-bold border transition-colors duration-150 outline-none select-none",
+                      "px-3 py-1.5 rounded-md text-[11px] font-bold border transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 focus-visible:ring-offset-ground-050 select-none",
                       selectedFilter === f
                         ? "bg-brand-500 border-brand-500 text-white"
                         : "bg-ground-100 border-line-soft text-ink-300 hover:bg-ground-200"
@@ -316,7 +316,7 @@ export default function DecisionHistoryPage() {
                     </div>
                     <button
                       onClick={() => setSelectedDecisionId(null)}
-                      className="p-1.5 hover:bg-ground-200 rounded-md text-ink-400 hover:text-ink-300 transition-colors outline-none"
+                      className="p-1.5 hover:bg-ground-200 rounded-md text-ink-400 hover:text-ink-300 transition-colors focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 focus-visible:ring-offset-ground-050"
                     >
                       <X className="w-5 h-5" />
                     </button>
@@ -521,7 +521,7 @@ export default function DecisionHistoryPage() {
 
                 <button
                   onClick={() => setSelectedDecisionId(null)}
-                  className="w-full py-3.5 bg-ground-300 hover:bg-ground-000 text-white font-bold rounded-md text-xs transition-colors outline-none"
+                  className="w-full py-3.5 bg-ground-300 hover:bg-ground-000 text-white font-bold rounded-md text-xs transition-colors focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 focus-visible:ring-offset-ground-050"
                 >
                   Close Drawer
                 </button>

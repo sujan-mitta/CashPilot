@@ -52,9 +52,17 @@ const DECISION_TRANSITIONS: Record<DecisionStatus, DecisionStatus[]> = {
 
   // Human authorised it. Execution may confirm (EXECUTED) or be refused /
   // fail outright (NOT_EXECUTED). An unknown result keeps it here.
+  //
+  // REJECTED is reachable as a CANCELLATION - withdrawing an authorisation
+  // before anything has been dispatched. There was previously no way out of
+  // APPROVED except by executing, so an operator who approved by mistake had
+  // no remedy at all. The action-level guard is what makes this safe: once any
+  // action leaves APPROVED the approve route's transition check refuses, so
+  // this can never cancel work that is already in flight.
   [DecisionStatus.APPROVED]: [
     DecisionStatus.EXECUTED,
     DecisionStatus.NOT_EXECUTED,
+    DecisionStatus.REJECTED,
   ],
 
   // Human declined. The only forward step is recording what happened anyway.

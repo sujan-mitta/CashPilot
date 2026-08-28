@@ -251,26 +251,28 @@ export default function Dashboard() {
 
   // Determine Case A-D
   let edgeCase: "CASE_A" | "CASE_B" | "CASE_C" | "CASE_D" = "CASE_A";
-  let crisisDaysLeft = 0;
 
   if (currentCash < 0) {
     edgeCase = "CASE_D"; // Active Cash Deficit Today
   } else if (minProjected < 0) {
     edgeCase = "CASE_C"; // Negative Balance Projected
-    // Calculate days until crisis Day
-    if (runway.firstNegativeDay) {
-      const tDate = new Date(days[0].date);
-      const cDate = new Date(runway.firstNegativeDay);
-      crisisDaysLeft = Math.max(1, Math.round((cDate.getTime() - tDate.getTime()) / (1000 * 60 * 60 * 24)));
-    }
   } else if (minProjected < safetyThreshold) {
     edgeCase = "CASE_B"; // Safety Breach
-    if (runway.firstBelowSafetyThreshold) {
-      const tDate = new Date(days[0].date);
-      const sDate = new Date(runway.firstBelowSafetyThreshold);
-      crisisDaysLeft = Math.max(1, Math.round((sDate.getTime() - tDate.getTime()) / (1000 * 60 * 60 * 24)));
-    }
   }
+
+  /**
+   * Days until the balance first goes negative, counted ONE way.
+   *
+   * This page derived the same number twice - a date difference (assigned to a
+   * `crisisDaysLeft` that was then never rendered) and, in the alert below,
+   * `days.findIndex(d => d.projectedBalance < 0) + 1`. Two derivations of one
+   * figure on one screen is how they end up disagreeing; the dead one is gone
+   * and the survivor is a named function.
+   */
+  const daysUntilNegative = (() => {
+    const idx = days.findIndex((d: any) => d.projectedBalance < 0);
+    return idx >= 0 ? idx + 1 : null;
+  })();
 
   // Staged loading panel render
   if (pageState === "INVESTIGATING") {
@@ -283,8 +285,10 @@ export default function Dashboard() {
 
     return (
       <main className="flex-1 flex flex-col justify-center items-center p-6">
-        <div
-        >
+        {/* The step list updates over several seconds with no page change, so
+            without a live region a screen-reader user is told nothing at all
+            between clicking and the route changing under them. */}
+        <div role="status" aria-live="polite" aria-busy="true">
           <Card className="max-w-md w-full space-y-6">
             <div className="flex items-center justify-between border-b border-line-faint pb-3">
               <span className="text-xs font-bold text-ink-400">
@@ -405,7 +409,11 @@ export default function Dashboard() {
                 <AlertTriangle className="w-5 h-5 text-risk-400 shrink-0 mt-0.5" strokeWidth={2} />
                 <div className="min-w-0 flex-1">
                   <h3 className="text-[15px] font-semibold text-ink-100">
-                    You run out of cash in {days.findIndex((d: any) => d.projectedBalance < 0) + 1} days
+                    {daysUntilNegative === null
+                      ? "Your balance dips below zero inside this window"
+                      : daysUntilNegative === 1
+                      ? "You run out of cash tomorrow"
+                      : `You run out of cash in ${daysUntilNegative} days`}
                   </h3>
                   <p className="text-ink-300 mt-1 max-w-2xl">
                     On {runway.firstNegativeDay
@@ -493,7 +501,7 @@ export default function Dashboard() {
               </span>
 
               <details className="group border border-line-faint rounded-md p-4 bg-ground-200/50">
-                <summary className="text-xs font-bold text-brand-300 cursor-pointer select-none outline-none flex items-center justify-between">
+                <summary className="text-xs font-bold text-brand-300 cursor-pointer select-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 focus-visible:ring-offset-ground-050 flex items-center justify-between">
                   How we worked this out
                   <ChevronDown className="w-3.5 h-3.5 transition-transform duration-200 group-open:rotate-180" />
                 </summary>

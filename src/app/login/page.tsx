@@ -20,12 +20,16 @@ const highlights = [
 ];
 
 const fieldClass = clsx(
-  "w-full pl-10 pr-4 py-3 rounded-md text-sm outline-none",
+  "w-full pl-10 pr-4 py-3 rounded-md text-sm focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 focus-visible:ring-offset-ground-050",
   "bg-ground-200/70 border border-line-soft text-ink-100 font-medium",
   "placeholder:text-ink-400 placeholder:font-normal",
   "transition-[border-color,background,box-shadow] duration-200",
   "hover:border-line-firm",
-  "focus:border-brand-500 focus:bg-ground-200 focus:"
+  // `focus:` with nothing after it was a dangling class that emitted no CSS,
+  // so the login inputs - the first controls anyone touches - had no focus
+  // treatment beyond a border tint.
+  "focus:border-brand-500 focus:bg-ground-200",
+  "focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 focus-visible:ring-offset-ground-100"
 );
 
 const labelClass = "label block mb-1.5";
@@ -117,9 +121,10 @@ function LoginForm() {
         return;
       }
 
+      // The redirect is driven solely by the `user` effect above. Pushing here
+      // as well meant two navigations for one sign-in.
       login(data.user);
       setIsLoading(false);
-      router.push("/dashboard");
     } catch (err) {
       setError(errorMessage(err, "Unable to connect to auth server."));
       setIsLoading(false);
@@ -237,12 +242,15 @@ function LoginForm() {
           <button
             type="button"
             onClick={handleGoogleSignIn}
-            className="w-full py-3 rounded-md text-[13px] font-semibold outline-none flex items-center justify-center gap-2.5 bg-ground-200 border border-line-soft text-ink-200 hover:bg-ground-300 hover:border-line-firm transition-colors duration-200"
+            className="w-full py-3 rounded-md text-[13px] font-semibold focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 focus-visible:ring-offset-ground-050 flex items-center justify-center gap-2.5 bg-ground-200 border border-line-soft text-ink-200 hover:bg-ground-300 hover:border-line-firm transition-colors duration-200"
           >
             <svg className="w-4 h-4" viewBox="0 0 24 24" aria-hidden>
+              {/* The blue stroke's path data was corrupt ("...6.69c-.29 1.5-.1.14-.1.14v2.54h1.03...")
+                  and rendered as a stray wedge across the mark. This is the
+                  canonical Google "G" geometry. */}
               <path
                 fill="#4285F4"
-                d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v3.9h6.69c-.29 1.5-.1.14-.1.14v2.54h1.03l2.42-1.87c2-1.86 3.7-4.64 3.7-8.64z"
+                d="M23.49 12.27c0-.79-.07-1.54-.2-2.27H12v4.51h6.44a5.5 5.5 0 0 1-2.39 3.62v3h3.86c2.26-2.09 3.58-5.17 3.58-8.86z"
               />
               <path
                 fill="#34A853"
@@ -373,7 +381,7 @@ function LoginForm() {
                   type="button"
                   onClick={() => setShowPassword((p) => !p)}
                   aria-label={showPassword ? "Hide password" : "Show password"}
-                  className="absolute right-3.5 top-3.5 text-ink-500 hover:text-ink-200 transition-colors outline-none"
+                  className="absolute right-3.5 top-3.5 text-ink-500 hover:text-ink-200 transition-colors focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 focus-visible:ring-offset-ground-050"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -390,10 +398,20 @@ function LoginForm() {
             </Button>
           </form>
 
+          {/* An account with no password set is told to "reset your password"
+              by /api/auth/login, and there is no reset route to send them to.
+              Saying so plainly is better than a link that goes nowhere. */}
+          {mode === "SIGN_IN" && (
+            <p className="text-center text-[11.5px] text-ink-500 leading-relaxed">
+              Forgotten your password? Password reset is not available yet — ask
+              whoever set up your CashPilot account.
+            </p>
+          )}
+
           <div className="text-center pt-1">
             <button
               onClick={toggleMode}
-              className="text-[12.5px] text-brand-300 font-medium hover:text-brand-400 transition-colors outline-none rounded"
+              className="text-[12.5px] text-brand-300 font-medium hover:text-brand-400 transition-colors focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 focus-visible:ring-offset-ground-050 rounded"
             >
               {mode === "SIGN_IN"
                 ? "Don't have an account? Sign up"

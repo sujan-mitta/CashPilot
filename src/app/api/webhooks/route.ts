@@ -5,14 +5,34 @@ import { settlePayment } from "@/lib/razorpay/settlement";
 import { inspectConfiguration } from "@/lib/config/productionConfig";
 import { logger, withCorrelationId } from "@/lib/observability";
 import { errorMessage } from "@/lib/errors";
+import { rateLimit, clientKey } from "@/lib/auth/rateLimit";
+import { readProviderPaidAmount, describeRejection } from "@/lib/razorpay/amounts";
 import {
   beginDelivery,
   markProcessing,
   markSucceeded,
   markFailed,
   markDuplicate,
+  markIgnored,
   recordRejectedDelivery,
 } from "@/lib/razorpay/webhookDelivery";
+
+/**
+ * True only for a unique-constraint violation.
+ *
+ * The idempotency claim below used to catch EVERYTHING and answer
+ * ALREADY_PROCESSED, so a pool exhaustion or a dropped connection during
+ * `processedEvent.create` returned HTTP 200 and Razorpay never retried - a real
+ * payment silently dropped. Only P2002 means "another delivery won the race";
+ * anything else must surface as a 500 so the provider redelivers.
+ */
+function isUniqueConstraintViolation(err: unknown): boolean {
+  const code = (err as { code?: unknown } | null)?.code;
+  if (code === "P2002") return true;
+  // The pg driver surfaces the same condition as SQLSTATE 23505 when an error
+  // escapes Prisma's own wrapping.
+  return code === "23505";
+}
 
 export interface RazorpayWebhookPaymentLinkEntity {
   id?: string;
@@ -39,6 +59,19 @@ export const POST = withCorrelationId(async (req: Request) => {
   // accepted, rejected, or fails during processing. Never deleted.
   let deliveryId: string | null = null;
   try {
+    // Every rejected delivery writes a WebhookDeliveryAttempt row, so an
+    // unauthenticated flood of bad signatures was unbounded storage growth on
+    // a public endpoint. The ceiling is deliberately generous - far above any
+    // real provider retry rate - so genuine traffic is never touched.
+    const limited = rateLimit(`webhook:${clientKey(req)}`, 120, 60_000);
+    if (!limited.ok) {
+      logger.warn("Webhook rate limit exceeded", { retryAfterSec: limited.retryAfterSec });
+      return NextResponse.json(
+        { error: "Too many requests." },
+        { status: 429, headers: { "Retry-After": String(limited.retryAfterSec) } }
+      );
+    }
+
     const body = await req.text();
     const signature = req.headers.get("x-razorpay-signature");
     const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
@@ -124,11 +157,23 @@ export const POST = withCorrelationId(async (req: Request) => {
       await prisma.processedEvent.create({
         data: { id: eventId },
       });
-    } catch {
-      // Unique constraint violation: another delivery won the race.
-      logger.info("Webhook event already processed (raced)", { eventId, eventType: event.event, alreadyProcessed: true });
-      await markDuplicate(deliveryId);
-      return NextResponse.json({ status: "ALREADY_PROCESSED" });
+    } catch (claimError) {
+      if (isUniqueConstraintViolation(claimError)) {
+        // Another delivery won the race. This one is genuinely a duplicate.
+        logger.info("Webhook event already processed (raced)", { eventId, eventType: event.event, alreadyProcessed: true });
+        await markDuplicate(deliveryId);
+        return NextResponse.json({ status: "ALREADY_PROCESSED" });
+      }
+      // Anything else - a dead connection, an exhausted pool - means we do NOT
+      // know whether the claim landed and we have certainly not settled
+      // anything. Answering 200 here told Razorpay the payment was handled and
+      // stopped every retry, losing the money for good. Fail loudly instead.
+      logger.error("Webhook idempotency claim failed", {
+        eventId,
+        error: errorMessage(claimError),
+      });
+      await markFailed(deliveryId, "PROCESSING_ERROR", errorMessage(claimError));
+      return NextResponse.json({ error: "IDEMPOTENCY_CLAIM_FAILED" }, { status: 500 });
     }
 
     const releaseEventClaim = async () => {
@@ -213,8 +258,40 @@ export const POST = withCorrelationId(async (req: Request) => {
         return NextResponse.json({ error: "Business not found" }, { status: 404 });
       }
 
-      // Extract actual paid amount from Razorpay event payload
-      const actualAmount = event.payload?.payment_link?.entity?.amount_paid || event.payload?.payment_link?.entity?.amount;
+      // What the provider says was ACTUALLY paid.
+      //
+      // `amount_paid ?? amount`, never `||`: a partial or unpaid link reports
+      // `amount_paid: 0`, which is falsy, so the old fallback credited the full
+      // face value of the link for money that had not arrived. Zero is a real
+      // answer and must be carried through as one.
+      // A payload carrying NO amount field at all is a different case from one
+      // carrying a bad amount. With nothing reported, settlement falls back to
+      // the amount we already know is owed - which is bounded by our own record
+      // and cannot over-credit. Only an amount that IS present and unusable
+      // (negative, fractional, NaN, absurd) is refused.
+      const paid = readProviderPaidAmount(event.payload?.payment_link?.entity);
+      if (!paid.ok && paid.reason === "MISSING") {
+        logger.warn("Webhook reported no settlement amount; falling back to the expected amount", {
+          eventId,
+          paymentLinkId,
+        });
+      } else if (!paid.ok) {
+        await releaseEventClaim();
+        await markFailed(deliveryId, "PROCESSING_ERROR", describeRejection(paid.reason), {
+          businessId,
+          externalRef: paymentLinkId,
+        });
+        logger.error("Webhook reported an unusable settlement amount", {
+          eventId,
+          paymentLinkId,
+          rejection: paid.reason,
+        });
+        return NextResponse.json(
+          { error: "INVALID_SETTLEMENT_AMOUNT", message: describeRejection(paid.reason) },
+          { status: 400 }
+        );
+      }
+      const actualAmount = paid.ok ? paid.amount : undefined;
 
       // Execute shared transactional settlement
       const finalStatus = await settlePayment(paymentLinkId, businessId, actualAmount, referenceId, "WEBHOOK");
@@ -243,13 +320,18 @@ export const POST = withCorrelationId(async (req: Request) => {
      }
     }
 
-    await markFailed(deliveryId, "UNKNOWN_EVENT_TYPE", "Unhandled event type: " + String(event.event));
+    // An event type we do not act on is handled CORRECTLY, not failed. Marking
+    // it FAILED made the failure metric this table exists to provide count
+    // every routine unhandled delivery, burying real settlement failures.
+    await markIgnored(deliveryId, event.event);
     return NextResponse.json({ status: "EVENT_IGNORED" });
   } catch (error) {
     // Catch-all, including an unparseable body. Any delivery record already
     // opened survives with a classification rather than vanishing.
     await markFailed(deliveryId, "PROCESSING_ERROR", errorMessage(error));
     logger.error("Webhook processing error", { error: errorMessage(error) });
-    return NextResponse.json({ error: errorMessage(error) }, { status: 500 });
+    // The internal message is logged, never returned. A Prisma error carries
+    // table and column names, and the client here is an external party.
+    return NextResponse.json({ error: "WEBHOOK_PROCESSING_FAILED" }, { status: 500 });
   }
 });

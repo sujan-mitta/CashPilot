@@ -77,7 +77,7 @@ export default function Profile() {
         </div>
         <button
           onClick={() => router.push("/dashboard")}
-          className="flex items-center gap-1.5 px-4 py-2 bg-ground-100 border border-line-soft rounded-md text-xs font-bold text-ink-200 hover:bg-ground-200 hover:border-line-firm transition-colors duration-150 outline-none"
+          className="flex items-center gap-1.5 px-4 py-2 bg-ground-100 border border-line-soft rounded-md text-xs font-bold text-ink-200 hover:bg-ground-200 hover:border-line-firm transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 focus-visible:ring-offset-ground-050"
         >
           <ArrowLeft className="w-3.5 h-3.5" /> Back to Cash Command Dashboard
         </button>

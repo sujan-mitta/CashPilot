@@ -166,7 +166,7 @@ function CheckoutContent() {
                       type="text"
                       disabled
                       value="4111 •••• •••• 1111 (Razorpay Sandbox)"
-                      className="w-full text-xs font-bold text-ink-200 bg-transparent outline-none"
+                      className="w-full text-xs font-bold text-ink-200 bg-transparent focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 focus-visible:ring-offset-ground-050"
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-4 text-xs font-bold text-ink-300">

@@ -84,6 +84,14 @@ vi.mock("@/lib/prisma", async () => {
           ? fn({
               agentAction: {
                 findMany: vi.fn(async () => world.actions),
+                // A real Prisma.TransactionClient has `update`; this double did
+                // not, so any code path that appends to a single row's audit log
+                // inside a transaction blew up with a 500.
+                update: vi.fn(async ({ where, data }: any) => {
+                  const a = world.actions.find((x: any) => x.id === where.id);
+                  if (a) Object.assign(a, data);
+                  return a;
+                }),
                 updateMany: vi.fn(async ({ where, data }: any) => {
                   let count = 0;
                   for (const a of world.actions) {

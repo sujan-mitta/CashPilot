@@ -227,7 +227,10 @@ describe("CashPilot Idempotency and Race Verification", () => {
   });
 
   // TEST 4 — TRUE INVALID TRANSITION
-  it("Test 4: Genuinely incompatible state returns 400 INVALID_TRANSITION and mutates no ledger records", async () => {
+  // 409 CONFLICT, not 400. The client's request was well-formed; the RESOURCE
+  // is in a state that forbids the operation, which is what 409 exists to say.
+  // 400 told the caller they had sent something wrong, which they had not.
+  it("Test 4: Genuinely incompatible state returns 409 INVALID_TRANSITION and mutates no ledger records", async () => {
     const mockSession = { userId: "u-A", businessId: "biz-A" };
     vi.mocked(getSession).mockResolvedValue(mockSession as any);
     vi.mocked(prisma.business.findUnique).mockResolvedValue({ id: "biz-A", currentCash: 1000 } as any);
@@ -243,9 +246,13 @@ describe("CashPilot Idempotency and Race Verification", () => {
 
     const req = new Request("http://localhost/api/payment-status?paymentLinkId=plink_A&simulatePaid=true");
     const res = await getPaymentStatus(req);
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(409);
     const body = await res.json();
     expect(body.error).toBe("INVALID_TRANSITION");
+    // The stable code is what a client may branch on. The internal
+    // state-machine text - which names action ids and enum values - is logged,
+    // never returned.
+    expect(JSON.stringify(body)).not.toMatch(/Invalid (recovery|action) transition/);
 
     // No ledger increments
     expect(prisma.business.update).not.toHaveBeenCalled();
@@ -277,12 +284,20 @@ describe("CashPilot Idempotency and Race Verification", () => {
 
     const req = new Request("http://localhost/api/payment-status?paymentLinkId=plink_A&simulatePaid=true");
     const res = await getPaymentStatus(req);
-    
-    // Will throw access denied, resulting in 500 server error rather than silent acceptance
+
+    // The tenant guard throws, so the request fails rather than silently
+    // accepting a foreign record.
     expect(res.status).toBe(500);
     const body = await res.json();
-    expect(body.error).toContain("Access Denied");
-    
+
+    // What matters is that NOTHING MOVED - not that the response quotes our
+    // internal guard text back at the caller. The message used to be the raw
+    // "Access Denied: recovery record belongs to a different tenant", which
+    // confirms to an attacker that the id they guessed is real and belongs to
+    // someone else. The refusal is logged; the client gets a generic 500.
     expect(prisma.business.update).not.toHaveBeenCalled();
+    expect(prisma.paymentRecovery.update).not.toHaveBeenCalled();
+    expect(JSON.stringify(body)).not.toContain("Access Denied");
+    expect(JSON.stringify(body)).not.toContain("biz-B");
   });
 });

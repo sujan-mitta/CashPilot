@@ -28,23 +28,26 @@ const effectivenessLabel = (v: string) =>
     WORSENED: "Leaves you worse off",
   } as Record<string, string>)[v] ?? v.toLowerCase().replace(/_/g, " ");
 
+// "Packaging" and "SaaS" are vendor names from the demo dataset. Shown to a
+// real business they name somebody else's suppliers. The reschedule day also
+// read 15 while the executor applied 20.
 const actionDescription = (type: string) =>
   type === "RECOVER_FAILED_PAYMENTS"
     ? "Failed payment recovery (Day 2)"
     : type === "PRIORITIZE_COLLECTIONS"
-    ? "Accelerated Collections (Day 1)"
+    ? "Accelerated collections (Day 1)"
     : type === "RESCHEDULE_PAYOUT"
-    ? "Rescheduled Packaging Payout (Day 15)"
-    : "Paused SaaS subscriptions (Day 0)";
+    ? `Rescheduled supplier payout (Day ${FINANCIAL_CONFIG.RESCHEDULE_DELAY_DAYS})`
+    : "Paused recurring subscription (today)";
 
 const actionTitle = (type: string) =>
   type === "RECOVER_FAILED_PAYMENTS"
-    ? "Recover Failed Customer Payout Card"
+    ? "Recover the failed customer payment"
     : type === "PRIORITIZE_COLLECTIONS"
-    ? "Prioritize Overdue Invoice Collection"
+    ? "Prioritise overdue invoice collection"
     : type === "RESCHEDULE_PAYOUT"
-    ? "Reschedule Supplier Payout"
-    : "Pause Operational Subscription";
+    ? "Reschedule a supplier payout"
+    : "Pause a recurring subscription";
 
 export default function Strategies() {
   const router = useRouter();
@@ -85,28 +88,37 @@ export default function Strategies() {
         if (!cancelled) setCachedStrategies(data.strategies);
         if (!cancelled) setCachedRecommendationNarration(data.recommendationNarration);
 
-        // Map baseline response to context forecast shape
-        const mappedForecast = {
-          status: "SUCCESS" as const,
-          business: {
-            // Identity comes from the session, never a hardcoded tenant name.
-            id: data.baseline.businessId ?? "unknown",
-            name: data.baseline.businessName ?? "",
-            currentCash: data.baseline.forecast[0].openingBalance,
-          },
-          forecast: {
-            horizonDays: 14,
-            safetyThreshold: data.baseline.requiredBuffer ?? FINANCIAL_CONFIG.SAFETY_THRESHOLD,
-            days: data.baseline.forecast,
-            runway: {
-              firstBelowSafetyThreshold: data.baseline.crisisDay ? data.baseline.forecast[data.baseline.crisisDay - 1].date : null,
-              firstNegativeDay: data.baseline.crisisDay ? data.baseline.forecast[data.baseline.crisisDay - 1].date : null,
-              minimumProjectedBalance: data.baseline.minimumProjectedBalance,
-            },
-            riskLevel: data.baseline.riskLevel,
-          },
-        };
-        if (!cancelled) setCachedForecast(mappedForecast);
+        // The shared forecast cache is filled from /api/forecast, which is the
+        // ONE endpoint that produces a complete ForecastResponse.
+        //
+        // This used to fabricate a partial object from the strategies baseline,
+        // with two consequences on the dashboard the operator returns to:
+        //
+        //   1. It omitted `safetyRequirement`, `criticalObligations` and
+        //      `temporalRisk`, so three whole cards and the safe-minimum line
+        //      on the chart silently disappeared on the second visit - and the
+        //      dashboard never refetches when the cache is populated.
+        //   2. It set `firstBelowSafetyThreshold` and `firstNegativeDay` to the
+        //      SAME date (both derived from crisisDay), so "Dips below safe on"
+        //      displayed the out-of-cash date instead.
+        //
+        // Fetching the real thing costs one request and cannot drift from what
+        // the dashboard would have shown on its own.
+        if (!cancelled) {
+          try {
+            const forecastRes = await fetch("/api/forecast");
+            if (forecastRes.ok) {
+              const forecastData = await forecastRes.json();
+              if (!cancelled && forecastData?.status === "SUCCESS") {
+                setCachedForecast(forecastData);
+              }
+            }
+          } catch {
+            // A missing baseline degrades the comparison panel to
+            // "Unavailable", which the render already handles. It must never
+            // take down the strategy comparison itself.
+          }
+        }
 
         // Pre-select the recommended strategy (C)
         if (data.recommendedStrategyId) {
@@ -196,7 +208,7 @@ export default function Strategies() {
       <Reveal className="flex items-center justify-between">
         <button
           onClick={() => router.push("/investigation")}
-          className="text-xs font-bold text-ink-300 hover:text-ink-200 transition outline-none"
+          className="text-xs font-bold text-ink-300 hover:text-ink-200 transition focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 focus-visible:ring-offset-ground-050"
         >
           ← Back to Investigation
         </button>
@@ -266,7 +278,7 @@ export default function Strategies() {
                     // min-h, not h-40: the recommended card carries an extra
                     // badge row, and a fixed height pushed its figure out of
                     // the card entirely.
-                    "text-left p-4 rounded-md border transition-colors duration-200 outline-none flex flex-col gap-3 min-h-44 relative",
+                    "text-left p-4 rounded-md border transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 focus-visible:ring-offset-ground-050 flex flex-col gap-3 min-h-44 relative",
                     {
                       // brand-600, not brand-500: white text on #6366f1 measured 4.28-4.47:1,
                       // just under the 4.5 needed. One step darker clears it in both themes.
@@ -612,7 +624,7 @@ export default function Strategies() {
         {/* TECHNICAL DECISION TRACE */}
         <StaggerItem>
           <details className="group bg-ground-100 border border-line-soft rounded-md p-6">
-            <summary className="text-xs font-semibold text-ink-400 cursor-pointer select-none outline-none">
+            <summary className="text-xs font-semibold text-ink-400 cursor-pointer select-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 focus-visible:ring-offset-ground-050">
               How did CashPilot reach this decision? (Technical Trace)
             </summary>
             <div className="pt-4 border-t border-line-faint mt-4 text-xs font-semibold text-ink-300 space-y-3.5 pr-2 group-open:block hidden">
@@ -717,7 +729,7 @@ export default function Strategies() {
         <StaggerItem className="flex items-center justify-between pt-2">
           <button
             onClick={() => router.push("/investigation")}
-            className="text-xs font-bold text-ink-300 hover:text-ink-200 outline-none"
+            className="text-xs font-bold text-ink-300 hover:text-ink-200 focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 focus-visible:ring-offset-ground-050"
           >
             ← Back to Investigation
           </button>

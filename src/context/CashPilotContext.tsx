@@ -48,6 +48,35 @@ export interface Strategy {
   agentActions?: Action[];
 }
 
+export interface ForecastDayPoint {
+  date: string;
+  openingBalance: number;
+  expectedInflows: number;
+  expectedOutflows: number;
+  projectedBalance: number;
+}
+
+/** The adaptive per-business buffer, as /api/forecast returns it. */
+export interface SafetyRequirement {
+  requiredBuffer: number;
+  coverageDays: number;
+  averageDailyOutflow: number;
+  absoluteFloorApplied: boolean;
+  methodology: string;
+  confidence: "HIGH" | "MEDIUM" | "LOW";
+  dataWarnings: string[];
+}
+
+/**
+ * The COMPLETE shape of GET /api/forecast.
+ *
+ * This type declared only five fields of `forecast`, while the dashboard read
+ * `safetyRequirement`, `criticalObligations` and `temporalRisk` off it through
+ * `as any`. Because the type was a fiction, the compiler could not see that the
+ * strategies page was writing a partial object into this same cache and
+ * silently removing three cards from the dashboard. Every field the API
+ * actually returns is declared here so that class of bug becomes a type error.
+ */
 export interface ForecastResponse {
   status: "SUCCESS" | "NO_DATA" | "ERROR";
   business: {
@@ -58,19 +87,23 @@ export interface ForecastResponse {
   forecast: {
     horizonDays: number;
     safetyThreshold: number;
-    days: {
-      date: string;
-      openingBalance: number;
-      expectedInflows: number;
-      expectedOutflows: number;
-      projectedBalance: number;
-    }[];
+    safetyRequirement: SafetyRequirement;
+    days: ForecastDayPoint[];
     runway: {
       firstBelowSafetyThreshold: string | null;
       firstNegativeDay: string | null;
       minimumProjectedBalance: number;
     };
     riskLevel: "LOW" | "MEDIUM" | "HIGH";
+    criticalObligations: {
+      count: number;
+      amount: number;
+      protected: number;
+    };
+    temporalRisk: {
+      firstCriticalDate: string | null;
+      criticalAmount: number;
+    };
   } | null;
 }
 

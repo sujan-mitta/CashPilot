@@ -110,14 +110,36 @@ export async function executeRecoverFailedPayments(
   // A fresh debt is always preferred over re-attempting a previously dead one,
   // so the two are queried in explicit precedence rather than relying on the
   // enum's declaration order to sort them.
-  const findRecovery = (statuses: RecoveryStatus[]) =>
-    client.paymentRecovery.findFirst({
+  //
+  // TARGETING (fixed): the action carries `targetTransactionId` - the exact
+  // failed payment the strategy was scored and approved against - and this
+  // used to ignore it completely, taking whichever RECOVERY_CANDIDATE an
+  // unordered `findFirst` happened to return. With more than one failed
+  // payment on the ledger, the debt the operator approved and the debt the
+  // system recovered could be different rows for different amounts. The
+  // approved target is now preferred, and the untargeted fallback is ordered
+  // deterministically (largest debt first) instead of relying on row order.
+  const findRecovery = async (statuses: RecoveryStatus[]) => {
+    if (ctx.action.targetTransactionId) {
+      const targeted = await client.paymentRecovery.findFirst({
+        where: {
+          status: { in: statuses },
+          transactionId: ctx.action.targetTransactionId,
+          transaction: { businessId: ctx.businessId },
+        },
+        include: { transaction: true },
+      });
+      if (targeted) return targeted;
+    }
+    return client.paymentRecovery.findFirst({
       where: {
         status: { in: statuses },
         transaction: { businessId: ctx.businessId },
       },
       include: { transaction: true },
+      orderBy: [{ amount: "desc" }, { id: "asc" }],
     });
+  };
 
   const recovery =
     (await findRecovery([RecoveryStatus.RECOVERY_CANDIDATE])) ??
@@ -171,8 +193,15 @@ export async function executeRecoverFailedPayments(
     targetId: recovery.id,
     onIntentRecorded: hooks.onIntentRecorded,
     dispatch: async (idempotencyKey) => {
+      // The link is for what the RECOVERY is worth, not what the action says.
+      //
+      // `ctx.action.amount` is the simulated figure. When the two disagree -
+      // which they do the moment the targeted recovery is not the one the
+      // simulation assumed - issuing a link for the action amount asks the
+      // customer for the wrong sum, and settlement then flags a
+      // RECONCILIATION_MISMATCH that the system itself caused.
       const link = await createRecoveryPaymentLink(
-        ctx.action.amount,
+        recovery.amount,
         recovery.transaction?.description || "Failed payment recovery",
         idempotencyKey
       );
@@ -302,9 +331,19 @@ export async function executePrioritizeCollections(
     }
   }
 
+  // Raise priority ONLY on the invoices that actually received a link.
+  //
+  // This used to be `updateMany({ where: { status: "OVERDUE", businessId } })`,
+  // which rewrote priority on every overdue invoice in the tenant - including
+  // ones this run failed to issue a link for, and ones no strategy had ever
+  // touched. It also destroyed the previous value with no record, so the
+  // operator's own prioritisation was irrecoverable after a single run.
   if (links.length > 0) {
     await client.invoice.updateMany({
-      where: { status: "OVERDUE", businessId: ctx.businessId },
+      where: {
+        id: { in: links.map((l) => l.invoiceId) },
+        businessId: ctx.businessId,
+      },
       data: { priority: "HIGH" },
     });
   }
@@ -346,7 +385,11 @@ export async function executeReschedulePayout(
   // The post-condition is computed BEFORE the intent is recorded, so
   // reconciliation has a concrete expectation to compare persisted state
   // against rather than having to infer one (PART 3).
-  const rescheduledDate = addDays(new Date(), FINANCIAL_CONFIG.FORECAST_HORIZON_DAYS + 6);
+  // One source of truth, shared with the simulation and the approval screen.
+  // This was `FORECAST_HORIZON_DAYS + 6` while the simulation defaulted to 15
+  // and the UI said "day 15" in prose, so the operator approved one date and
+  // the ledger received another.
+  const rescheduledDate = addDays(new Date(), FINANCIAL_CONFIG.RESCHEDULE_DELAY_DAYS);
   const existingPayout = ctx.action.targetPayoutId
     ? await client.payout.findFirst({
         where: { id: ctx.action.targetPayoutId, businessId: ctx.businessId },

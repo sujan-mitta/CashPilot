@@ -95,9 +95,18 @@ export function Navbar({ activeStep }: { activeStep: number }) {
     router.push("/login");
   };
 
-  const businessName = user?.businessName || "ABC Electronics Pvt Ltd";
-  const operatorName = user?.name || "Aryan Mittal";
-  const initials = initialsOf(operatorName);
+  // NEVER fall back to a name.
+  //
+  // These read `user?.businessName || "ABC Electronics Pvt Ltd"` and
+  // `user?.name || "Aryan Mittal"`, so during the mount gap - before the
+  // session is read - every operator was shown a different company's name and
+  // an invented person. On a product whose whole job is telling you about YOUR
+  // money, displaying the wrong tenant even briefly is not cosmetic. An empty
+  // identity renders as a placeholder instead.
+  const businessName = user?.businessName ?? "";
+  const operatorName = user?.name ?? "";
+  const initials = operatorName ? initialsOf(operatorName) : "";
+  const identityReady = Boolean(user);
 
   const currentStep = steps.find((s) => s.num === activeStep);
 
@@ -108,7 +117,7 @@ export function Navbar({ activeStep }: { activeStep: number }) {
           {/* ── Mark ─────────────────────────────────────────────────── */}
           <button
             onClick={() => router.push("/dashboard")}
-            className="flex items-center gap-2.5 text-left outline-none group shrink-0 rounded-md"
+            className="flex items-center gap-2.5 text-left group shrink-0 rounded-md focus-visible:ring-2 focus-visible:ring-brand-500"
           >
             <motion.span
               whileHover={{ rotate: 8, scale: 1.06 }}
@@ -153,7 +162,7 @@ export function Navbar({ activeStep }: { activeStep: number }) {
                           }
                         : {})}
                       className={clsx(
-                        "relative flex items-center gap-2 py-1.5 pl-1.5 pr-3.5 rounded-full outline-none",
+                        "relative flex items-center gap-2 py-1.5 pl-1.5 pr-3.5 rounded-full focus-visible:ring-2 focus-visible:ring-brand-500",
                         isPast && "hover:bg-ground-200 transition-colors cursor-pointer"
                       )}
                       aria-current={isCurrent ? "step" : undefined}
@@ -212,48 +221,65 @@ export function Navbar({ activeStep }: { activeStep: number }) {
                 who could not switch. It fits: 92px in a 343px content box. */}
             <ThemeToggle />
 
-            <button
-              onClick={() => router.push("/profile")}
-              className="flex items-center gap-2.5 text-left rounded-md px-1.5 py-1 hover:bg-ground-200 transition-colors duration-200 outline-none group"
-            >
-              <div className="w-8 h-8 rounded-md bg-brand-500/12 ring-1 ring-inset ring-brand-500/25 flex items-center justify-center text-[11px] font-semibold text-brand-300 group-hover:ring-brand-500/45 transition-all duration-200">
-                {initials}
-              </div>
-              <div className="text-right hidden md:block">
-                <span className="text-[11px] font-medium text-ink-400 block leading-none">
-                  {operatorName}
-                </span>
-                {businesses.length > 1 ? (
-                  <div className="relative mt-1">
-                    <select
-                      value={user?.businessId}
-                      onChange={handleSwitchBusiness}
-                      className="text-[11.5px] font-medium text-ink-200 block max-w-[150px] truncate bg-transparent border-none outline-none cursor-pointer hover:text-brand-300 focus:text-brand-300 transition p-0 pr-3.5 leading-none text-right appearance-none"
-                      onClick={(e) => e.stopPropagation()}
-                      aria-label="Switch business"
-                    >
-                      {businesses.map((b) => (
-                        <option key={b.id} value={b.id} className="text-left bg-ground-200 text-ink-200">
-                          {b.name}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown className="w-2.5 h-2.5 text-ink-500 absolute right-0 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  </div>
-                ) : (
-                  <span className="text-[11.5px] font-medium text-ink-200 block max-w-[130px] truncate mt-1">
-                    {businessName}
+            {/* The profile link and the business switcher are SIBLINGS.
+                A <select> nested inside a <button> is invalid HTML, and the
+                e.stopPropagation() that used to hold it together did not help
+                keyboard users: tabbing to the select and pressing Enter fired
+                the surrounding button and navigated away mid-switch.
+
+                The switcher is also no longer `hidden md:block`. Below 768px a
+                multi-business operator could neither switch tenants nor even
+                SEE which one they were looking at - on a screen full of that
+                tenant's money. */}
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => router.push("/profile")}
+                className="flex items-center gap-2.5 text-left rounded-md px-1.5 py-1 hover:bg-ground-200 transition-colors duration-200 group focus-visible:ring-2 focus-visible:ring-brand-500"
+                aria-label={operatorName ? `Profile for ${operatorName}` : "Your profile"}
+              >
+                <div className="w-8 h-8 rounded-md bg-brand-500/12 ring-1 ring-inset ring-brand-500/25 flex items-center justify-center text-[11px] font-semibold text-brand-300 group-hover:ring-brand-500/45 transition-all duration-200">
+                  {identityReady ? initials : <span className="sr-only">Loading</span>}
+                </div>
+                <div className="text-right hidden md:block">
+                  <span className="text-[11px] font-medium text-ink-400 block leading-none">
+                    {identityReady ? operatorName : "\u00a0"}
                   </span>
-                )}
-              </div>
-            </button>
+                  {businesses.length <= 1 && (
+                    <span className="text-[11.5px] font-medium text-ink-200 block max-w-[130px] truncate mt-1">
+                      {identityReady ? businessName : "\u00a0"}
+                    </span>
+                  )}
+                </div>
+              </button>
+
+              {businesses.length > 1 && (
+                <div className="relative">
+                  <label htmlFor="cp-business-switch" className="sr-only">
+                    Switch business
+                  </label>
+                  <select
+                    id="cp-business-switch"
+                    value={user?.businessId ?? ""}
+                    onChange={handleSwitchBusiness}
+                    className="text-[11.5px] font-medium text-ink-200 max-w-[110px] sm:max-w-[150px] truncate bg-transparent border border-line-soft rounded-md cursor-pointer hover:text-brand-300 transition py-1 pl-2 pr-5 leading-none appearance-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                  >
+                    {businesses.map((b) => (
+                      <option key={b.id} value={b.id} className="text-left bg-ground-200 text-ink-200">
+                        {b.name}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="w-2.5 h-2.5 text-ink-500 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
+              )}
+            </div>
 
             <motion.button
               whileTap={{ scale: 0.92 }}
               onClick={handleLogout}
               title="Sign out"
               aria-label="Sign out"
-              className="p-2 text-ink-400 hover:text-risk-400 hover:bg-risk-500/10 rounded-md transition-colors duration-200 outline-none"
+              className="p-2 text-ink-400 hover:text-risk-400 hover:bg-risk-500/10 rounded-md transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-brand-500"
             >
               <LogOut className="w-4 h-4" />
             </motion.button>

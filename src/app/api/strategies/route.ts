@@ -14,6 +14,8 @@ import { appendDecisionEvent } from "@/lib/engine/decisionStateMachine";
 import { FINANCIAL_CONFIG } from "@/lib/engine/financialConfig";
 import { DecisionEventType, DecisionStatus } from "../../../../generated/prisma/client";
 import { errorMessage } from "@/lib/errors";
+import { logger } from "@/lib/observability";
+import { rateLimit } from "@/lib/auth/rateLimit";
 import type { Prisma } from "../../../../generated/prisma/client";
 
 export async function POST() {
@@ -21,6 +23,22 @@ export async function POST() {
     const session = await getSession();
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // This route holds a 30-second transaction, makes ~14 sequential
+    // cross-region round trips and calls an LLM. Unthrottled, any signed-in
+    // user could exhaust the connection pool from one browser tab. The limit is
+    // per business rather than per IP: simulating is a tenant-level operation
+    // and several colleagues share an office IP.
+    const limited = rateLimit(`strategies:${session.businessId}`, 10, 60_000);
+    if (!limited.ok) {
+      return NextResponse.json(
+        {
+          error: "RATE_LIMITED",
+          message: "Too many simulations in a row. Wait a moment and try again.",
+        },
+        { status: 429, headers: { "Retry-After": String(limited.retryAfterSec) } }
+      );
     }
 
     const business = await prisma.business.findUnique({
@@ -43,9 +61,30 @@ export async function POST() {
     const today = new Date();
 
     // 1. Identify amounts for action simulation
-    const failedTx = transactions.find((t) => t.status === "FAILED");
+    //
+    // `transactions.find(t => t.status === "FAILED")` returned whatever row came
+    // back first, which is neither deterministic nor necessarily the right one:
+    // a FAILED OUTFLOW is a payment WE failed to make and is not recoverable
+    // revenue at all, yet it could be picked and simulated as an inflow.
+    //
+    // Only failed INFLOWS are recoverable, and the largest is chosen so the
+    // same ledger always produces the same recommendation - which is what the
+    // decision fingerprint assumes.
+    const recoverableFailures = transactions
+      .filter((t) => t.status === "FAILED" && t.type === "INFLOW")
+      .sort((a, b) => b.amount - a.amount || a.id.localeCompare(b.id));
+
+    const failedTx = recoverableFailures[0];
     const failedAmount = failedTx ? failedTx.amount : 0;
     const failedTxId = failedTx ? failedTx.id : "";
+    // Surfaced rather than silently dropped: the executor recovers ONE debt per
+    // action, so any others are real money this recommendation does not address
+    // and the operator is entitled to know that.
+    const unaddressedFailures = recoverableFailures.slice(1).map((t) => ({
+      id: t.id,
+      amount: t.amount,
+      description: t.description,
+    }));
 
     const overdueAmount = invoices
       .filter((i) => i.status === "OVERDUE")
@@ -69,11 +108,21 @@ export async function POST() {
     const safetyReq = await calculateLiquiditySafetyRequirement(business.id, prisma, today);
     const requiredBuffer = safetyReq.requiredBuffer;
     const baseMovements = transactionsToMovements(transactions);
-    const baselineForecast = buildForecast(business.currentCash, baseMovements, 14, today);
+    const HORIZON = FINANCIAL_CONFIG.FORECAST_HORIZON_DAYS;
+    const baselineForecast = buildForecast(business.currentCash, baseMovements, HORIZON, today);
     const baselineRunway = calculateRunway(baselineForecast, requiredBuffer);
     const baselineRisk = calculateRisk(baselineRunway.minimumBalance, requiredBuffer);
     const baselineClosing = baselineForecast[baselineForecast.length - 1]?.closingBalance ?? 0;
+    // 1-BASED, to match `runway.crisisDay`.
+    //
+    // The baseline used a 0-based findIndex while the recommendation used the
+    // 1-based crisisDay, both subtracted from 14. A strategy that changed
+    // nothing therefore appeared to remove exactly one deficit day - and these
+    // two numbers are what outcome measurement later compares.
     const baselineCrisisIndex = baselineForecast.findIndex((d) => d.closingBalance < 0);
+    const baselineCrisisDay = baselineCrisisIndex >= 0 ? baselineCrisisIndex + 1 : null;
+    const deficitDaysFrom = (crisisDay: number | null) =>
+      crisisDay === null ? 0 : HORIZON - crisisDay + 1;
 
     const formattedBaselineForecast = baselineForecast.map((f) => ({
       date: f.date.toISOString(),
@@ -130,12 +179,54 @@ export async function POST() {
 
     await prisma.$transaction(
       async (tx) => {
-      await tx.agentAction.deleteMany({
-        where: { strategy: { businessId: business.id, decision: null } },
-      });
-      await tx.strategy.deleteMany({
-        where: { businessId: business.id, decision: null },
-      });
+      // Discard the previous UNACTED simulation for this business.
+      //
+      // This used to filter on `decision: null`, but a Decision is created for
+      // every strategy a few lines below (`if (tx.decision)` is a Prisma
+      // delegate - always truthy), so the filter matched nothing and the
+      // cleanup was dead code. Every visit to /strategies therefore added four
+      // more Strategy rows, four Decisions and their actions, permanently.
+      //
+      // The real rule is "a decision a human has acted on is history and is
+      // never deleted". PRESENTED means shown and not yet acted on, so those
+      // are the ones a fresh simulation replaces.
+      const supersededStrategyIds = (
+        await tx.strategy.findMany({
+          where: {
+            businessId: business.id,
+            OR: [
+              { decision: null },
+              { decision: { status: DecisionStatus.PRESENTED } },
+              { decision: { status: DecisionStatus.GENERATED } },
+            ],
+          },
+          select: { id: true },
+        })
+      ).map((row) => row.id);
+
+      if (supersededStrategyIds.length > 0) {
+        // Children first; a superseded strategy that ever dispatched an intent
+        // is NOT deleted, because that intent is the durable record of an
+        // external side effect.
+        const withIntents = new Set(
+          (
+            await tx.executionIntent.findMany({
+              where: { strategyId: { in: supersededStrategyIds } },
+              select: { strategyId: true },
+            })
+          ).map((i) => i.strategyId)
+        );
+        const deletable = supersededStrategyIds.filter((id) => !withIntents.has(id));
+
+        if (deletable.length > 0) {
+          await tx.decisionEvent.deleteMany({
+            where: { decision: { strategyId: { in: deletable } } },
+          });
+          await tx.decision.deleteMany({ where: { strategyId: { in: deletable } } });
+          await tx.agentAction.deleteMany({ where: { strategyId: { in: deletable } } });
+          await tx.strategy.deleteMany({ where: { id: { in: deletable } } });
+        }
+      }
 
       for (const s of scored) {
         // Persist the strategy in the database
@@ -220,16 +311,16 @@ export async function POST() {
                 startingCash: business.currentCash,
                 minimumBalance: baselineRunway.minimumBalance,
                 finalBalance: baselineClosing,
-                deficitDays: baselineCrisisIndex >= 0 ? 14 - baselineCrisisIndex : 0,
+                deficitDays: deficitDaysFrom(baselineCrisisDay),
                 requiredLiquidity: requiredBuffer,
                 coverageRatio: business.currentCash / (requiredBuffer || 1),
-                forecastHorizon: 14,
+                forecastHorizon: HORIZON,
                 timestamp: today.toISOString(),
               },
               recommendedSnapshot: {
                 minimumBalance: s.runway.minimumBalance,
                 finalBalance: s.projectedBalance,
-                deficitDays: s.runway.crisisDay ? 14 - s.runway.crisisDay : 0,
+                deficitDays: deficitDaysFrom(s.runway.crisisDay ?? null),
                 coverageRatio: s.scoring?.bufferCoverageRatio || 0,
                 criticalObligationProtection: s.scoring?.criticalObligations?.protected || 0,
                 effectiveness: s.scoring?.counterfactual?.effectiveness || "NO_MATERIAL_IMPROVEMENT",
@@ -273,7 +364,11 @@ export async function POST() {
             effectiveDate = addDays(today, 1);
           } else if (a.type === "RESCHEDULE_PAYOUT") {
             sourceEntityId = packagingPayoutId;
-            effectiveDate = addDays(today, 15); // Postponed by a week
+            // The date the EXECUTOR will actually write, from the shared
+            // constant. This said 15 with a comment claiming "a week", while
+            // the executor moved the payout 20 days out - so the approval
+            // screen showed the operator a date the system would not honour.
+            effectiveDate = addDays(today, FINANCIAL_CONFIG.RESCHEDULE_DELAY_DAYS);
           } else if (a.type === "PAUSE_EXPENSE") {
             sourceEntityId = saasTxId;
             effectiveDate = today;
@@ -379,12 +474,18 @@ export async function POST() {
         forecast: formattedBaselineForecast,
       },
       strategies: responseStrategies,
+      // Real recoverable money that this recommendation does NOT act on, so the
+      // UI can say so instead of implying the shortfall is fully addressed.
+      unaddressedFailures,
       recommendedStrategyId,
       recommendationNarration,
       safetyRequirement: safetyReq,
     });
   } catch (error) {
-    console.error("API error in strategies:", error);
-    return NextResponse.json({ error: errorMessage(error) }, { status: 500 });
+    logger.error("API error in strategies", { error: errorMessage(error) });
+    return NextResponse.json(
+      { error: "We could not finish comparing your options. Please try again." },
+      { status: 500 }
+    );
   }
 }
