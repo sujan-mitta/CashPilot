@@ -139,14 +139,49 @@ function geometricMean(xs: number[]): number {
  */
 export function computeConfidence(input: ConfidenceInput): ConfidenceResult {
   const now = input.now ?? new Date();
-  const reliability = sourceReliability(input.sourceType);
-  const freshness = freshnessScore(input.observedAt, now);
-  const specificity = specificityScore(input.specificity ?? {});
-  const hist = input.historicalAccuracyScore ?? null;
-  const cons = input.consistencyScore ?? null;
+  return combineConfidence({
+    claimType: input.claimType,
+    reliabilityScore: sourceReliability(input.sourceType),
+    freshnessScore: freshnessScore(input.observedAt, now),
+    specificityScore: specificityScore(input.specificity ?? {}),
+    historicalAccuracyScore: input.historicalAccuracyScore ?? null,
+    consistencyScore: input.consistencyScore ?? null,
+  });
+}
+
+/** The already-measured dimensions, as stored on an Evidence row. */
+export interface ConfidenceComponents {
+  claimType: ClaimType;
+  reliabilityScore: number;
+  freshnessScore: number;
+  specificityScore: number;
+  historicalAccuracyScore: number | null;
+  consistencyScore: number | null;
+}
+
+/**
+ * Combine measured dimensions into a claim-appropriate confidence.
+ *
+ * Split out from `computeConfidence` so that re-deriving confidence for stored
+ * evidence - when Phase 5 reconciliation supplies a `consistencyScore` that was
+ * unknown at write time - runs THIS formula rather than a second copy of it.
+ * One formula, two entry points.
+ *
+ * Factual claims (a settled transaction, a contractual due date) are sharpened
+ * by specificity but carry no prediction penalty - a fact is a fact. Predictive
+ * claims are additionally modulated by whatever predictive signal exists; with
+ * none of the verifiable signals present, the prediction is capped
+ * conservatively rather than trusted.
+ */
+export function combineConfidence(c: ConfidenceComponents): ConfidenceResult {
+  const reliability = clamp01(c.reliabilityScore);
+  const freshness = clamp01(c.freshnessScore);
+  const specificity = clamp01(c.specificityScore);
+  const hist = c.historicalAccuracyScore === null ? null : clamp01(c.historicalAccuracyScore);
+  const cons = c.consistencyScore === null ? null : clamp01(c.consistencyScore);
 
   const sourceConfidence = clamp01(reliability * freshness);
-  const isPrediction = isPredictiveClaim(input.claimType);
+  const isPrediction = isPredictiveClaim(c.claimType);
 
   let derivedConfidence: number;
   if (!isPrediction) {

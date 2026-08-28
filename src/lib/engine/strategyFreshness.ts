@@ -101,11 +101,17 @@ export interface FreshnessVerdict {
   currentFingerprint: string;
 }
 
-function sha256(value: string): string {
+/**
+ * Exported so the Phase 6 financial-state hash uses THIS implementation rather
+ * than growing a second one. Two hashing schemes that drift apart would make
+ * state identity and strategy freshness disagree about whether anything changed.
+ */
+export function sha256(value: string): string {
   return crypto.createHash("sha256").update(value).digest("hex").slice(0, 32);
 }
 
-function stableStringify(value: unknown): string {
+/** Key-order-independent stringify, so an identical object always hashes alike. */
+export function stableStringify(value: unknown): string {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
   const keys = Object.keys(value as Record<string, unknown>).sort();

@@ -734,3 +734,63 @@ model CounterpartyAlias {
   @@index([businessId])
   @@index([counterpartyId])
 }
+
+/// Phase 6 - the materialised Unified Financial State (spec §18, §19).
+///
+/// One row per DISTINCT financial reality for a tenant, in order. This is a
+/// read-through materialisation computed FROM the canonical rows, never a
+/// second copy of them: it stores aggregates and a content hash, not a
+/// duplicate ledger (spec §18, "do not duplicate all financial data").
+///
+/// Append-only. A state is never updated - a changed reality produces a NEW row
+/// with the next `stateVersion`, so "what did CashPilot believe at v143?" stays
+/// answerable forever (spec §45). There is deliberately no `updatedAt`.
+///
+/// `stateHash` covers financial CONTENT only and excludes `asOf`, so the clock
+/// advancing cannot by itself mint a new version - the same rule the existing
+/// `contextFingerprint` follows, using the same hash implementation.
+///
+/// Non-authoritative in Phase 6: nothing reads it, and `buildForecast` still
+/// reads the canonical rows directly. Wiring is P7/P8.
+model FinancialState {
+  id                String   @id @default(cuid())
+  businessId        String
+
+  /// Monotonic per tenant, starting at 1. Advances only when content changes.
+  stateVersion      Int
+  /// Deterministic hash of the financial content. Equal hash = equal state.
+  stateHash         String
+  /// When this state was computed. Excluded from the hash on purpose.
+  asOf              DateTime
+
+  /// All amounts in paise, like every amount in this system.
+  cashPosition      Int
+  receivables       Int
+  payables          Int
+  expectedInflows   Int
+  expectedOutflows  Int
+  /// Count of live obligations, per the engine's own extractObligations().
+  activeCommitments Int
+
+  /// The liquidity buffer this state was judged against.
+  requiredBuffer    Int
+  /// Lowest projected balance across the horizon; null when none could be built.
+  projectedMinimumBalance Int?
+  /// OK | AT_RISK | INCOMPLETE | UNKNOWN. Never guessed - INCOMPLETE and
+  /// UNKNOWN are real, reportable states (spec §64).
+  riskState         String
+
+  /// Cross-source reconciliation rollup at this state, if one was run.
+  reconciliation    Json?
+  /// Per-component hashes plus the inputs, so a diff can say WHAT changed.
+  detail            Json
+  /// Non-sensitive pointers to the claims/evidence behind this state.
+  evidenceRefs      Json?
+
+  createdAt         DateTime @default(now())
+
+  @@unique([businessId, stateVersion])
+  @@index([businessId])
+  @@index([businessId, createdAt])
+  @@index([businessId, stateHash])
+}

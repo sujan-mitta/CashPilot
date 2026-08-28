@@ -1,6 +1,6 @@
 # CashPilot — Remaining Work
 
-**As of:** 2026-08-28, after Phase 5 (Cross-Source Reconciliation).
+**As of:** 2026-08-28, after Phase 6 (Unified Financial State).
 **Companion to:** [`UNIFIED_BRAIN_AUDIT.md`](./UNIFIED_BRAIN_AUDIT.md) (the plan), [`PHASE_17_RAZORPAY_CERTIFICATION.md`](./PHASE_17_RAZORPAY_CERTIFICATION.md) and [`PHASE_18_PRODUCTION_CLOSURE.md`](./PHASE_18_PRODUCTION_CLOSURE.md) (the provider boundary).
 
 This is the honest list of what is **not** done, and why. It exists so that nothing is silently assumed complete.
@@ -19,17 +19,18 @@ A note on how to read the test numbers anywhere in this repo: **a green `npm tes
 
 ## A. Blocked — these need you
 
-### A-1 🔴 Phase 1/2/4 migrations have never been applied to a database
+### A-1 🔴 Phase 1/2/4/6 migrations have never been applied to a database
 
-Three migration directories exist and have never been run by me against your Neon database:
+Four migration directories exist and have never been run by me against your Neon database:
 
 | Migration | Adds |
 |---|---|
 | `20260828000000_phase1_financial_events` | `FinancialEvent` + `FinancialEventType` |
 | `20260828010000_phase2_evidence_claims` | `Claim`, `Evidence` + `ClaimType` |
 | `20260828020000_phase4_entity_resolution` | `Counterparty`, `CounterpartyAlias`, `CounterpartyType`, nullable `Invoice.counterpartyId` / `Payout.counterpartyId` |
+| `20260828030000_phase6_financial_state` | `FinancialState` |
 
-All three are additive — new tables, one new enum each, and two nullable columns with no default and no backfill — so no existing row is rewritten and every existing query reads back identically.
+All four are additive — new tables, one new enum each for P1/P2/P4, and two nullable columns with no default and no backfill — so no existing row is rewritten and every existing query reads back identically.
 
 **Why blocked:** running migrations against a database holding real financial data is your call, not mine. The Phase 4 DDL was verified byte-for-byte against `prisma migrate diff` output, but *verified* is not *applied*.
 
@@ -39,7 +40,7 @@ All three are additive — new tables, one new enum each, and two nullable colum
 npx prisma migrate status
 ```
 
-and if the three are listed as pending, `npx prisma migrate deploy`.
+and if the four are listed as pending, `npx prisma migrate deploy`.
 
 **Rollback:** drop the new tables and the two nullable columns. Nothing reads them (see B-1), so rollback is isolated.
 
@@ -83,13 +84,13 @@ npm run test:live
 
 ### A-6 🔴 Production GO / NO-GO is still **NO-GO**
 
-Stated in `PHASE_18_PRODUCTION_CLOSURE.md` §20 and unchanged by Phases 1–5, which added no production behaviour at all. A-2 and A-3 are the gating blockers.
+Stated in `PHASE_18_PRODUCTION_CLOSURE.md` §20 and unchanged by Phases 1–6, which added no production behaviour at all. A-2 and A-3 are the gating blockers.
 
 ---
 
 ## B. Deferred by design — the additive posture
 
-Phases 1–5 were each built as *additive*: new tables, new libraries, full test coverage, and **deliberately zero production consumers**. That is why five phases have landed without changing a single route or a single number in the forecast. The consumers arrive in later phases, once the primitives they depend on exist.
+Phases 1–6 were each built as *additive*: new tables, new libraries, full test coverage, and **deliberately zero production consumers**. That is why six phases have landed without changing a single route or a single number in the forecast. The consumers arrive in later phases, once the primitives they depend on exist.
 
 Verified by grep at the time of writing: `recordFinancialEvent`, `recordClaimWithEvidence` / `ingest*`, `resolveCounterparty` / `mergeCounterparties` / `backfill*`, and `reconcileObservations` / `sourceAuthority` have **no callers outside their own modules and tests**.
 
@@ -117,11 +118,21 @@ The append-only spine exists and is idempotent, but no source produces events in
 
 **Blocked behind:** A-1 (the columns must exist first).
 
-### B-5 🟡 Nothing calls the cross-source reconciler (Phase 5)
+### B-5 ✅ Nothing calls the cross-source reconciler — **DONE in P6**
 
-`reconcileObservations` is pure and fully tested, but nothing assembles observation groups from stored claims and evidence, and nothing writes the computed `consistencyScore` back to `Evidence`. Until that happens, C-1's lifted ceiling is theoretical.
+`runReconciliation` now assembles groups from stored claims/evidence and writes `consistencyScore` + re-derived `derivedConfidence` back. Still not *scheduled* — see B-6.
 
-**Owned by:** P6 — the persistence layer needs a state to attach reconciliation outcomes to.
+### B-6 🟡 Nothing schedules state materialisation or reconciliation (Phase 6)
+
+`materializeFinancialState` and `runReconciliation` are implemented and tested, but no route, cron or post-write hook invokes either. And since B-2 still stands, a real run today would reconcile zero subjects.
+
+**Owned by:** P7/P8, where the state acquires its first reader.
+
+### B-7 🟡 Nothing reads `FinancialState` (Phase 6)
+
+`buildForecast` still reads the canonical rows directly. The state is materialised for nobody.
+
+**Owned by:** P8 — feeding unified state into the forecast, behind a flag and parity-tested.
 
 ---
 
@@ -136,7 +147,7 @@ These are not bugs. They are places where the current implementation is delibera
 - `consistencyScore` — ✅ **now computable** via `reconcile.ts`. A corroborated prediction reaches ~0.95 where it was capped at 0.6; a contradicted one drops to 0.
 - `historicalAccuracyScore` — ❌ still `null`, needs the behaviour model (**P9**)
 
-The `UNKNOWN_PREDICTION_CAP = 0.6` clamp still applies to any claim where *neither* dimension is known — which, since nothing calls the reconciler in production yet (B-5), is still every claim in practice. The mechanism exists and is tested; the wiring does not.
+The `UNKNOWN_PREDICTION_CAP = 0.6` clamp still applies to any claim where *neither* dimension is known. P6 added `runReconciliation`, which writes the score back to `Evidence` — but nothing schedules it (B-6) and nothing writes claims in the first place (B-2), so in practice every stored claim is still capped.
 
 ### C-2 🟡 Entity resolution is name-only
 
@@ -187,8 +198,8 @@ From `UNIFIED_BRAIN_AUDIT.md` §5. P0–P4 are done; everything below is untouch
 | Phase | Deliverable | Notes |
 |---|---|---|
 | ~~**P5**~~ | ~~Cross-source reconciliation of inbound evidence~~ | ✅ **Done.** See `UNIFIED_BRAIN_AUDIT.md` §10. Persistence deferred to P6 (B-5). |
-| **P6** 🟢 | `FinancialState` materialisation, read-through only | **Recommended next.** Non-authoritative at first; also the home for B-5's persistence. |
-| **P7** 🟢 | `stateVersion` advancing on material mutation | Must run *alongside* `contextFingerprint`, never replace it, until parity is proven |
+| ~~**P6**~~ | ~~`FinancialState` materialisation~~ | ✅ **Done.** See `UNIFIED_BRAIN_AUDIT.md` §11. Not scheduled (B-6), not read (B-7). |
+| **P7** 🟢 | `stateVersion` advancing on material mutation | **Recommended next.** Must run *alongside* `contextFingerprint`, never replace it, until parity is proven |
 | **P8** 🟢 | Feed unified state into `buildForecast` | **Highest-care phase.** Behind a flag, parity-tested against current output |
 | **P9** 🟢 | Customer/supplier behaviour model | First real consumer of P4; lifts the other half of C-1 |
 | **P10** 🟢 | Scenario forecasting (OPTIMISTIC / BASE / CONSERVATIVE) | |
@@ -234,7 +245,7 @@ Any change must keep this green.
 |---|---|
 | `npm run typecheck` | clean |
 | `npm run lint` | 0 problems |
-| `npm test` | 77 files, **1082 passed**, 5 skipped |
+| `npm test` | 80 files, **1131 passed**, 5 skipped |
 | `npm run build` | OK — 24 routes + middleware |
 
 The 5 skipped are A-5.
