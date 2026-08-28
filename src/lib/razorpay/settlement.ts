@@ -310,7 +310,24 @@ export async function settlePayment(
    * Defaults to MANUAL on purpose. An omitted trigger must never be able to
    * masquerade as provider-attested settlement.
    */
-  trigger: SettlementTrigger = "MANUAL"
+  trigger: SettlementTrigger = "MANUAL",
+  /**
+   * When the money actually arrived, if a trustworthy timestamp is known.
+   *
+   * Phase 9 needs this: until now an invoice flipped to PAID and the DATE was
+   * simply discarded, which made "how late does this customer usually pay?"
+   * unanswerable from stored data.
+   *
+   * Defaults to observation time. That is deliberate rather than lazy. A
+   * provider-attested `paid_at` would be strictly better, but this system has
+   * never received a real Razorpay webhook (Phase 18 blocker B2), so the field
+   * name and units cannot be verified against reality - and §37 is explicit
+   * that provider payload structure must not be assumed. Observation time has a
+   * known, bounded meaning, and the behaviour model buckets by DAY, so webhook
+   * delivery lag of seconds or minutes does not move a single metric. Pass a
+   * verified provider timestamp here as soon as one exists.
+   */
+  paidAt: Date = new Date()
 ): Promise<string> {
   // Resolve intent first if possible
   let intent = null;
@@ -653,12 +670,17 @@ export async function settlePayment(
               throw new Error("Access Denied: invoice belongs to a different tenant");
             }
 
+            // Compare-and-swap on status. The guard is what makes `paidAt`
+            // write-once: only the settler that actually moves the invoice out
+            // of its previous status writes a date, so a concurrent or repeat
+            // settlement can never overwrite the original arrival time with a
+            // later one.
             const invoiceUpdate = await tx.invoice.updateMany({
               where: {
                 id: freshInvoice.id,
                 status: freshInvoice.status,
               },
-              data: { status: "PAID" },
+              data: { status: "PAID", paidAt },
             });
 
             if (invoiceUpdate && invoiceUpdate.count === 0) {

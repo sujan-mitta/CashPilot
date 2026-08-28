@@ -1,6 +1,6 @@
 # CashPilot — Remaining Work
 
-**As of:** 2026-08-28, after Phase 9 (Payment-behaviour intelligence).
+**As of:** 2026-08-28, after Phase 9 + B-10 (settlement records `paidAt`).
 **Companion to:** [`UNIFIED_BRAIN_AUDIT.md`](./UNIFIED_BRAIN_AUDIT.md) (the plan), [`PHASE_17_RAZORPAY_CERTIFICATION.md`](./PHASE_17_RAZORPAY_CERTIFICATION.md) and [`PHASE_18_PRODUCTION_CLOSURE.md`](./PHASE_18_PRODUCTION_CLOSURE.md) (the provider boundary).
 
 This is the honest list of what is **not** done, and why. It exists so that nothing is silently assumed complete.
@@ -86,7 +86,7 @@ npm run test:live
 
 ### A-6 🔴 Production GO / NO-GO is still **NO-GO**
 
-Stated in `PHASE_18_PRODUCTION_CLOSURE.md` §20. A-2 and A-3 remain the gating blockers. Phases 1–6, P8 and P9 added no observable production behaviour; P7 modifies the freshness gate but is provably inert for every existing decision (see C-10).
+Stated in `PHASE_18_PRODUCTION_CLOSURE.md` §20. A-2 and A-3 remain the gating blockers. Phases 1–6, P8 and P9 added no observable production behaviour; P7 modifies the freshness gate but is provably inert for every existing decision (C-10). B-10 writes one new nullable column at settlement and changes no existing value (C-13).
 
 ---
 
@@ -152,17 +152,21 @@ The five production forecast call sites (`forecast`, `explain`, `investigate`, `
 
 **Owned by:** P9 — still not done, since P9 gave the pipeline something to do but did not switch the call sites.
 
-### B-10 🟡 Nothing populates `Invoice.paidAt` (Phase 9)
+### B-10 ✅ Nothing populates `Invoice.paidAt` — **DONE**
 
-The behaviour model's only real input. Until settlement writes it, `computePaymentBehavior` returns `INSUFFICIENT` for every real counterparty and the forecast is unchanged in practice.
+`settlePayment` now stamps `paidAt` in the same compare-and-swap that moves the invoice to `PAID`. There turned out to be exactly **one** place in the codebase that marks an invoice paid, so this is complete rather than partial.
 
-The natural write points already exist — `PaymentRecovery` reaching `RECOVERED`, and the Razorpay settlement webhook — but wiring them touches the money path and belongs in its own reviewed change.
+The CAS guard makes it **write-once**: only the settler that actually moves the invoice out of its previous status writes a date, so a repeat or concurrent settlement cannot overwrite the original arrival time with a later one. Tested to ten redeliveries.
 
-**This is the single highest-value remaining item**: it is what turns the whole P1–P9 spine from mechanism into behaviour.
+**Timestamp choice — deliberate.** It defaults to *observation time*, not a provider-attested `paid_at`. A provider timestamp would be strictly better, but this system has never received a real Razorpay webhook (A-3), so the field name and units cannot be verified, and §37 forbids assuming provider payload structure. Observation time has a known bounded meaning, and the behaviour model buckets by **day**, so webhook lag of seconds or minutes moves no metric. `settlePayment` takes an optional `paidAt` — pass a verified provider timestamp there as soon as A-3 is closed. See C-13.
 
 ### B-11 🟡 Nothing assembles the behaviour map (Phase 9)
 
-No query groups settled payments by counterparty and calls `computePaymentBehavior`. Callers must build the `Map<counterpartyId, PaymentBehavior>` themselves. Blocked behind B-10 (no data) and B-4 (no counterparty links).
+No query groups settled invoices by counterparty and calls `computePaymentBehavior`. Callers must build the `Map<counterpartyId, PaymentBehavior>` themselves.
+
+B-10 is now done, so the *data* will accumulate — but this is still blocked behind **B-4** (the counterparty backfill has never run, so invoices carry no `counterpartyId` to group by) and **A-1** (the columns do not exist in the database yet).
+
+**This is now the highest-value remaining item.** With it, plus B-9, the P1–P9 spine finally produces a different forecast number.
 
 ---
 
@@ -189,6 +193,16 @@ Two things to keep in mind:
 
 - The state half is **aggregate-level** and structurally cannot see record substitution. One ₹5L invoice replaced by a different ₹5L invoice leaves every aggregate identical. That is the fingerprint's job, and always will be — which is why neither check may be removed in favour of the other.
 - It is currently **inert** (B-8). Once decisions start recording a state version, the gate becomes stricter, and a state that goes stale or unreadable will begin blocking execution. That is intended, but it is a behaviour change that will first appear when B-8 lands — not now.
+
+### C-13 🟡 `paidAt` records observation time, not provider-attested payment time
+
+`settlePayment` stamps `paidAt` with when *we processed* the settlement, because no verified provider timestamp exists to use instead (A-3, §37).
+
+The error this introduces is webhook/operator lag. At day granularity — the only granularity the behaviour model consumes — that is negligible for webhook settlements. It is **not** negligible for `MANUAL` settlements: an operator reconciling a week-old payment stamps it a week late, making that customer look worse than they are.
+
+Two consequences to keep in view:
+- Pass a verified provider timestamp into `settlePayment`'s `paidAt` parameter once A-3 is closed.
+- Manual-settlement rows may need excluding or down-weighting when the behaviour data is first calibrated (C-12).
 
 ### C-12 🟡 The behaviour model's constants are reasoned, not calibrated
 
@@ -296,7 +310,7 @@ Any change must keep this green.
 |---|---|
 | `npm run typecheck` | clean |
 | `npm run lint` | 0 problems |
-| `npm test` | 85 files, **1239 passed**, 5 skipped |
+| `npm test` | 86 files, **1247 passed**, 5 skipped |
 | `npm run build` | OK — 24 routes + middleware |
 
 The 5 skipped are A-5.
