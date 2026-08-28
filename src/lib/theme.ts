@@ -1,62 +1,55 @@
 /**
- * Theme control shared by the pre-hydration init script and the toggle.
+ * Theme preference.
  *
- * The CSS in globals.css resolves themes in this precedence:
- *   :root                                    -> light (default)
- *   @media dark :root:not([data-theme=light]) -> dark when the OS says so
- *   :root[data-theme="dark"|"light"]          -> an explicit choice wins
- *
- * So a stored preference is expressed by stamping data-theme on <html>; "system"
- * is the absence of that attribute. The value lives in localStorage so it is
- * per-browser and survives reloads.
+ * Three states, not two. "system" is a real choice that must survive a reload:
+ * it means "follow the OS", and it is represented by the ABSENCE of the
+ * data-theme attribute so the `prefers-color-scheme` media query in globals.css
+ * is what decides. An explicit light/dark stamps the attribute and wins over
+ * the OS in both directions.
  */
+export type ThemePreference = "light" | "dark" | "system";
 
-export type Theme = "light" | "dark" | "system";
+export const THEME_STORAGE_KEY = "cashpilot_theme";
 
-export const THEME_STORAGE_KEY = "cashpilot-theme";
+export function isThemePreference(value: unknown): value is ThemePreference {
+  return value === "light" || value === "dark" || value === "system";
+}
 
-/**
- * Runs in <head> before first paint. Reads the stored preference and stamps
- * data-theme so a light-mode operator never sees the dark default flash. Kept
- * tiny and dependency-free because it is inlined as a string; wrapped in
- * try/catch because storage can throw in private mode.
- */
-export const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem('${THEME_STORAGE_KEY}');if(t==='light'||t==='dark'){document.documentElement.setAttribute('data-theme',t);}else{document.documentElement.removeAttribute('data-theme');}}catch(e){}})();`;
+/** Writes the preference to the document and to storage. */
+export function applyTheme(pref: ThemePreference) {
+  const root = document.documentElement;
 
-/** The stored preference, or "system" when none is set or storage is unavailable. */
-export function getStoredTheme(): Theme {
+  if (pref === "system") {
+    root.removeAttribute("data-theme");
+  } else {
+    root.setAttribute("data-theme", pref);
+  }
+
   try {
-    const t = localStorage.getItem(THEME_STORAGE_KEY);
-    return t === "light" || t === "dark" ? t : "system";
+    localStorage.setItem(THEME_STORAGE_KEY, pref);
+  } catch {
+    // Private browsing or blocked storage. The theme still applies for this
+    // page; it simply will not be remembered, which is the correct degradation.
+  }
+}
+
+export function readStoredTheme(): ThemePreference {
+  try {
+    const stored = localStorage.getItem(THEME_STORAGE_KEY);
+    return isThemePreference(stored) ? stored : "system";
   } catch {
     return "system";
   }
 }
 
-/** Persists a preference and applies it to <html> immediately. */
-export function applyTheme(theme: Theme): void {
-  try {
-    if (theme === "system") {
-      localStorage.removeItem(THEME_STORAGE_KEY);
-      document.documentElement.removeAttribute("data-theme");
-    } else {
-      localStorage.setItem(THEME_STORAGE_KEY, theme);
-      document.documentElement.setAttribute("data-theme", theme);
-    }
-  } catch {
-    // Storage blocked (private mode): still apply to the DOM for this session.
-    if (theme === "system") document.documentElement.removeAttribute("data-theme");
-    else document.documentElement.setAttribute("data-theme", theme);
-  }
-}
-
-/** What the viewer is actually seeing right now, resolving "system". */
-export function resolveEffectiveTheme(): "light" | "dark" {
-  const stored = getStoredTheme();
-  if (stored !== "system") return stored;
-  try {
-    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-  } catch {
-    return "light";
-  }
-}
+/**
+ * Runs before first paint, inlined into <head>.
+ *
+ * Without this the document renders once at the default (dark), then the React
+ * tree mounts and corrects it — a white flash for every light-mode user on
+ * every navigation. Deliberately dependency-free and synchronous; it must not
+ * wait for hydration.
+ */
+export const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem(${JSON.stringify(
+  THEME_STORAGE_KEY
+)});if(t==="light"||t==="dark"){document.documentElement.setAttribute("data-theme",t);}}catch(e){}})();`;

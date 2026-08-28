@@ -4,16 +4,22 @@ import Razorpay from "razorpay";
 import { getSession } from "@/lib/auth";
 import { ActionStatus, RecoveryStatus } from "../../../../generated/prisma/client";
 import { settlePayment, reconcileDecisionForStrategy } from "@/lib/razorpay/settlement";
+import { readProviderPaidAmount } from "@/lib/razorpay/amounts";
+import { validateActionTransition } from "@/lib/engine/stateTransitions";
+import { logger } from "@/lib/observability";
 import { errorMessage } from "@/lib/errors";
 
 export async function GET(req: Request) {
   let paymentLinkId: string | null = null;
   let action: any = null;
+  // Captured for the catch block, which must stay tenant-scoped.
+  let callerBusinessId: string | null = null;
   try {
     const session = await getSession();
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    callerBusinessId = session.businessId;
 
     const { searchParams } = new URL(req.url);
     paymentLinkId = searchParams.get("paymentLinkId");
@@ -70,6 +76,10 @@ export async function GET(req: Request) {
     const isPlaceholder = !keyId || !keySecret || keyId.includes("placeholder") || keySecret.includes("placeholder");
 
     let status = "created";
+    // What the provider says was actually paid, when we were able to ask it.
+    // Left undefined on every path where we did NOT observe a provider figure,
+    // so settlement falls back to the expected amount rather than inventing one.
+    let observedPaidAmount: number | undefined = undefined;
 
     // 1. Fetch live status from Razorpay API or check simulation parameters
     if (!isPlaceholder) {
@@ -80,6 +90,20 @@ export async function GET(req: Request) {
         });
         const link = await razorpay.paymentLink.fetch(paymentLinkId);
         status = link.status; // e.g. "paid", "created", "cancelled"
+
+        // The provider just told us what was paid. Discarding it - which is
+        // what happened before - meant a poll credited the FULL expected amount
+        // for a partially-paid link, so the same payment settled to a different
+        // figure depending on whether the webhook or the poll saw it first.
+        const paid = readProviderPaidAmount(link as { amount?: unknown; amount_paid?: unknown });
+        if (paid.ok) {
+          observedPaidAmount = paid.amount;
+        } else {
+          logger.warn("Provider returned an unusable paid amount on poll", {
+            paymentLinkId,
+            rejection: paid.reason,
+          });
+        }
       } catch (err) {
         console.error("Razorpay fetch error, returning current database status:", err);
         // Safe connection error handling: read status from database
@@ -131,8 +155,9 @@ export async function GET(req: Request) {
             const parsed = JSON.parse(action.result);
             const matchingLink = parsed.links?.find((l: any) => l.paymentLinkId === paymentLinkId);
             if (matchingLink) {
-              const invoice = await prisma.invoice.findUnique({
-                where: { id: matchingLink.invoiceId },
+              // Tenant-scoped, like every other read in this file.
+              const invoice = await prisma.invoice.findFirst({
+                where: { id: matchingLink.invoiceId, businessId: business.id },
               });
               if (invoice && invoice.status === "PAID") {
                 isInvoicePaid = true;
@@ -151,7 +176,7 @@ export async function GET(req: Request) {
 
     // 2. If status is paid and action is resolved, update database values
     if (status === "paid" && action) {
-      await settlePayment(paymentLinkId, business.id, undefined, undefined, "POLL");
+      await settlePayment(paymentLinkId, business.id, observedPaidAmount, undefined, "POLL");
     } else if (status === "cancelled" || status === "expired") {
       if (action && action.status !== ActionStatus.FAILED) {
         const auditEntry = {
@@ -172,19 +197,72 @@ export async function GET(req: Request) {
       }
     }
 
-    // Verify rescheduling mismatch if requested for RESCHEDULE_PAYOUT
-    if (action && action.actionType === "RESCHEDULE_PAYOUT") {
+    // Verify rescheduling mismatch for RESCHEDULE_PAYOUT.
+    //
+    // Two defects are closed here.
+    //
+    // 1. This ran at EVERY stage. An action still PENDING or APPROVED has, by
+    //    definition, not moved its payout yet, so `status !== RESCHEDULED` was
+    //    trivially true and polling an unrelated payment link stamped
+    //    RECONCILIATION_MISMATCH onto a reschedule that had never been asked to
+    //    run. The check only means anything once execution has been attempted.
+    //
+    // 2. It wrote the status with a raw `update`, bypassing
+    //    validateActionTransition - the only mutation in the codebase that did.
+    //    That let it drag terminal actions (COMPLETED, REJECTED) backwards.
+    const RECONCILABLE_AFTER_EXECUTION: ActionStatus[] = [
+      ActionStatus.EXECUTING,
+      ActionStatus.EXECUTED,
+      ActionStatus.RECONCILING,
+      ActionStatus.COMPLETED,
+    ];
+    if (
+      action &&
+      action.actionType === "RESCHEDULE_PAYOUT" &&
+      action.targetPayoutId &&
+      RECONCILABLE_AFTER_EXECUTION.includes(action.status)
+    ) {
       const payout = await prisma.payout.findFirst({
-        where: { id: action.targetPayoutId || "", businessId: business.id },
+        where: { id: action.targetPayoutId, businessId: business.id },
       });
       if (payout && payout.status !== "RESCHEDULED") {
-        await prisma.agentAction.update({
-          where: { id: action.id },
-          data: {
-            status: ActionStatus.RECONCILIATION_MISMATCH,
-            result: `Discrepancy: Vendor payout status is ${payout.status} (expected RESCHEDULED)`,
-          },
-        });
+        // Two guarded steps, not one raw write.
+        //
+        // The machine has no direct EXECUTING -> RECONCILIATION_MISMATCH edge;
+        // the legal route is via RECONCILING, which is exactly what
+        // settlement.ts already does. The old code wrote the end state
+        // directly with `update`, which is how it also managed to drag
+        // terminal actions backwards.
+        const reconcileOk =
+          action.status === ActionStatus.RECONCILING ||
+          validateActionTransition(action.status, ActionStatus.RECONCILING);
+
+        if (
+          reconcileOk &&
+          validateActionTransition(ActionStatus.RECONCILING, ActionStatus.RECONCILIATION_MISMATCH)
+        ) {
+          // Compare-and-set on the observed status: a concurrent settlement
+          // that already advanced this action must win, not be overwritten.
+          const claimed = await prisma.agentAction.updateMany({
+            where: { id: action.id, status: action.status },
+            data: { status: ActionStatus.RECONCILING },
+          });
+          if (claimed.count > 0) {
+            await prisma.agentAction.updateMany({
+              where: { id: action.id, status: ActionStatus.RECONCILING },
+              data: {
+                status: ActionStatus.RECONCILIATION_MISMATCH,
+                result: `Discrepancy: Vendor payout status is ${payout.status} (expected RESCHEDULED)`,
+              },
+            });
+          }
+        } else {
+          logger.warn("Reschedule discrepancy observed but the action cannot advance", {
+            actionId: action.id,
+            actionStatus: action.status,
+            payoutStatus: payout.status,
+          });
+        }
       }
     }
 
@@ -197,10 +275,18 @@ export async function GET(req: Request) {
 
     return NextResponse.json({ status });
   } catch (error) {
-    // Check if the resource was actually completed concurrently by another request
+    // Check if the resource was actually completed concurrently by another request.
+    //
+    // Scoped to the caller's own tenant. Without the `transaction.businessId`
+    // filter this answered "paid" for ANY tenant's payment link that happened to
+    // match a guessed id - the one unscoped query in a file that scopes
+    // everything else.
     try {
       const recovery = await prisma.paymentRecovery.findFirst({
-        where: { paymentLinkId },
+        where: {
+          paymentLinkId,
+          transaction: { businessId: callerBusinessId ?? " -no-business" },
+        },
       });
       if (recovery && recovery.status === RecoveryStatus.RECOVERED) {
         return NextResponse.json({ status: "paid" });
@@ -221,13 +307,18 @@ export async function GET(req: Request) {
         errorMessage(error).includes("Invalid action transition") ||
         errorMessage(error).includes("concurrency check failure") ||
         errorMessage(error).includes("Action concurrently modified")) {
+      // The code is actionable; the internal from/to state text is not, and it
+      // names database ids. Logged above, never returned.
       return NextResponse.json(
-        { error: "INVALID_TRANSITION", message: errorMessage(error) },
-        { status: 400 }
+        {
+          error: "INVALID_TRANSITION",
+          message: "This payment has already moved on and cannot be updated again.",
+        },
+        { status: 409 }
       );
     }
 
-    console.error("API error in payment-status:", error);
-    return NextResponse.json({ error: errorMessage(error) }, { status: 500 });
+    logger.error("API error in payment-status", { error: errorMessage(error) });
+    return NextResponse.json({ error: "Could not check the payment status. Please try again." }, { status: 500 });
   }
 }

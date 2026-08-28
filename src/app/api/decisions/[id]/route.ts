@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { measureDecisionOutcome } from "@/lib/engine/outcomeMeasurer";
 import { errorMessage } from "@/lib/errors";
+import { logger } from "@/lib/observability";
+import { FINANCIAL_CONFIG } from "@/lib/engine/financialConfig";
 
 export async function GET(
   req: NextRequest,
@@ -33,9 +35,21 @@ export async function GET(
       return NextResponse.json({ error: "Decision not found" }, { status: 404 });
     }
 
-    // Proactively measure outcomes if window is closed and not yet measured
+    // Proactively measure outcomes if window is closed and not yet measured.
+    //
+    // The horizon comes from the DECISION, not a literal 14. `Decision.
+    // outcomeMeasurementHorizonDays` exists precisely because a strategy that
+    // defers an obligation past the forecast window needs a longer measurement
+    // window to observe it - /api/strategies computes and stores it per
+    // decision. Hardcoding 14 threw that away and measured a deferred payout
+    // BEFORE it came due, which is the one case the field was added for.
     const now = new Date();
-    const windowEnd = new Date(decision.createdAt.getTime() + 14 * 24 * 60 * 60 * 1000);
+    const horizonDays =
+      typeof decision.outcomeMeasurementHorizonDays === "number" &&
+      decision.outcomeMeasurementHorizonDays > 0
+        ? decision.outcomeMeasurementHorizonDays
+        : FINANCIAL_CONFIG.OUTCOME_WINDOW_DAYS;
+    const windowEnd = new Date(decision.createdAt.getTime() + horizonDays * 24 * 60 * 60 * 1000);
     if (decision.status !== "OUTCOME_MEASURED" && now >= windowEnd) {
       const updated = await measureDecisionOutcome(decision.id, now);
       return NextResponse.json(updated);
@@ -43,7 +57,7 @@ export async function GET(
 
     return NextResponse.json(decision);
   } catch (error) {
-    console.error("API error in single decision GET:", error);
-    return NextResponse.json({ error: errorMessage(error) }, { status: 500 });
+    logger.error("API error in single decision GET", { error: errorMessage(error) });
+    return NextResponse.json({ error: "Could not load that decision." }, { status: 500 });
   }
 }

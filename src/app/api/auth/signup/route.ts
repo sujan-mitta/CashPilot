@@ -6,6 +6,14 @@ import { rateLimit, clientKey } from "@/lib/auth/rateLimit";
 import { cookies } from "next/headers";
 import { logger } from "@/lib/observability";
 import { parseJsonBody } from "@/lib/errors";
+import {
+  validateEmail,
+  validateDisplayName,
+  validatePassword,
+  normalizeEmail,
+  MAX_NAME_LENGTH,
+  MAX_BUSINESS_NAME_LENGTH,
+} from "@/lib/auth/validation";
 
 /**
  * Account registration.
@@ -34,15 +42,22 @@ export async function POST(req: Request) {
     const parsed = await parseJsonBody<Record<string, unknown>>(req);
     if (!parsed.ok) return parsed.response;
     const { name, email, businessName, password } = parsed.data;
-    if (!name || !email || !businessName || !password) {
-      return NextResponse.json({ error: "Name, email, business name and password are required." }, { status: 400 });
+
+    // Validated on the SERVER, in one place. The route previously checked only
+    // that the fields were truthy, so "notanemail" was stored on a unique
+    // column and name/businessName had no length bound at all.
+    const fieldError =
+      validateDisplayName(name, "Name", MAX_NAME_LENGTH) ??
+      validateEmail(email) ??
+      validateDisplayName(businessName, "Business name", MAX_BUSINESS_NAME_LENGTH) ??
+      validatePassword(password);
+    if (fieldError) {
+      return NextResponse.json({ error: fieldError.message, field: fieldError.field }, { status: 400 });
     }
-    if (String(password).length < 8) {
-      return NextResponse.json({ error: "Password must be at least 8 characters." }, { status: 400 });
-    }
-    const normalizedEmail = String(email).toLowerCase();
-    const businessNameStr = String(businessName).trim();
-    const nameStr = String(name).trim();
+
+    const normalizedEmail = normalizeEmail(String(email));
+    const businessNameStr = String(businessName).trim().replace(/\s+/g, " ");
+    const nameStr = String(name).trim().replace(/\s+/g, " ");
 
     // An existing email must sign in, not sign up again. This also stops a
     // second registration silently re-connecting an account elsewhere.
@@ -57,7 +72,12 @@ export async function POST(req: Request) {
     // A taken business name is refused rather than joined. Joining an existing
     // tenant is a deliberate, authorized action (an invite), never a
     // side-effect of picking the same name.
-    const existingBusiness = await prisma.business.findFirst({ where: { name: businessNameStr } });
+    // Case-insensitive: "ACME Ltd" and "acme ltd" are the same tenant name, and
+    // allowing both to exist is how one operator ends up signing into the other
+    // company by accident.
+    const existingBusiness = await prisma.business.findFirst({
+      where: { name: { equals: businessNameStr, mode: "insensitive" } },
+    });
     if (existingBusiness) {
       return NextResponse.json(
         { error: "That business name is already registered. Choose a different name, or ask an existing member to invite you." },

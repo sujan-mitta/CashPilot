@@ -12,6 +12,7 @@ export interface FinancialConfig {
   SAFETY_BUFFER_COVERAGE_DAYS: number;
   SAFETY_BUFFER_MIN_FLOOR: number;
   FORECAST_HORIZON_DAYS: number;
+  RESCHEDULE_DELAY_DAYS: number;
   HISTORICAL_LOOKBACK_DAYS: number;
   OUTCOME_WINDOW_DAYS: number;
   OUTCOME_VARIANCE_THRESHOLD: number;
@@ -58,6 +59,22 @@ export const FINANCIAL_CONFIG: FinancialConfig = {
 
   /** Forecast/simulation horizon in days. */
   FORECAST_HORIZON_DAYS: 14,
+
+  /**
+   * How far a rescheduled vendor payout is pushed out, in days from today.
+   *
+   * There used to be THREE numbers for this one fact: the executor moved the
+   * payout to FORECAST_HORIZON_DAYS + 6 (day 20), the simulation defaulted to
+   * day 15, and the approval screen told the operator "day 15" in prose. So the
+   * human approval gate displayed a date the system would not honour - the
+   * worst place in the product for a figure to be wrong.
+   *
+   * Deliberately beyond FORECAST_HORIZON_DAYS: the point of the action is to
+   * move the obligation out of the pressure window. That it lands OUTSIDE the
+   * forecast is exactly why the decision also carries
+   * `outcomeMeasurementHorizonDays`, so measurement still sees it come due.
+   */
+  RESCHEDULE_DELAY_DAYS: 20,
 
   /** Days of history used to compute the outflow run-rate. */
   HISTORICAL_LOOKBACK_DAYS: 30,

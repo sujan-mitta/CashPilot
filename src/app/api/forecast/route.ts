@@ -5,6 +5,8 @@ import { calculateRisk } from "@/lib/engine/riskDetector";
 import { getSession } from "@/lib/auth";
 import { calculateLiquiditySafetyRequirement, extractObligations, calculateTemporalRequiredLiquidity } from "@/lib/engine/liquiditySafety";
 import { errorMessage } from "@/lib/errors";
+import { logger } from "@/lib/observability";
+import { FINANCIAL_CONFIG } from "@/lib/engine/financialConfig";
 
 export async function GET() {
   try {
@@ -46,7 +48,12 @@ export async function GET() {
 
     const today = new Date();
     const movements = transactionsToMovements(transactions);
-    const days = buildForecast(business.currentCash, movements, 14, today);
+    const days = buildForecast(
+      business.currentCash,
+      movements,
+      FINANCIAL_CONFIG.FORECAST_HORIZON_DAYS,
+      today
+    );
     const safetyReq = await calculateLiquiditySafetyRequirement(business.id, prisma, today);
     const requiredBuffer = safetyReq.requiredBuffer;
     const obligations = extractObligations(payouts, transactions, today);
@@ -81,7 +88,7 @@ export async function GET() {
         currentCash: business.currentCash,
       },
       forecast: {
-        horizonDays: 14,
+        horizonDays: FINANCIAL_CONFIG.FORECAST_HORIZON_DAYS,
         safetyThreshold: requiredBuffer,
         safetyRequirement: safetyReq,
         days: formattedDays,
@@ -103,12 +110,14 @@ export async function GET() {
       },
     });
   } catch (error) {
-    console.error("API error in forecast:", error);
+    // `detail` used to carry errorMessage(error) straight to the browser. A
+    // Prisma/pg failure names tables, columns and sometimes the connection, so
+    // it is logged for an operator and never returned.
+    logger.error("API error in forecast", { error: errorMessage(error) });
     return NextResponse.json(
       {
         status: "ERROR",
         error: "Unable to generate the latest forecast.",
-        detail: errorMessage(error),
       },
       { status: 500 }
     );

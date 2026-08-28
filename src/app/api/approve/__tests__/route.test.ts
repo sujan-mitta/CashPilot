@@ -35,6 +35,7 @@ vi.mock("@/lib/prisma", async () => {
       },
       agentAction: {
         findMany: vi.fn(),
+        update: vi.fn(),
         updateMany: vi.fn(),
       },
       $transaction: vi.fn(),
@@ -95,6 +96,9 @@ describe("Approve Strategy Route", () => {
         },
         agentAction: {
           findMany: vi.fn().mockResolvedValue(mockStrategy.agentActions as any),
+          // Present on a real Prisma.TransactionClient. The audit trail is
+          // appended per row, which needs `update`, not `updateMany`.
+          update: vi.fn().mockResolvedValue({}),
           updateMany: vi.fn().mockResolvedValue({ count: callCount === 1 ? 2 : 0 }),
         },
       };

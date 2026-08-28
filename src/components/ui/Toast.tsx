@@ -1,69 +1,83 @@
 "use client";
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { AlertTriangle, CheckCircle2, Info, X, XCircle } from "lucide-react";
 import clsx from "clsx";
+import { EASE_OUT_EXPO } from "./motion";
 
-export type ToastTone = "info" | "success" | "warning" | "danger";
+/**
+ * Toasts.
+ *
+ * Replaces window.alert(), which blocks the page, cannot be styled, cannot be
+ * dismissed by the app, and leaves no trace once accepted — all of which are
+ * wrong on a screen where the operator may need to re-read what happened to
+ * their money.
+ *
+ * Tone follows the same financial vocabulary as everything else: `danger` is a
+ * real failure, `warning` is unresolved, `success` is confirmed. Nothing here
+ * invents a colour for emphasis.
+ */
 
-export interface ToastAction {
-  label: string;
-  onClick: () => void;
-}
+export type ToastTone = "success" | "danger" | "warning" | "info";
 
 export interface ToastOptions {
-  tone?: ToastTone;
   title: string;
+  /** The recovery step. An error that does not say what to do next is half an error. */
   description?: string;
-  action?: ToastAction;
-  /** Auto-dismiss delay in ms. Defaults to 6000; pass 0 to require manual dismiss. */
+  tone?: ToastTone;
+  /** Milliseconds. Pass 0 to require an explicit dismiss. */
   duration?: number;
+  action?: { label: string; onClick: () => void };
 }
 
 interface ToastRecord extends ToastOptions {
   id: number;
+  tone: ToastTone;
 }
 
-interface ToastContextValue {
+interface ToastApi {
   toast: (options: ToastOptions) => number;
   dismiss: (id: number) => void;
 }
 
-const ToastContext = createContext<ToastContextValue | null>(null);
+const ToastContext = React.createContext<ToastApi | null>(null);
 
-/** Access the toast API. Must be used under <ToastProvider>. */
-export function useToast(): ToastContextValue {
-  const ctx = useContext(ToastContext);
-  if (!ctx) {
-    throw new Error("useToast must be used within a ToastProvider");
-  }
-  return ctx;
-}
+const toneRing: Record<ToastTone, string> = {
+  success: "border-safe-500/30",
+  danger: "border-risk-500/35",
+  warning: "border-warn-500/35",
+  info: "border-brand-500/30",
+};
 
-const TONE_STYLES: Record<
-  ToastTone,
-  { icon: typeof Info; iconClass: string; accent: string }
-> = {
-  info: { icon: Info, iconClass: "text-brand-500", accent: "before:bg-brand-500" },
-  success: { icon: CheckCircle2, iconClass: "text-safe-500", accent: "before:bg-safe-500" },
-  warning: { icon: AlertTriangle, iconClass: "text-warn-500", accent: "before:bg-warn-500" },
-  danger: { icon: XCircle, iconClass: "text-risk-500", accent: "before:bg-risk-500" },
+const toneIconColor: Record<ToastTone, string> = {
+  success: "text-safe-400",
+  danger: "text-risk-400",
+  warning: "text-warn-400",
+  info: "text-brand-400",
+};
+
+const ToneIcon: Record<ToastTone, typeof Info> = {
+  success: CheckCircle2,
+  danger: XCircle,
+  warning: AlertTriangle,
+  info: Info,
+};
+
+/** Failures stay put long enough to be read and acted on; confirmations don't. */
+const DEFAULT_DURATION: Record<ToastTone, number> = {
+  success: 4000,
+  info: 5000,
+  warning: 8000,
+  danger: 0,
 };
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
-  const [toasts, setToasts] = useState<ToastRecord[]>([]);
-  const nextId = useRef(1);
-  const timers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
+  const [toasts, setToasts] = React.useState<ToastRecord[]>([]);
+  const nextId = React.useRef(1);
+  const timers = React.useRef(new Map<number, ReturnType<typeof setTimeout>>());
 
-  const dismiss = useCallback((id: number) => {
+  const dismiss = React.useCallback((id: number) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
     const timer = timers.current.get(id);
     if (timer) {
@@ -72,15 +86,23 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const toast = useCallback(
+  const toast = React.useCallback(
     (options: ToastOptions) => {
       const id = nextId.current++;
-      const record: ToastRecord = { tone: "info", duration: 6000, ...options, id };
-      setToasts((prev) => [...prev, record]);
-      if (record.duration && record.duration > 0) {
+      const tone = options.tone ?? "info";
+      const duration = options.duration ?? DEFAULT_DURATION[tone];
+
+      setToasts((prev) => {
+        const next = [...prev, { ...options, id, tone }];
+        // More than a few stacked toasts is noise, not information. The oldest
+        // go first so the most recent outcome is always the visible one.
+        return next.length > 4 ? next.slice(next.length - 4) : next;
+      });
+
+      if (duration > 0) {
         timers.current.set(
           id,
-          setTimeout(() => dismiss(id), record.duration)
+          setTimeout(() => dismiss(id), duration)
         );
       }
       return id;
@@ -88,41 +110,52 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     [dismiss]
   );
 
-  const value = useMemo(() => ({ toast, dismiss }), [toast, dismiss]);
+  React.useEffect(() => {
+    const pending = timers.current;
+    return () => {
+      pending.forEach(clearTimeout);
+      pending.clear();
+    };
+  }, []);
+
+  const api = React.useMemo(() => ({ toast, dismiss }), [toast, dismiss]);
 
   return (
-    <ToastContext.Provider value={value}>
+    <ToastContext.Provider value={api}>
       {children}
       <div
+        // polite, not assertive: these announce outcomes, and an assertive
+        // region would interrupt a screen reader mid-sentence on every success.
         aria-live="polite"
         aria-atomic="false"
-        className="fixed bottom-4 right-4 z-[100] flex w-[calc(100vw-2rem)] max-w-sm flex-col gap-2"
+        className="fixed bottom-0 right-0 z-[200] flex flex-col items-end gap-2.5 p-4 sm:p-6 pointer-events-none w-full sm:max-w-md"
       >
         <AnimatePresence initial={false}>
           {toasts.map((t) => {
-            const tone = TONE_STYLES[t.tone ?? "info"];
-            const Icon = tone.icon;
+            const Icon = ToneIcon[t.tone];
             return (
               <motion.div
                 key={t.id}
                 layout
-                initial={{ opacity: 0, y: 12, scale: 0.98 }}
+                initial={{ opacity: 0, y: 16, scale: 0.97 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, x: 24, scale: 0.98 }}
-                transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-                role="status"
+                exit={{ opacity: 0, x: 24, scale: 0.97 }}
+                transition={{ duration: 0.28, ease: EASE_OUT_EXPO }}
                 className={clsx(
-                  "relative overflow-hidden rounded-lg border border-line-soft bg-ground-100 shadow-lg",
-                  "pl-4 pr-3 py-3 flex items-start gap-3",
-                  "before:absolute before:left-0 before:top-0 before:h-full before:w-1 before:content-['']",
-                  tone.accent
+                  "pointer-events-auto w-full glass-strong rounded-md border shadow-[var(--lift-3)]",
+                  "px-4 py-3.5 flex items-start gap-3",
+                  toneRing[t.tone]
                 )}
+                role={t.tone === "danger" ? "alert" : "status"}
               >
-                <Icon className={clsx("mt-0.5 h-5 w-5 shrink-0", tone.iconClass)} strokeWidth={2} />
+                <Icon
+                  className={clsx("w-[18px] h-[18px] shrink-0 mt-px", toneIconColor[t.tone])}
+                  aria-hidden
+                />
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-ink-100">{t.title}</p>
+                  <p className="text-[13px] font-semibold text-ink-100 leading-snug">{t.title}</p>
                   {t.description && (
-                    <p className="mt-0.5 text-sm text-ink-300 break-words">{t.description}</p>
+                    <p className="text-[12.5px] text-ink-300 leading-relaxed mt-1">{t.description}</p>
                   )}
                   {t.action && (
                     <button
@@ -131,7 +164,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                         t.action!.onClick();
                         dismiss(t.id);
                       }}
-                      className="mt-2 text-sm font-medium text-brand-500 hover:text-brand-600 focus:outline-none focus-visible:underline"
+                      className="mt-2.5 text-[12px] font-semibold text-brand-300 hover:text-brand-400 focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 focus-visible:ring-offset-ground-050 rounded"
                     >
                       {t.action.label}
                     </button>
@@ -140,10 +173,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                 <button
                   type="button"
                   onClick={() => dismiss(t.id)}
-                  aria-label="Dismiss notification"
-                  className="mt-0.5 shrink-0 rounded p-0.5 text-ink-400 hover:text-ink-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                  aria-label="Dismiss"
+                  className="shrink-0 text-ink-400 hover:text-ink-100 p-1 -m-1 rounded-md focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 focus-visible:ring-offset-ground-050 transition-colors"
                 >
-                  <X className="h-4 w-4" strokeWidth={2} />
+                  <X className="w-3.5 h-3.5" />
                 </button>
               </motion.div>
             );
@@ -152,4 +185,12 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       </div>
     </ToastContext.Provider>
   );
+}
+
+export function useToast(): ToastApi {
+  const ctx = React.useContext(ToastContext);
+  if (!ctx) {
+    throw new Error("useToast must be used within ToastProvider");
+  }
+  return ctx;
 }

@@ -1,5 +1,8 @@
 import { groq, MODEL } from "./groqClient";
 
+/** Hard ceiling on a narration call. Cosmetic output never blocks a decision. */
+export const AGENT_TIMEOUT_MS = 8000;
+
 /**
  * Removes any chain-of-thought the model leaks into the response body.
  * Qwen3 emits reasoning inside <think> tags; disabling reasoning should prevent
@@ -24,16 +27,24 @@ export async function runAgent(prompt: string, fallback: string): Promise<string
   }
 
   try {
-    const completion = await groq.chat.completions.create({
-      model: MODEL,
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.3,
-      max_tokens: 350,
-      // The narrations are short prose read by a business owner. Without this the
-      // model spends the whole token budget thinking and returns its scratchpad
-      // (or nothing at all) instead of the answer.
-      reasoning_effort: "none",
-    });
+    const completion = await groq.chat.completions.create(
+      {
+        model: MODEL,
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.3,
+        max_tokens: 350,
+        // The narrations are short prose read by a business owner. Without this the
+        // model spends the whole token budget thinking and returns its scratchpad
+        // (or nothing at all) instead of the answer.
+        reasoning_effort: "none",
+      },
+      // Narration is cosmetic and runs INSIDE /api/execute, once per action, on
+      // the request that has already dispatched payment links. With no bound, a
+      // hung provider held that request open indefinitely while the operator
+      // watched a spinner over money that had genuinely moved. The fallback
+      // prose is always available, so waiting longer than this buys nothing.
+      { timeout: AGENT_TIMEOUT_MS, maxRetries: 0 }
+    );
 
     const content = stripReasoning(completion.choices[0]?.message?.content ?? "");
     if (!content) {

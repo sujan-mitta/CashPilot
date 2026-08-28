@@ -79,7 +79,34 @@ export function ForecastChart({
     };
   });
 
+  // A screen-reader summary of the same series the chart draws.
+  //
+  // recharts renders an SVG with no accessible name and data reachable only by
+  // hovering, so the entire forecast - the central artefact of the product -
+  // was unavailable to anyone not using a mouse and eyes. The figures come from
+  // the same array the chart plots, so the two cannot drift.
+  const points = formattedData.filter((d) => typeof d.balance === "number");
+  const lowest = points.reduce<{ dateStr: string; balance: number } | null>(
+    (min, d) => (min === null || (d.balance as number) < min.balance ? { dateStr: d.dateStr, balance: d.balance as number } : min),
+    null
+  );
+  const finalPoint = points[points.length - 1];
+  const rupees = (v: number) => `₹${Math.round(v).toLocaleString("en-IN")}`;
+
   return (
+    <>
+      <p className="sr-only">
+        {points.length === 0
+          ? "No forecast data is available."
+          : `Cash balance over ${points.length} days. ` +
+            `Starting ${rupees(points[0].balance as number)} on ${points[0].dateStr}. ` +
+            (lowest ? `Lowest ${rupees(lowest.balance)} on ${lowest.dateStr}. ` : "") +
+            (finalPoint ? `Ending ${rupees(finalPoint.balance as number)} on ${finalPoint.dateStr}.` : "") +
+            (typeof safetyThreshold === "number"
+              ? ` Safe minimum is ${formatLakhs(safetyThreshold)}.`
+              : "")}
+      </p>
+      <div role="img" aria-label="Cash balance forecast chart. The figures are listed above this chart for screen readers.">
     <ResponsiveContainer width="100%" height={280}>
       <AreaChart data={formattedData} margin={{ top: 14, right: 10, left: 10, bottom: 0 }}>
         <CartesianGrid vertical={false} stroke={C.grid} strokeDasharray="4 4" />
@@ -196,5 +223,7 @@ export function ForecastChart({
         </defs>
       </AreaChart>
     </ResponsiveContainer>
+      </div>
+    </>
   );
 }

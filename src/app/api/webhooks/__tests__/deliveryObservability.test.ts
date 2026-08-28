@@ -248,7 +248,12 @@ describe("M1 — durable webhook delivery observability", () => {
     expect(await res.json()).toEqual({ status: "EVENT_IGNORED" });
     const d = deliveriesFor("evt_other");
     expect(d).toHaveLength(1);
-    expect(d[0].errorClass).toBe("UNKNOWN_EVENT_TYPE");
+    // An event type we deliberately do not act on was handled CORRECTLY.
+    // It used to be recorded FAILED/UNKNOWN_EVENT_TYPE, which meant the failure
+    // metric this table exists to provide counted every routine unhandled
+    // delivery and buried real settlement failures underneath them.
+    expect(d[0].status).toBe("SUCCEEDED");
+    expect(d[0].errorClass).toBe("IGNORED_EVENT_TYPE");
     expect(state.settleCalls).toBe(0);
   });
 

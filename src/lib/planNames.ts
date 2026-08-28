@@ -1,79 +1,54 @@
 /**
- * Human-readable copy for the engine's strategy names.
+ * The one place a strategy gets a human name.
  *
- * The engine identifies strategies by stable machine names (see STRATEGY_NAMES
- * in engine/strategyEngine.ts). The UI should never show those raw tokens to an
- * operator, so every surface routes them through here. History records can carry
- * a null/undefined strategyType (e.g. a plan captured before one was chosen), so
- * the argument is nullable and unknown values fall back to a readable title-case
- * of the token rather than a crash or a blank.
+ * There used to be two competing schemes on the same screen: `scenarioLabel`
+ * lettered the plans A-D in engine order (RECOVER_AND_COLLECT = "Scenario C"),
+ * while `strategyPrettyName` lettered only the three ACTIVE plans A-C
+ * (RECOVER_AND_COLLECT = "Strategy B"). So the recommended plan appeared as
+ * "Scenario C" on its card and "Strategy B" in the comparison table directly
+ * below it, and nothing on screen said they were the same thing.
+ *
+ * The letters carried no information anyone needed — they were an index into a
+ * list the reader cannot see. What a person actually needs to know is what the
+ * plan DOES, so that is the name.
  */
 
-interface PlanCopy {
-  /** Full display name for headings and cards. */
-  name: string;
-  /** Compact label for tight spots (table headers, chips). */
-  short: string;
-  /** One-line description of what the plan actually does. */
-  summary: string;
-}
-
-const PLAN_COPY: Record<string, PlanCopy> = {
-  DO_NOTHING: {
-    name: "Hold the course",
-    short: "Hold",
-    summary: "Take no action and let the forecast play out as it stands.",
-  },
-  RECOVER_ONLY: {
-    name: "Recover failed payments",
-    short: "Recover",
-    summary: "Send recovery links to chase down customer payments that failed.",
-  },
-  RECOVER_AND_COLLECT: {
-    name: "Recover & accelerate collections",
-    short: "Recover + Collect",
-    summary:
-      "Recover failed payments and accelerate your highest-priority overdue collections.",
-  },
-  FULL_INTERVENTION: {
-    name: "Full intervention",
-    short: "Full",
-    summary:
-      "Recover payments, accelerate collections, reschedule non-critical payouts, and pause discretionary spend.",
-  },
+export const PLAN_NAME: Record<string, string> = {
+  DO_NOTHING: "Do nothing",
+  RECOVER_ONLY: "Chase the failed payment",
+  RECOVER_AND_COLLECT: "Chase the failed payment + overdue invoices",
+  FULL_INTERVENTION: "Chase everything + delay one supplier",
 };
 
-/** Convert an unknown machine token to a readable label, e.g. RESCHEDULE_PAYOUT -> "Reschedule payout". */
-function titleCaseToken(raw: string): string {
-  const cleaned = raw.trim().replace(/_/g, " ").toLowerCase();
-  if (!cleaned) return "Unknown plan";
-  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+/** Short form, for table headers and chips where the full name will not fit. */
+export const PLAN_NAME_SHORT: Record<string, string> = {
+  DO_NOTHING: "Do nothing",
+  RECOVER_ONLY: "Failed payment only",
+  RECOVER_AND_COLLECT: "Payment + invoices",
+  FULL_INTERVENTION: "Everything + delay",
+};
+
+/** One line on what the plan actually does to the business. */
+export const PLAN_SUMMARY: Record<string, string> = {
+  DO_NOTHING: "Change nothing and accept the shortfall.",
+  RECOVER_ONLY: "Send a new payment link for the card payment that failed.",
+  RECOVER_AND_COLLECT:
+    "Send a new payment link, and ask overdue customers to pay early.",
+  FULL_INTERVENTION:
+    "All of the above, and push one low-priority supplier payment back.",
+};
+
+export function planName(name: string | undefined): string {
+  if (!name) return "Unknown plan";
+  return PLAN_NAME[name] ?? name;
 }
 
-function lookup(name: string | null | undefined): PlanCopy | null {
-  if (!name) return null;
-  return PLAN_COPY[name] ?? null;
+export function planNameShort(name: string | undefined): string {
+  if (!name) return "Unknown";
+  return PLAN_NAME_SHORT[name] ?? name;
 }
 
-/** Full display name for a strategy. Safe on null/unknown input. */
-export function planName(name: string | null | undefined): string {
-  const copy = lookup(name);
-  if (copy) return copy.name;
-  return name ? titleCaseToken(name) : "No plan selected";
-}
-
-/** Compact label for tight layouts. Safe on null/unknown input. */
-export function planNameShort(name: string | null | undefined): string {
-  const copy = lookup(name);
-  if (copy) return copy.short;
-  return name ? titleCaseToken(name) : "—";
-}
-
-/** One-line description of what a strategy does. Safe on null/unknown input. */
-export function planSummary(name: string | null | undefined): string {
-  const copy = lookup(name);
-  if (copy) return copy.summary;
-  return name
-    ? `Custom plan: ${titleCaseToken(name)}.`
-    : "No plan has been selected yet.";
+export function planSummary(name: string | undefined): string {
+  if (!name) return "";
+  return PLAN_SUMMARY[name] ?? "";
 }

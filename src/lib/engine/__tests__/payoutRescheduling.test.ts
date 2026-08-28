@@ -3,6 +3,7 @@ import { generateStrategies, StrategyResult, applyActionsToMovements } from "../
 import { scoreAllStrategies } from "../scorer";
 import { buildForecast } from "../forecast";
 import { addDays, isSameDay } from "date-fns";
+import { FINANCIAL_CONFIG } from "../financialConfig";
 
 describe("Payout Rescheduling Hardening (Tests 1-13)", () => {
   const today = new Date("2026-08-22");
@@ -41,11 +42,18 @@ describe("Payout Rescheduling Hardening (Tests 1-13)", () => {
     const originalDay = fullIntervention.forecast.find(f => isSameDay(f.date, addDays(today, 3)));
     expect(originalDay?.expectedOutflows).toBe(0);
 
-    // Verify Day 15 shifted date using a manually constructed 16-day forecast
+    // Verify the shifted date against the SHARED constant rather than a literal.
+    // The delay used to be written as 15 here, 15 in the engine default, and
+    // FORECAST_HORIZON_DAYS + 6 in the executor - so this test passed while the
+    // ledger received a different date from the one the operator approved.
+    const DELAY = FINANCIAL_CONFIG.RESCHEDULE_DELAY_DAYS;
     const simulatedMovements = applyActionsToMovements(movements, fullIntervention.actions, today);
-    const simulatedForecast = buildForecast(1000000, simulatedMovements, 16, today);
-    const newDay = simulatedForecast.find(f => isSameDay(f.date, addDays(today, 15)));
+    const simulatedForecast = buildForecast(1000000, simulatedMovements, DELAY + 2, today);
+    const newDay = simulatedForecast.find(f => isSameDay(f.date, addDays(today, DELAY)));
     expect(newDay?.expectedOutflows).toBe(100000);
+
+    // The whole point of the action: the obligation leaves the pressure window.
+    expect(DELAY).toBeGreaterThan(FINANCIAL_CONFIG.FORECAST_HORIZON_DAYS);
   });
 
   // Test 2: Two payouts with identical amounts (only targeted payout moves)
@@ -199,13 +207,17 @@ describe("Payout Rescheduling Hardening (Tests 1-13)", () => {
     const day2 = full.forecast.find(f => isSameDay(f.date, addDays(today, 2)));
     expect(day2?.expectedOutflows).toBe(0);
 
-    // Verify shifted date using 16-day manual forecast
+    // Verify the shifted date against the shared constant.
+    const DELAY = FINANCIAL_CONFIG.RESCHEDULE_DELAY_DAYS;
     const simulatedMovements = applyActionsToMovements(movements, full.actions, today);
-    const simulatedForecast = buildForecast(1000000, simulatedMovements, 16, today);
+    const simulatedForecast = buildForecast(1000000, simulatedMovements, DELAY + 2, today);
 
-    // New day (Day 15) must exist and have exactly 500,000 outflow
-    const day15 = simulatedForecast.find(f => isSameDay(f.date, addDays(today, 15)));
-    expect(day15?.expectedOutflows).toBe(500000);
+    const shifted = simulatedForecast.find(f => isSameDay(f.date, addDays(today, DELAY)));
+    expect(shifted?.expectedOutflows).toBe(500000);
+
+    // Moved exactly once - never duplicated onto two days.
+    const totalShiftedOut = simulatedForecast.reduce((sum, f) => sum + f.expectedOutflows, 0);
+    expect(totalShiftedOut).toBe(500000);
   });
 
   // Test 10: Unrelated transactions remain unchanged
@@ -256,11 +268,16 @@ describe("Payout Rescheduling Hardening (Tests 1-13)", () => {
     const day4 = full.forecast.find(f => isSameDay(f.date, addDays(today, 4)));
     expect(day4?.expectedOutflows).toBe(0);
 
-    // Rescheduled payout is on Day 15 (verified via 16-day forecast)
+    // The rescheduled payout lands on the shared delay day.
+    const DELAY = FINANCIAL_CONFIG.RESCHEDULE_DELAY_DAYS;
     const simulatedMovements = applyActionsToMovements(movements, full.actions, today);
-    const simulatedForecast = buildForecast(1000000, simulatedMovements, 16, today);
-    const day15 = simulatedForecast.find(f => isSameDay(f.date, addDays(today, 15)));
-    expect(day15?.expectedOutflows).toBe(100000);
+    const simulatedForecast = buildForecast(1000000, simulatedMovements, DELAY + 2, today);
+    const shifted = simulatedForecast.find(f => isSameDay(f.date, addDays(today, DELAY)));
+    expect(shifted?.expectedOutflows).toBe(100000);
+
+    // The paused expense is GONE, not moved: it must not reappear anywhere.
+    const totalOut = simulatedForecast.reduce((sum, f) => sum + f.expectedOutflows, 0);
+    expect(totalOut).toBe(100000);
   });
 
   // Test 12: Existing strategy ranking remains unchanged when target identity is valid

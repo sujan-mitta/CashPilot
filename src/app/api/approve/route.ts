@@ -6,6 +6,8 @@ import { transitionDecision, InvalidDecisionTransitionError } from "@/lib/engine
 import { checkStrategyFreshness, recordStaleBlock, describeStaleness } from "@/lib/engine/freshnessGate";
 import { DecisionStatus } from "../../../../generated/prisma/client";
 import { errorMessage, parseJsonBody } from "@/lib/errors";
+import { logger } from "@/lib/observability";
+import { appendAuditToActions } from "@/lib/db/auditTrail";
 
 export async function POST(req: Request) {
   let strategyId: string | undefined = undefined;
@@ -18,11 +20,36 @@ export async function POST(req: Request) {
     const parsed = await parseJsonBody<{ strategyId?: unknown; action?: unknown; reason?: unknown }>(req);
     if (!parsed.ok) return parsed.response;
     strategyId = typeof parsed.data.strategyId === "string" ? parsed.data.strategyId : "";
-    const action = typeof parsed.data.action === "string" ? parsed.data.action : "approve";
-    const reason = typeof parsed.data.reason === "string" ? parsed.data.reason : null;
+    const reason = typeof parsed.data.reason === "string" ? parsed.data.reason.slice(0, 2000) : null;
 
     if (!strategyId || strategyId.trim() === "") {
       return NextResponse.json({ error: "Missing or invalid strategyId parameter." }, { status: 400 });
+    }
+
+    // The verb is validated against a closed set, and an omitted verb is an
+    // error rather than an approval.
+    //
+    // This previously read `action === "reject" ? reject : approve`, with
+    // "approve" as the default for anything unrecognised. So {"action":"REJECT"},
+    // {"action":"rejct"} and {"action":"cancel"} all APPROVED - on the single
+    // endpoint that is the human gate for moving money. Defaulting an
+    // unparseable instruction to the irreversible option is exactly backwards.
+    const rawAction = parsed.data.action;
+    const action =
+      rawAction === undefined || rawAction === null
+        ? "approve"
+        : typeof rawAction === "string"
+        ? rawAction.trim().toLowerCase()
+        : "";
+
+    if (action !== "approve" && action !== "reject") {
+      return NextResponse.json(
+        {
+          error: "INVALID_ACTION",
+          message: 'The "action" field must be exactly "approve" or "reject".',
+        },
+        { status: 400 }
+      );
     }
 
     const business = await prisma.business.findUnique({
@@ -132,16 +159,18 @@ export async function POST(req: Request) {
           },
           data: {
             status: "REJECTED",
-            auditLog: [
-              {
-                who: session.userId,
-                what: "Transition PENDING -> REJECTED",
-                when: new Date().toISOString(),
-                why: "Human rejection click",
-                result: "SUCCESS",
-              }
-            ] as any,
           },
+        });
+        // The audit trail is append-only everywhere else in the codebase, and
+        // the schema comments promise it. `updateMany` cannot append per row, so
+        // each row is extended individually rather than having its history
+        // replaced by a single-entry array.
+        await appendAuditToActions(tx, freshActions, {
+          who: session.userId,
+          what: "Transition PENDING -> REJECTED",
+          when: new Date().toISOString(),
+          why: reason ? `Human rejection: ${reason}` : "Human rejection click",
+          result: "SUCCESS",
         });
 
         // Guarded transition: refuses e.g. OUTCOME_MEASURED -> REJECTED, and
@@ -166,16 +195,14 @@ export async function POST(req: Request) {
           },
           data: {
             status: "APPROVED",
-            auditLog: [
-              {
-                who: session.userId,
-                what: "Transition PENDING -> APPROVED",
-                when: new Date().toISOString(),
-                why: "Human approval gate click",
-                result: "SUCCESS",
-              }
-            ] as any,
           },
+        });
+        await appendAuditToActions(tx, freshActions, {
+          who: session.userId,
+          what: "Transition PENDING -> APPROVED",
+          when: new Date().toISOString(),
+          why: "Human approval gate click",
+          result: "SUCCESS",
         });
 
         // Guarded transition. A concurrent second approval lands here as a
@@ -227,18 +254,32 @@ export async function POST(req: Request) {
       );
     }
     if (error instanceof InvalidDecisionTransitionError) {
+      logger.warn("Approve refused by the decision state machine", {
+        strategyId,
+        reason: errorMessage(error),
+      });
       return NextResponse.json(
-        { error: "INVALID_TRANSITION", message: errorMessage(error) },
+        {
+          error: "INVALID_TRANSITION",
+          message: "This decision has already moved past the point where it can be approved or rejected.",
+        },
         { status: 409 }
       );
     }
     if (/^Cannot (approve|reject) action/.test(errorMessage(error) || "")) {
+      // The internal message names action ids and state-machine states. Logged
+      // for an operator, replaced with something the person can act on.
+      logger.warn("Approve refused by the action state machine", {
+        strategyId,
+        reason: errorMessage(error),
+      });
       return NextResponse.json(
         {
           error: "INVALID_TRANSITION",
-          message: errorMessage(error),
+          message:
+            "This plan can no longer be approved or rejected in its current state. Re-run the comparison to get a current one.",
         },
-        { status: 400 }
+        { status: 409 }
       );
     }
     if (errorMessage(error).includes("Concurrency check failure")) {
@@ -262,12 +303,19 @@ export async function POST(req: Request) {
       } catch (refetchError) {
         console.error("Refetch check error in approve catch block:", refetchError);
       }
+      logger.warn("Approve lost a concurrency race", { strategyId, reason: errorMessage(error) });
       return NextResponse.json(
-        { error: "CONCURRENT_MODIFICATION", message: errorMessage(error) },
+        {
+          error: "CONCURRENT_MODIFICATION",
+          message: "Someone else acted on this plan at the same time. Reload to see its current state.",
+        },
         { status: 409 }
       );
     }
-    console.error("API error in approve:", error);
-    return NextResponse.json({ error: errorMessage(error) }, { status: 500 });
+    logger.error("API error in approve", { strategyId, error: errorMessage(error) });
+    return NextResponse.json(
+      { error: "Could not record your decision. Please try again." },
+      { status: 500 }
+    );
   }
 }

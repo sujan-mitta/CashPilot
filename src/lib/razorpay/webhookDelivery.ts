@@ -44,6 +44,7 @@ export type WebhookErrorClass =
   | "MISSING_EVENT_ID"
   | "MISSING_PAYMENT_LINK_ID"
   | "UNKNOWN_EVENT_TYPE"
+  | "IGNORED_EVENT_TYPE"
   | "PROCESSING_ERROR";
 
 /** Error text is ours, not the provider's, but truncate it regardless. */
@@ -164,6 +165,40 @@ export async function markFailed(
     });
   } catch (err) {
     logger.error("Failed to mark webhook delivery FAILED", { id, error: String(err) });
+  }
+}
+
+/**
+ * Terminal: a well-formed delivery for an event type CashPilot does not act on.
+ *
+ * This is NOT a failure. Marking `subscription.charged` or `payment.captured`
+ * FAILED - which is what happened before - meant the failure metric that this
+ * whole table exists to provide counted every routine unhandled event, so a
+ * genuine settlement failure was indistinguishable from ordinary traffic.
+ *
+ * The status is SUCCEEDED because the delivery WAS handled correctly; the
+ * `errorClass` is what separates "settled money" from "correctly ignored", so
+ * both remain queryable. A dedicated `IGNORED` value on WebhookDeliveryStatus
+ * would say this more directly, but that needs a schema migration - see the
+ * manual follow-up list.
+ */
+export async function markIgnored(id: string | null, eventType?: string | null): Promise<void> {
+  if (!id) return;
+  try {
+    await prisma.webhookDeliveryAttempt.update({
+      where: { id },
+      data: {
+        status: WebhookDeliveryStatus.SUCCEEDED,
+        processingCompletedAt: new Date(),
+        errorClass: "IGNORED_EVENT_TYPE",
+        errorMessage: `CashPilot does not act on "${String(eventType ?? "unknown")}". No financial effect.`.slice(
+          0,
+          MAX_ERROR_LENGTH
+        ),
+      },
+    });
+  } catch (err) {
+    logger.error("Failed to mark webhook delivery IGNORED", { id, error: String(err) });
   }
 }
 

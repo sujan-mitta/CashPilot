@@ -2,7 +2,18 @@ import { ActionStatus, RecoveryStatus } from "../../../generated/prisma/client";
 
 const ALLOWED_TRANSITIONS: Record<ActionStatus, ActionStatus[]> = {
   [ActionStatus.PENDING]: [ActionStatus.APPROVED, ActionStatus.REJECTED, ActionStatus.STALE],
-  [ActionStatus.APPROVED]: [ActionStatus.EXECUTION_REQUESTED, ActionStatus.EXECUTING, ActionStatus.STALE],
+  // APPROVED -> REJECTED is a CANCELLATION, and it is safe precisely because
+  // nothing has been dispatched yet: APPROVED means authorised, not started.
+  // Without this edge there was no way to withdraw an approval - the operator
+  // could authorise a plan, immediately realise it was wrong, and have no
+  // option but to execute it or leave it hanging forever. The moment execution
+  // begins the status leaves APPROVED, so this cannot cancel work in flight.
+  [ActionStatus.APPROVED]: [
+    ActionStatus.EXECUTION_REQUESTED,
+    ActionStatus.EXECUTING,
+    ActionStatus.STALE,
+    ActionStatus.REJECTED,
+  ],
   [ActionStatus.EXECUTION_REQUESTED]: [ActionStatus.EXECUTING, ActionStatus.EXECUTION_UNKNOWN, ActionStatus.FAILED],
   [ActionStatus.EXECUTING]: [ActionStatus.EXECUTED, ActionStatus.COMPLETED, ActionStatus.EXECUTION_UNKNOWN, ActionStatus.FAILED, ActionStatus.RECONCILING],
   [ActionStatus.EXECUTED]: [ActionStatus.RECONCILING],

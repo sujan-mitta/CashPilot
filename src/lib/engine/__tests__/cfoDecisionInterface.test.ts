@@ -24,10 +24,25 @@ vi.mock("@/lib/prisma", () => {
         deleteMany: vi.fn(),
         create: vi.fn(),
         findFirst: vi.fn(),
+        // The supersede sweep asks which strategies are replaceable before it
+        // deletes anything; an empty answer means "nothing to clean up".
+        findMany: vi.fn(async () => []),
       },
       agentAction: {
         deleteMany: vi.fn(),
         create: vi.fn(),
+      },
+      executionIntent: {
+        findMany: vi.fn(async () => []),
+      },
+      decision: {
+        create: vi.fn(async ({ data }: any) => ({ id: `decision-${data.strategyId}`, ...data })),
+        deleteMany: vi.fn(),
+        findFirst: vi.fn(async () => null),
+      },
+      decisionEvent: {
+        create: vi.fn(async ({ data }: any) => ({ id: "evt-1", ...data })),
+        deleteMany: vi.fn(),
       },
       $transaction: vi.fn((cb) => cb(prisma)),
     },

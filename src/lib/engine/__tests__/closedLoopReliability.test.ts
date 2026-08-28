@@ -611,14 +611,31 @@ describe("CashPilot Phase 11 — Closed-Loop Reliability, Recovery & State Consi
   });
 
   // Scenario 26: Rescheduling date reconciliation mismatch
-  it("Scenario 26: Detects and marks RECONCILIATION_MISMATCH if vendor payout fails to transition to RESCHEDULED", async () => {
-    dbState.agentActions[1].status = ActionStatus.APPROVED;
-    dbState.payouts[0].status = "SCHEDULED"; // Reset to scheduled instead of rescheduled
+  //
+  // The discrepancy is only meaningful AFTER execution has been attempted. This
+  // scenario originally staged the action as APPROVED - i.e. never executed -
+  // in which case the payout being SCHEDULED is not a discrepancy at all, it is
+  // simply work that has not run yet. The route stamped RECONCILIATION_MISMATCH
+  // anyway, so polling any unrelated payment link corrupted every pending
+  // reschedule in the tenant.
+  it("Scenario 26: Detects and marks RECONCILIATION_MISMATCH if an EXECUTED vendor payout failed to transition to RESCHEDULED", async () => {
+    dbState.agentActions[1].status = ActionStatus.EXECUTING;
+    dbState.payouts[0].status = "SCHEDULED"; // Execution claimed to move it; it did not.
 
     const req = new Request(`http://localhost/api/payment-status?actionId=act_2&paymentLinkId=plink_mock`, { method: "GET" });
     const res = await handlePaymentStatus(req);
     expect(res.status).toBe(200);
     expect(dbState.agentActions[1].status).toBe(ActionStatus.RECONCILIATION_MISMATCH);
+  });
+
+  it("Scenario 26b: Leaves a not-yet-executed reschedule alone instead of calling it a mismatch", async () => {
+    dbState.agentActions[1].status = ActionStatus.APPROVED;
+    dbState.payouts[0].status = "SCHEDULED"; // Correct: nothing has run yet.
+
+    const req = new Request(`http://localhost/api/payment-status?actionId=act_2&paymentLinkId=plink_mock`, { method: "GET" });
+    const res = await handlePaymentStatus(req);
+    expect(res.status).toBe(200);
+    expect(dbState.agentActions[1].status).toBe(ActionStatus.APPROVED);
   });
 
   // Scenario 27: Webhook payload tenant check

@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useCashPilot } from "@/context/CashPilotContext";
 import { formatINR } from "@/lib/format";
 import { planName } from "@/lib/planNames";
+import { FINANCIAL_CONFIG } from "@/lib/engine/financialConfig";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -26,20 +27,35 @@ const actionCategory = (type: string) =>
     ? "Push back one supplier payment"
     : "Pause a recurring subscription";
 
+/**
+ * What the system will ACTUALLY do, on the screen where a human authorises it.
+ *
+ * Two of these were promises the product does not keep:
+ *
+ *   - "Sends the customer a new payment link" / "Sends payment links to your
+ *     overdue customers". Payment links are created with
+ *     `notify: { email: false, sms: false }` and the Invoice model holds no
+ *     customer email or phone at all, so nothing is ever sent to anybody. The
+ *     operator receives a URL to pass on themselves.
+ *
+ *   - "Moves the payment date to day 15", while the executor moved it 20 days
+ *     out. The approval gate is the last place a figure may be wrong; the day
+ *     now comes from the same constant the executor applies.
+ */
 const executionMethod = (type: string) =>
   type === "RECOVER_FAILED_PAYMENTS"
-    ? "Sends the customer a new payment link"
+    ? "Creates a new payment link for you to send to the customer"
     : type === "PRIORITIZE_COLLECTIONS"
-    ? "Sends payment links to your overdue customers"
+    ? "Creates a payment link per overdue invoice for you to send"
     : type === "RESCHEDULE_PAYOUT"
-    ? "Moves the payment date to day 15"
+    ? `Moves the payment date to day ${FINANCIAL_CONFIG.RESCHEDULE_DELAY_DAYS}`
     : "Stops the subscription billing for now";
 
 const impactRealization = (type: string) =>
   type === "RECOVER_FAILED_PAYMENTS"
-    ? "Only once the customer actually pays."
+    ? "Only once you send the link and the customer pays."
     : type === "PRIORITIZE_COLLECTIONS"
-    ? "Once those customers pay early."
+    ? "Only once you send the links and those customers pay early."
     : type === "RESCHEDULE_PAYOUT"
     ? "Straight away — but you still owe it later."
     : "Straight away, as a lower bill.";
@@ -234,7 +250,7 @@ function ApprovalContent() {
       <Reveal className="flex items-center justify-between">
         <button
           onClick={() => router.push("/strategies")}
-          className="text-xs font-bold text-ink-300 hover:text-ink-200 transition outline-none"
+          className="text-xs font-bold text-ink-300 hover:text-ink-200 transition focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 focus-visible:ring-offset-ground-050"
         >
           ← Back to the plans
         </button>
@@ -418,7 +434,7 @@ function ApprovalContent() {
                       onChange={(e) => setRejectReason(e.target.value)}
                       rows={2}
                       placeholder="e.g. Supplier already agreed to wait — no need to chase invoices"
-                      className="w-full rounded-md bg-ground-100 border border-line-soft text-[13px] text-ink-100 px-3.5 py-2.5 outline-none placeholder:text-ink-400 focus:border-brand-500 transition-colors resize-none"
+                      className="w-full rounded-md bg-ground-100 border border-line-soft text-[13px] text-ink-100 px-3.5 py-2.5 focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 focus-visible:ring-offset-ground-050 placeholder:text-ink-400 focus:border-brand-500 transition-colors resize-none"
                     />
                   </div>
 

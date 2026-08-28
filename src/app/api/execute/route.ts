@@ -20,6 +20,19 @@ import { formatINR } from "@/lib/format";
 import { logger, withCorrelationId } from "@/lib/observability";
 import { errorMessage, parseJsonBody } from "@/lib/errors";
 
+/** One action's outcome, as returned to the client. */
+export interface ExecutedStep {
+  id: string;
+  action: string;
+  status: string;
+  result: string;
+  narration: string;
+  /** Provider ids this step produced. Empty when nothing was dispatched. */
+  externalRefs: string[];
+  /** Durable intent ids, for correlating with the reconciliation trail. */
+  intentIds: string[];
+}
+
 export const POST = withCorrelationId(async (req: Request) => {
   try {
     // Execution moves money. If a production deployment is missing a control
@@ -68,7 +81,7 @@ export const POST = withCorrelationId(async (req: Request) => {
     }
 
     const before = strategy.projectedBalance;
-    const executedSteps = [];
+    const executedSteps: ExecutedStep[] = [];
     /** Every durable intent touched by this run - the observability trail. */
     const executionIntentIds: string[] = [];
 
@@ -238,6 +251,8 @@ export const POST = withCorrelationId(async (req: Request) => {
             status: action.status,
             result: action.result || "",
             narration: `Action already completed.`,
+            externalRefs: [],
+            intentIds: [],
           });
           continue;
         }
@@ -248,6 +263,8 @@ export const POST = withCorrelationId(async (req: Request) => {
           status: ActionStatus.FAILED,
           result: `State machine block: Cannot transition from ${action.status} to EXECUTING`,
           narration: `Validation check failed.`,
+          externalRefs: [],
+          intentIds: [],
         });
         continue;
       }
@@ -288,6 +305,8 @@ export const POST = withCorrelationId(async (req: Request) => {
             status: refetchedAct.status,
             result: refetchedAct.result || "",
             narration: `Action already completed.`,
+            externalRefs: [],
+            intentIds: [],
           });
           continue;
         }
@@ -319,6 +338,8 @@ export const POST = withCorrelationId(async (req: Request) => {
           status: ActionStatus.FAILED,
           result: reason,
           narration: `Execution not started.`,
+          externalRefs: [],
+          intentIds: [],
         });
         continue;
       }
@@ -410,6 +431,13 @@ export const POST = withCorrelationId(async (req: Request) => {
         status,
         result: resultDetail,
         narration,
+        // Structured identifiers, so the client never has to parse them back
+        // out of `result` prose. The execution page was doing
+        // `result.split("generated: ")[1]`, which silently yielded null or
+        // garbage on every non-happy path - and `result` is also where the
+        // "Already in flight" / "Not in a claimable state" explanations go.
+        externalRefs: outcome.externalRefs,
+        intentIds: outcome.intentIds,
       });
     }
 

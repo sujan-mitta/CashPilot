@@ -6,6 +6,7 @@ import { rateLimit, clientKey } from "@/lib/auth/rateLimit";
 import { cookies } from "next/headers";
 import { logger } from "@/lib/observability";
 import { parseJsonBody } from "@/lib/errors";
+import { normalizeEmail } from "@/lib/auth/validation";
 
 /**
  * Email + password sign-in.
@@ -38,11 +39,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Email, password and business name are required." }, { status: 400 });
     }
 
-    const business = await prisma.business.findFirst({ where: { name: businessName } });
+    // Case- and whitespace-insensitive.
+    //
+    // This was an exact equality, so an operator typing "abc electronics"
+    // against a stored "ABC Electronics" got "Invalid email or password" and
+    // went looking for a password problem they did not have. The name is a
+    // convenience for picking a tenant, not a credential - being strict about
+    // its casing buys no security and costs real sign-ins.
+    const business = await prisma.business.findFirst({
+      where: { name: { equals: String(businessName).trim().replace(/\s+/g, " "), mode: "insensitive" } },
+    });
     if (!business) return reject();
 
     const user = await prisma.user.findUnique({
-      where: { email: String(email).toLowerCase() },
+      where: { email: normalizeEmail(String(email)) },
       include: { businesses: { where: { id: business.id } } },
     });
     if (!user || user.businesses.length === 0) return reject();
