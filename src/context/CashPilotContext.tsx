@@ -144,7 +144,42 @@ export interface ForecastResponse {
       firstCriticalDate: string | null;
       criticalAmount: number;
     };
+    /**
+     * Phase 10/13. Optional because a cached response from an earlier session
+     * predates them; every consumer must handle their absence rather than
+     * assuming a deploy has rolled everywhere at once.
+     */
+    scenarios?: ScenarioBand;
+    confidence?: ForecastConfidenceSummary;
   } | null;
+}
+
+/** One scenario, reduced to the numbers worth showing. */
+export interface ScenarioSummary {
+  closingBalance: number;
+  minimumBalance: number;
+  minimumBalanceDay: number;
+  firstDayBelowSafety: number | null;
+}
+
+export interface ScenarioBand {
+  /**
+   * True when all three coincide. That means no timing uncertainty has been
+   * MEASURED - not that there is none - which is why it drives confidence down.
+   */
+  degenerate: boolean;
+  optimistic: ScenarioSummary;
+  base: ScenarioSummary;
+  conservative: ScenarioSummary;
+}
+
+export interface ForecastConfidenceSummary {
+  level: "HIGH" | "MEDIUM" | "LOW" | "UNKNOWN";
+  eventsTotal: number;
+  eventsWithMeasuredTiming: number;
+  widestBandDays: number;
+  outcomeSpread: number;
+  reasons: string[];
 }
 
 export interface InvestigationResponse {

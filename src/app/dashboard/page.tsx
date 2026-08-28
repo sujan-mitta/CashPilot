@@ -29,6 +29,32 @@ import { useToast } from "@/components/ui/Toast";
 /** Floor per diagnostic step, so a fast response does not flash unread. */
 const MIN_STEP_MS = 260;
 
+/**
+ * Plain language for a confidence level.
+ *
+ * "Low" here means we have not measured enough payment history to say how
+ * timing might move - not that the arithmetic is shaky. The wording below says
+ * so, because a CFO reading "Low confidence" deserves to know which one it is.
+ */
+function confidenceLabel(level: "HIGH" | "MEDIUM" | "LOW" | "UNKNOWN"): string {
+  switch (level) {
+    case "HIGH":
+      return "High confidence";
+    case "MEDIUM":
+      return "Medium confidence";
+    case "LOW":
+      return "Low confidence";
+    case "UNKNOWN":
+      return "Nothing to forecast";
+  }
+}
+
+function confidenceTone(level: "HIGH" | "MEDIUM" | "LOW" | "UNKNOWN"): string {
+  if (level === "HIGH") return "text-ink-300 font-semibold";
+  if (level === "MEDIUM") return "text-ink-300 font-semibold";
+  return "text-ink-400 font-semibold";
+}
+
 export default function Dashboard() {
   const router = useRouter();
   const { toast } = useToast();
@@ -363,6 +389,9 @@ export default function Dashboard() {
   const totalInflows = days.reduce((sum, d) => sum + d.expectedInflows, 0);
   const totalOutflows = days.reduce((sum, d) => sum + d.expectedOutflows, 0);
   const safetyRequirement = forecast.safetyRequirement;
+  // Optional: a forecast cached before this shipped carries neither.
+  const scenarioBand = forecast.scenarios;
+  const forecastConfidence = forecast.confidence;
 
   const statusTone = minProjected < 0 ? "danger" : minProjected < safetyThreshold ? "warning" : "success";
   const statusLabel = minProjected < 0 ? "Critical" : minProjected < safetyThreshold ? "At Risk" : "Healthy";
@@ -512,6 +541,52 @@ export default function Dashboard() {
                   </span>
                 </div>
               </div>
+              </div>
+            </div>
+          </StaggerItem>
+        )}
+
+        {/* HOW RELIABLE IS THIS FORECAST (Phase 10/13, spec §29 + §57) */}
+        {forecastConfidence && (
+          <StaggerItem>
+            <div className="card">
+              <div className="card-head">
+                <h2>How reliable is this forecast?</h2>
+                <span className={confidenceTone(forecastConfidence.level)}>
+                  {confidenceLabel(forecastConfidence.level)}
+                </span>
+              </div>
+              <div className="card-body space-y-4">
+                {scenarioBand && !scenarioBand.degenerate ? (
+                  <div>
+                    <span className="text-ink-400 block font-normal text-xs mb-1">
+                      Lowest cash you are likely to see
+                    </span>
+                    <span className="numeric text-[30px] font-semibold text-ink-100 block tracking-[-0.022em]">
+                      {formatINR(scenarioBand.conservative.minimumBalance)}
+                      <span className="text-ink-400 font-normal text-[20px]">
+                        {" "}to {formatINR(scenarioBand.optimistic.minimumBalance)}
+                      </span>
+                    </span>
+                    <span className="text-ink-400 block font-normal text-xs mt-1">
+                      Most likely {formatINR(scenarioBand.base.minimumBalance)}
+                    </span>
+                  </div>
+                ) : (
+                  <p className="text-sm text-ink-300 font-semibold leading-relaxed">
+                    We cannot yet put a range around this forecast. Every date below is the
+                    one that was agreed, not one we have seen this customer keep.
+                  </p>
+                )}
+
+                <ul className="text-xs space-y-2 text-ink-300 font-semibold leading-relaxed">
+                  {forecastConfidence.reasons.map((reason, i) => (
+                    <li key={i} className="flex gap-2">
+                      <span className="text-ink-400">-</span>
+                      <span>{reason}</span>
+                    </li>
+                  ))}
+                </ul>
               </div>
             </div>
           </StaggerItem>

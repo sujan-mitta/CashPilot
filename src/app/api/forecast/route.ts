@@ -1,13 +1,29 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { buildForecast, calculateRunway } from "@/lib/engine/forecast";
-import { buildMovementsForBusiness } from "@/lib/forecast/movements";
+import { buildForecastContextForBusiness } from "@/lib/forecast/movements";
+import { buildScenarios } from "@/lib/forecast/scenarios";
 import { calculateRisk } from "@/lib/engine/riskDetector";
 import { getSession } from "@/lib/auth";
 import { calculateLiquiditySafetyRequirement, extractObligations, calculateTemporalRequiredLiquidity } from "@/lib/engine/liquiditySafety";
 import { errorMessage } from "@/lib/errors";
 import { logger } from "@/lib/observability";
 import { FINANCIAL_CONFIG } from "@/lib/engine/financialConfig";
+
+/** The few numbers a scenario is worth showing; the full day series is not. */
+function summarise(s: {
+  closingBalance: number;
+  minimumBalance: number;
+  minimumBalanceDay: number;
+  firstDayBelowSafety: number | null;
+}) {
+  return {
+    closingBalance: s.closingBalance,
+    minimumBalance: s.minimumBalance,
+    minimumBalanceDay: s.minimumBalanceDay,
+    firstDayBelowSafety: s.firstDayBelowSafety,
+  };
+}
 
 export async function GET() {
   try {
@@ -48,7 +64,12 @@ export async function GET() {
     }
 
     const today = new Date();
-    const movements = await buildMovementsForBusiness(prisma, business.id, transactions, { now: today });
+    const { movements, events } = await buildForecastContextForBusiness(
+      prisma,
+      business.id,
+      transactions,
+      { now: today }
+    );
     const days = buildForecast(
       business.currentCash,
       movements,
@@ -62,6 +83,14 @@ export async function GET() {
 
     const runwayMetrics = calculateRunway(days, requiredBuffer);
     const riskLevel = calculateRisk(runwayMetrics.minimumBalance, requiredBuffer);
+
+    // Built from the same events as `days`, so the band can never disagree with
+    // the line it brackets.
+    const scenarios = buildScenarios(business.currentCash, events, {
+      horizonDays: FINANCIAL_CONFIG.FORECAST_HORIZON_DAYS,
+      startDate: today,
+      requiredBuffer,
+    });
 
     // Convert dates to string ISO strings for JSON serialization compatibility
     const formattedDays = days.map((d) => ({
@@ -107,6 +136,30 @@ export async function GET() {
         temporalRisk: {
           firstCriticalDate: temporalMetrics.firstCriticalDate,
           criticalAmount: temporalMetrics.criticalAmount,
+        },
+        /**
+         * Phase 10/13. The plausible range around the headline forecast, and
+         * how much of it rests on measured behaviour rather than assumption.
+         *
+         * `degenerate: true` means all three scenarios coincide - which is a
+         * statement about how little we know, not about the future being
+         * certain, and is why `confidence.level` is LOW in that case.
+         * Scenarios are derived from the SAME events as `days`, so BASE always
+         * matches the line above it.
+         */
+        scenarios: {
+          degenerate: scenarios.degenerate,
+          optimistic: summarise(scenarios.optimistic),
+          base: summarise(scenarios.base),
+          conservative: summarise(scenarios.conservative),
+        },
+        confidence: {
+          level: scenarios.confidence.level,
+          eventsTotal: scenarios.confidence.eventsTotal,
+          eventsWithMeasuredTiming: scenarios.confidence.eventsWithMeasuredTiming,
+          widestBandDays: scenarios.confidence.widestBandDays,
+          outcomeSpread: scenarios.confidence.outcomeSpread,
+          reasons: scenarios.confidence.reasons,
         },
       },
     });

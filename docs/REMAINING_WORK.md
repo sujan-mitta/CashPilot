@@ -1,6 +1,6 @@
 # CashPilot — Remaining Work
 
-**As of:** 2026-08-28, after Phase 10. **The forecast chain is wired and one flag flip from live** — see C-14.
+**As of:** 2026-08-29, after Phase 13. **The forecast chain is wired and one flag flip from live** — see C-14.
 **Companion to:** [`UNIFIED_BRAIN_AUDIT.md`](./UNIFIED_BRAIN_AUDIT.md) (the plan), [`PHASE_17_RAZORPAY_CERTIFICATION.md`](./PHASE_17_RAZORPAY_CERTIFICATION.md) and [`PHASE_18_PRODUCTION_CLOSURE.md`](./PHASE_18_PRODUCTION_CLOSURE.md) (the provider boundary).
 
 This is the honest list of what is **not** done, and why. It exists so that nothing is silently assumed complete.
@@ -160,11 +160,11 @@ The CAS guard makes it **write-once**: only the settler that actually moves the 
 
 **Timestamp choice — deliberate.** It defaults to *observation time*, not a provider-attested `paid_at`. A provider timestamp would be strictly better, but this system has never received a real Razorpay webhook (A-3), so the field name and units cannot be verified, and §37 forbids assuming provider payload structure. Observation time has a known bounded meaning, and the behaviour model buckets by **day**, so webhook lag of seconds or minutes moves no metric. `settlePayment` takes an optional `paidAt` — pass a verified provider timestamp there as soon as A-3 is closed. See C-13.
 
-### B-12 🟡 Nothing surfaces scenarios or forecast confidence (Phase 10)
+### B-12 ◑ Surfacing scenarios and confidence — **PARTLY DONE**
 
-`buildScenarios` produces OPTIMISTIC/BASE/CONSERVATIVE plus a confidence level and readable reasons. No route returns any of it and no screen shows it, so the UI still presents a single forecast line with no stated uncertainty — which §57 and §29 both ask for.
+`/api/forecast` now returns `scenarios` and `confidence`, and the dashboard renders a "How reliable is this forecast?" card stating the range and why. Done for the forecast.
 
-**Owned by:** P13.
+**Still not surfaced anywhere:** cross-source conflicts (§14), evidence trails and the "why?" drill-down (§58), merge suggestions (C-3), and the reconciliation state of any subject. The chart also draws no band — the range is numeric only.
 
 ### B-11 ✅ Nothing assembles the behaviour map — **DONE**
 
@@ -197,6 +197,12 @@ Two things to keep in mind:
 
 - The state half is **aggregate-level** and structurally cannot see record substitution. One ₹5L invoice replaced by a different ₹5L invoice leaves every aggregate identical. That is the fingerprint's job, and always will be — which is why neither check may be removed in favour of the other.
 - It is currently **inert** (B-8). Once decisions start recording a state version, the gate becomes stricter, and a state that goes stale or unreadable will begin blocking execution. That is intended, but it is a behaviour change that will first appear when B-8 lands — not now.
+
+### C-15 🟡 The dashboard card has not been seen rendered with live data
+
+The "How reliable is this forecast?" card is covered by unit tests on its data path, typechecks, lints, and is exercised by the build's prerender of `/dashboard`. It has **not** been viewed in a browser with real data, because the dashboard is behind authentication and I do not enter credentials.
+
+Worth a human glance on the next login — particularly the degenerate case, which is what everyone will see until C-14 is satisfied.
 
 ### C-14 🟠 The whole chain is now one flag flip from changing forecasts
 
@@ -289,7 +295,7 @@ From `UNIFIED_BRAIN_AUDIT.md` §5. P0–P4 are done; everything below is untouch
 | ~~**P9**~~ | ~~Behaviour model~~ | ✅ **Done.** See §14. Completes the C-1 mechanism. Inert until `paidAt` is populated (B-10). |
 | ~~**P10**~~ | ~~Scenario forecasting~~ | ✅ **Done.** See §15. Not surfaced by any route (B-12). |
 | **P11** ◑ | Freshness ↔ `stateVersion` | Largely delivered by P7. Remaining: strategy `expiresAt`, `forecastVersion` (§32) |
-| **P13** 🟢 | Surface scenarios, confidence and conflicts in the UI | **Recommended next.** Everything it needs now exists and nothing displays it. |
+| **P13** ◑ | Surface scenarios, confidence and conflicts in the UI | Forecast half done (§16). **Remaining: evidence trails, conflicts, the "why?" drill-down.** |
 | **P12** 🟢 | Execution/webhook hardening | Mostly done; the open part is A-2/A-3/A-5 verification |
 | **P13** 🟢 | Cross-source reconciliation surfaced in UI/observability | |
 | **P14** 🟢 | Outcome measurement → behaviour model | Measurement exists; the connection does not |
@@ -331,7 +337,7 @@ Any change must keep this green.
 |---|---|
 | `npm run typecheck` | clean |
 | `npm run lint` | 0 problems |
-| `npm test` | 88 files, **1279 passed**, 5 skipped |
+| `npm test` | 89 files, **1287 passed**, 5 skipped |
 | `npm run build` | OK — 24 routes + middleware |
 
 The 5 skipped are A-5.

@@ -2,8 +2,15 @@ import { DailyMovement } from "@/lib/engine/forecast";
 import { logger } from "@/lib/observability";
 import { errorMessage } from "@/lib/errors";
 import { loadPaymentBehavior, type BehaviorClient } from "@/lib/behavior/behaviorStore";
+import type { PaymentBehavior } from "@/lib/behavior/paymentBehavior";
 import type { TransactionRecord } from "@/lib/db/records";
-import { buildMovements, FORECAST_EVENT_PIPELINE } from "./forecastEvent";
+import {
+  buildMovements,
+  forecastEventsToMovements,
+  transactionsToForecastEvents,
+  FORECAST_EVENT_PIPELINE,
+  type ForecastEvent,
+} from "./forecastEvent";
 
 /**
  * B-9 - the one call every forecast site makes to turn transactions into
@@ -73,4 +80,57 @@ export async function buildMovementsForBusiness(
     });
     return buildMovements(transactions, { useEventPipeline: true });
   }
+}
+
+export interface ForecastContext {
+  /** Day-bucketed movements, exactly as `buildMovementsForBusiness` returns. */
+  movements: DailyMovement[];
+  /**
+   * The same movements before bucketing, with their provenance and uncertainty
+   * band. This is what scenario forecasting consumes.
+   */
+  events: ForecastEvent[];
+}
+
+/**
+ * Build movements AND the events behind them, from one behaviour lookup.
+ *
+ * Scenario forecasting (P10) needs the events; the ordinary forecast needs the
+ * movements. Deriving both from a single pass matters for more than efficiency:
+ * if the two were built separately the scenario band could disagree with the
+ * line it is drawn around, and a BASE scenario that does not match the headline
+ * forecast is worse than no scenario at all.
+ *
+ * With the pipeline disabled the events carry no behavioural adjustment, so the
+ * BASE scenario is identical to the current forecast and the band is collapsed -
+ * which Phase 10 correctly reports as LOW confidence rather than certainty.
+ */
+export async function buildForecastContextForBusiness(
+  client: BehaviorClient,
+  businessId: string,
+  transactions: TransactionRecord[],
+  options: MovementOptions = {}
+): Promise<ForecastContext> {
+  const useEvents = options.useEventPipeline ?? FORECAST_EVENT_PIPELINE.enabled;
+
+  if (!useEvents) {
+    return {
+      movements: buildMovements(transactions, { useEventPipeline: false }),
+      events: transactionsToForecastEvents(transactions),
+    };
+  }
+
+  let byCounterparty: Map<string, PaymentBehavior> | undefined;
+  try {
+    byCounterparty = (await loadPaymentBehavior(client, businessId, { now: options.now }))
+      .byCounterparty;
+  } catch (error) {
+    logger.warn("Payment behaviour unavailable; forecasting on contractual dates", {
+      businessId,
+      error: errorMessage(error),
+    });
+  }
+
+  const events = transactionsToForecastEvents(transactions, byCounterparty);
+  return { movements: forecastEventsToMovements(events), events };
 }
