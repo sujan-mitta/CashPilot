@@ -75,6 +75,16 @@ model Invoice {
   /// null. Bare column, not a relation, to keep the new entity layer isolated.
   counterpartyId String?
 
+  /// Phase 9. When the money ACTUALLY arrived.
+  ///
+  /// Until now `status` flipped to PAID and the date was simply lost, which
+  /// made "how late does this customer usually pay?" unanswerable from stored
+  /// data - the behaviour model had no possible input. This is that input.
+  /// Nullable, never backfilled: a historical invoice genuinely has no recorded
+  /// payment date, and inventing one from `updatedAt` would fabricate the exact
+  /// history the model is supposed to measure.
+  paidAt         DateTime?
+
   @@index([businessId])
   @@index([businessId, counterpartyId])
 }

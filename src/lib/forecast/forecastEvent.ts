@@ -1,5 +1,6 @@
 import { DailyMovement, transactionsToMovements } from "@/lib/engine/forecast";
 import { sourceReliability } from "@/lib/evidence/confidence";
+import type { PaymentBehavior } from "@/lib/behavior/paymentBehavior";
 import type { TransactionRecord } from "@/lib/db/records";
 
 /**
@@ -115,7 +116,12 @@ function isForecastable(t: { status: string }): boolean {
  * forecast consumes, so the round-trip through events cannot perturb output.
  */
 export function transactionsToForecastEvents(
-  transactions: TransactionRecord[]
+  transactions: TransactionRecord[],
+  /**
+   * Payment behaviour keyed by counterparty id. Absent, or missing an entry,
+   * means no adjustment - the contractual date stands.
+   */
+  behaviorByCounterparty?: Map<string, PaymentBehavior>
 ): ForecastEvent[] {
   return transactions.filter(isForecastable).map((t) => {
     const contractualDate = new Date(t.expectedDate);
@@ -142,19 +148,59 @@ export function transactionsToForecastEvents(
       timingBasis: [],
     };
 
-    return applyExpectedTiming(base);
+    const counterpartyId = t.counterpartyId ?? null;
+    const behavior = counterpartyId ? behaviorByCounterparty?.get(counterpartyId) : null;
+    return applyExpectedTiming(base, behavior);
   });
 }
 
 /**
- * The extension point where behavioural intelligence will move an event's
- * expected timing away from its contractual date (spec §23, §24).
+ * Move an event's expected timing away from its contractual date, using what is
+ * known about how this counterparty actually pays (spec §23, §24).
  *
- * Today: the identity function. It exists now so the pipeline has one place to
- * change in P9, rather than the change being threaded through the adapter.
+ * Phase 9. The rule is that an ABSENT or WEAK opinion changes nothing: with no
+ * behaviour, sparse history, or an unusable delay, the contractual date stands
+ * and `timingBasis` stays empty. A forecast is only ever shifted on evidence
+ * strong enough to name, which is what makes a non-empty `timingBasis` a
+ * guarantee rather than a decoration.
+ *
+ * Outflows are deliberately NOT shifted. A payout's date is our own decision,
+ * not a counterparty's behaviour - we control when we pay.
  */
-export function applyExpectedTiming(event: ForecastEvent): ForecastEvent {
-  return event;
+export function applyExpectedTiming(
+  event: ForecastEvent,
+  behavior?: PaymentBehavior | null
+): ForecastEvent {
+  if (!behavior || behavior.sufficiency !== "SUFFICIENT") return event;
+  if (event.kind !== "INFLOW") return event;
+
+  const delay = behavior.expectedDelayDays;
+  if (delay === null || !Number.isFinite(delay)) return event;
+
+  // Sub-day adjustments cannot survive day bucketing, so they would add churn
+  // and evidence-free precision without changing any forecast day.
+  const wholeDays = Math.round(delay);
+  if (wholeDays === 0) return event;
+
+  const spread = Math.max(0, Math.round(behavior.delaySpreadDays ?? 0));
+  const expectedDate = shiftDays(event.contractualDate, wholeDays);
+
+  return {
+    ...event,
+    expectedDate,
+    earliestDate: shiftDays(expectedDate, -spread),
+    latestDate: shiftDays(expectedDate, spread),
+    sourceType: "HISTORICAL",
+    sourceConfidence: sourceReliability("HISTORICAL"),
+    timingBasis: [
+      `expected ${wholeDays} day(s) ${wholeDays > 0 ? "later than" : "earlier than"} the contractual date`,
+      ...behavior.basis,
+    ],
+  };
+}
+
+function shiftDays(date: Date, days: number): Date {
+  return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
 }
 
 /**
@@ -183,6 +229,8 @@ export function forecastEventsToMovements(events: ForecastEvent[]): DailyMovemen
 export interface BuildMovementsOptions {
   /** Override the master switch, for tests and for a staged rollout. */
   useEventPipeline?: boolean;
+  /** Payment behaviour by counterparty id. Omit for the unadjusted forecast. */
+  behaviorByCounterparty?: Map<string, PaymentBehavior>;
 }
 
 /**
@@ -211,5 +259,7 @@ export function buildMovements(
     );
   }
 
-  return forecastEventsToMovements(transactionsToForecastEvents(transactions));
+  return forecastEventsToMovements(
+    transactionsToForecastEvents(transactions, options.behaviorByCounterparty)
+  );
 }

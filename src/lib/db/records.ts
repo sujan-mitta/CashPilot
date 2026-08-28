@@ -38,6 +38,12 @@ export interface TransactionRecord {
   status: string;
   expectedDate: Date | string;
   description?: string | null;
+  /**
+   * Phase 9. Canonical counterparty, when entity resolution has linked one.
+   * Optional because the engine never requires it: absent means the forecast
+   * applies no behavioural timing adjustment.
+   */
+  counterpartyId?: string | null;
 }
 
 /**

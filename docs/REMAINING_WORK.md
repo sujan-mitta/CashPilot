@@ -1,6 +1,6 @@
 # CashPilot — Remaining Work
 
-**As of:** 2026-08-28, after Phase 8 (ForecastEvent seam).
+**As of:** 2026-08-28, after Phase 9 (Payment-behaviour intelligence).
 **Companion to:** [`UNIFIED_BRAIN_AUDIT.md`](./UNIFIED_BRAIN_AUDIT.md) (the plan), [`PHASE_17_RAZORPAY_CERTIFICATION.md`](./PHASE_17_RAZORPAY_CERTIFICATION.md) and [`PHASE_18_PRODUCTION_CLOSURE.md`](./PHASE_18_PRODUCTION_CLOSURE.md) (the provider boundary).
 
 This is the honest list of what is **not** done, and why. It exists so that nothing is silently assumed complete.
@@ -19,9 +19,9 @@ A note on how to read the test numbers anywhere in this repo: **a green `npm tes
 
 ## A. Blocked — these need you
 
-### A-1 🔴 Phase 1/2/4/6/7 migrations have never been applied to a database
+### A-1 🔴 Phase 1/2/4/6/7/9 migrations have never been applied to a database
 
-Five migration directories exist and have never been run by me against your Neon database:
+Six migration directories exist and have never been run by me against your Neon database:
 
 | Migration | Adds |
 |---|---|
@@ -30,8 +30,9 @@ Five migration directories exist and have never been run by me against your Neon
 | `20260828020000_phase4_entity_resolution` | `Counterparty`, `CounterpartyAlias`, `CounterpartyType`, nullable `Invoice.counterpartyId` / `Payout.counterpartyId` |
 | `20260828030000_phase6_financial_state` | `FinancialState` |
 | `20260828040000_phase7_decision_state_version` | nullable `Decision.financialStateVersion` |
+| `20260828050000_phase9_invoice_paid_at` | nullable `Invoice.paidAt` |
 
-All five are additive — new tables, one new enum each for P1/P2/P4, and three nullable columns with no default and no backfill — so no existing row is rewritten and every existing query reads back identically.
+All six are additive — new tables, one new enum each for P1/P2/P4, and four nullable columns with no default and no backfill — so no existing row is rewritten and every existing query reads back identically.
 
 **Why blocked:** running migrations against a database holding real financial data is your call, not mine. The Phase 4 DDL was verified byte-for-byte against `prisma migrate diff` output, but *verified* is not *applied*.
 
@@ -41,7 +42,7 @@ All five are additive — new tables, one new enum each for P1/P2/P4, and three 
 npx prisma migrate status
 ```
 
-and if the five are listed as pending, `npx prisma migrate deploy`.
+and if the six are listed as pending, `npx prisma migrate deploy`.
 
 **Rollback:** drop the new tables and the two nullable columns. Nothing reads them (see B-1), so rollback is isolated.
 
@@ -85,7 +86,7 @@ npm run test:live
 
 ### A-6 🔴 Production GO / NO-GO is still **NO-GO**
 
-Stated in `PHASE_18_PRODUCTION_CLOSURE.md` §20. A-2 and A-3 remain the gating blockers. Phases 1–6 and P8 added no production behaviour at all; P7 modifies the freshness gate but is provably inert for every existing decision (see C-10).
+Stated in `PHASE_18_PRODUCTION_CLOSURE.md` §20. A-2 and A-3 remain the gating blockers. Phases 1–6, P8 and P9 added no observable production behaviour; P7 modifies the freshness gate but is provably inert for every existing decision (see C-10).
 
 ---
 
@@ -149,7 +150,19 @@ This is deliberate ordering, not an oversight: arming a gate against states that
 
 The five production forecast call sites (`forecast`, `explain`, `investigate`, `strategies`, `execute` routes, plus `strategyEngine` and `testEngine`) still call `transactionsToMovements` directly rather than `buildMovements`. Switching them is safe — parity is proven strictly, including the resulting forecasts and runway metrics — but it is a separate, reviewable change and buys nothing until P9 gives the pipeline something to do.
 
-**Owned by:** P9.
+**Owned by:** P9 — still not done, since P9 gave the pipeline something to do but did not switch the call sites.
+
+### B-10 🟡 Nothing populates `Invoice.paidAt` (Phase 9)
+
+The behaviour model's only real input. Until settlement writes it, `computePaymentBehavior` returns `INSUFFICIENT` for every real counterparty and the forecast is unchanged in practice.
+
+The natural write points already exist — `PaymentRecovery` reaching `RECOVERED`, and the Razorpay settlement webhook — but wiring them touches the money path and belongs in its own reviewed change.
+
+**This is the single highest-value remaining item**: it is what turns the whole P1–P9 spine from mechanism into behaviour.
+
+### B-11 🟡 Nothing assembles the behaviour map (Phase 9)
+
+No query groups settled payments by counterparty and calls `computePaymentBehavior`. Callers must build the `Map<counterpartyId, PaymentBehavior>` themselves. Blocked behind B-10 (no data) and B-4 (no counterparty links).
 
 ---
 
@@ -157,14 +170,16 @@ The five production forecast call sites (`forecast`, `explain`, `investigate`, `
 
 These are not bugs. They are places where the current implementation is deliberately conservative or deliberately incomplete, and where that fact must not be forgotten.
 
-### C-1 🟡 Predictive confidence: half the ceiling lifted, half remains
+### C-1 ✅ Predictive confidence ceiling — **MECHANISM COMPLETE**
 
-`src/lib/evidence/confidence.ts` computes five dimensions. As of **P5**:
+Both missing dimensions of `src/lib/evidence/confidence.ts` are now computable:
 
-- `consistencyScore` — ✅ **now computable** via `reconcile.ts`. A corroborated prediction reaches ~0.95 where it was capped at 0.6; a contradicted one drops to 0.
-- `historicalAccuracyScore` — ❌ still `null`, needs the behaviour model (**P9**)
+- `consistencyScore` — ✅ P5 `reconcile.ts` (cross-source agreement)
+- `historicalAccuracyScore` — ✅ P9 `computePredictionAccuracy` (track record)
 
-The `UNKNOWN_PREDICTION_CAP = 0.6` clamp still applies to any claim where *neither* dimension is known. P6 added `runReconciliation`, which writes the score back to `Evidence` — but nothing schedules it (B-6) and nothing writes claims in the first place (B-2), so in practice every stored claim is still capped.
+With both supplied, confidence reaches `FULL` completeness and the `UNKNOWN_PREDICTION_CAP = 0.6` clamp no longer applies. Asserted end-to-end in both phases' tests.
+
+**But it is still capped in practice**, because nothing feeds it real data: nothing writes claims (B-2), nothing schedules reconciliation (B-6), and nothing populates `paidAt` (B-10). The formula is finished; the data path is not.
 
 ### C-10 🟡 The freshness gate now has a second, coarser check
 
@@ -175,9 +190,13 @@ Two things to keep in mind:
 - The state half is **aggregate-level** and structurally cannot see record substitution. One ₹5L invoice replaced by a different ₹5L invoice leaves every aggregate identical. That is the fingerprint's job, and always will be — which is why neither check may be removed in favour of the other.
 - It is currently **inert** (B-8). Once decisions start recording a state version, the gate becomes stricter, and a state that goes stale or unreadable will begin blocking execution. That is intended, but it is a behaviour change that will first appear when B-8 lands — not now.
 
+### C-12 🟡 The behaviour model's constants are reasoned, not calibrated
+
+Minimum 3 payments for any opinion and 5 to move a forecast; a 90-day recency window; a 0.7 cap on recency weight; a 7-day stability reference; a 3-day accuracy half-life. Each is defended in the code and each is deliberately conservative, but **none is fitted to real data** — there is none yet. They should be revisited once B-10 produces actual payment history, and calibrated in P15.
+
 ### C-11 🟡 Turning on the forecast pipeline will eventually need a config bump
 
-`FORECAST_EVENT_PIPELINE.enabled` is off and currently a no-op either way — the pipeline is parity-proven identical. That stops being true the moment P9 makes `applyExpectedTiming` move dates.
+`FORECAST_EVENT_PIPELINE.enabled` is off. It is still a no-op **in practice**, because no counterparty has enough history for P9 to shift anything (B-10) — but `applyExpectedTiming` is now capable of moving dates, so this is no longer a no-op *by construction*.
 
 **When that happens, `SCORING_CONFIG_VERSION` / `LIQUIDITY_CONFIG_VERSION` must be bumped in the same change.** Otherwise strategies generated under the old pipeline would survive into a different forecast without the freshness gate classifying them `MATERIAL_CHANGE`. The requirement is written in the code beside the flag, but it is a manual step and nothing enforces it.
 
@@ -233,8 +252,8 @@ From `UNIFIED_BRAIN_AUDIT.md` §5. P0–P4 are done; everything below is untouch
 | ~~**P6**~~ | ~~`FinancialState` materialisation~~ | ✅ **Done.** See `UNIFIED_BRAIN_AUDIT.md` §11. Not scheduled (B-6), not read (B-7). |
 | ~~**P7**~~ | ~~`stateVersion` ↔ freshness~~ | ✅ **Done.** See §12. Wired alongside the fingerprint; inert until B-8 writes the version. |
 | ~~**P8**~~ | ~~ForecastEvent seam~~ | ✅ **Done.** See §13. Parity-proven identical; no call site switched over yet (B-9). |
-| **P9** 🟢 | Customer/supplier behaviour model | **Recommended next.** First real consumer of P4, lifts the other half of C-1, and the first phase to intentionally change a forecast number. |
-| **P10** 🟢 | Scenario forecasting (OPTIMISTIC / BASE / CONSERVATIVE) | |
+| ~~**P9**~~ | ~~Behaviour model~~ | ✅ **Done.** See §14. Completes the C-1 mechanism. Inert until `paidAt` is populated (B-10). |
+| **P10** 🟢 | Scenario forecasting (OPTIMISTIC / BASE / CONSERVATIVE) | **Recommended next.** P9's `[earliestDate, latestDate]` band is exactly the input scenarios need. |
 | **P11** 🟢 | Freshness ↔ `stateVersion` | Mostly done already; needs integration only |
 | **P12** 🟢 | Execution/webhook hardening | Mostly done; the open part is A-2/A-3/A-5 verification |
 | **P13** 🟢 | Cross-source reconciliation surfaced in UI/observability | |
@@ -277,7 +296,7 @@ Any change must keep this green.
 |---|---|
 | `npm run typecheck` | clean |
 | `npm run lint` | 0 problems |
-| `npm test` | 83 files, **1201 passed**, 5 skipped |
+| `npm test` | 85 files, **1239 passed**, 5 skipped |
 | `npm run build` | OK — 24 routes + middleware |
 
 The 5 skipped are A-5.
