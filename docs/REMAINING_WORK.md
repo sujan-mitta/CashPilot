@@ -1,6 +1,6 @@
 # CashPilot — Remaining Work
 
-**As of:** 2026-08-29, after Phase 13. **The forecast chain is wired and one flag flip from live** — see C-14.
+**As of:** 2026-08-29, after Phase 13 + the brain sync runner. **The forecast chain is wired and one flag flip from live** — see C-14.
 **Companion to:** [`UNIFIED_BRAIN_AUDIT.md`](./UNIFIED_BRAIN_AUDIT.md) (the plan), [`PHASE_17_RAZORPAY_CERTIFICATION.md`](./PHASE_17_RAZORPAY_CERTIFICATION.md) and [`PHASE_18_PRODUCTION_CLOSURE.md`](./PHASE_18_PRODUCTION_CLOSURE.md) (the provider boundary).
 
 This is the honest list of what is **not** done, and why. It exists so that nothing is silently assumed complete.
@@ -14,6 +14,52 @@ Every item is one of:
 | 🟢 **READY** | No blocker. Just not built yet. |
 
 A note on how to read the test numbers anywhere in this repo: **a green `npm test` is not evidence that the branch typechecks** — vitest does not typecheck. Use `npm run typecheck` (see `R-13`).
+
+---
+
+# ⚠️ WHAT NEEDS YOU
+
+Everything I can do without you is done. These five are yours, in order of what unblocks the most.
+
+### 1. Apply the six migrations — unblocks almost everything else
+
+```bash
+npx prisma migrate status
+```
+
+Six additive migrations are written and verified byte-for-byte against Prisma's own generated DDL, and **none has been applied**. They add five tables, three enums and four nullable columns; no existing column is altered, dropped or backfilled, so every existing row reads back identically.
+
+If they list as pending: `npx prisma migrate deploy`.
+
+**Why it is yours:** running migrations against a database holding real financial data is your call, not mine. Everything below marked "blocked behind A-1" is waiting on this and nothing else.
+
+### 2. Run the brain sync once, and read what it reports
+
+```bash
+npm run brain:sync -- --dry-run
+```
+
+Then without `--dry-run`. It is idempotent and safe to re-run, and it moves no money and calls no provider.
+
+**Read two lines of its output before trusting anything downstream:**
+- `** N possible duplicate counterparties need a human decision **` — near-matched names are never merged automatically, because a wrong merge silently poisons one customer's payment history with another's. There is no UI for confirming these yet (C-3).
+- `** N source conflict(s) need a human decision **` — sources disagree about an amount, and nothing resolves that automatically (§14).
+
+### 3. Complete one real Razorpay test payment
+
+The `paid → CONFIRMED_SUCCESS` path — the one that tells a CFO money arrived — **has never run against reality**. It needs a human to complete one payment on the test account. Blocks A-2, and with it the production GO.
+
+### 4. Set `RAZORPAY_WEBHOOK_SECRET`, and give Razorpay a URL it can reach
+
+It is a secret, so I must not handle it. Without it webhook processing correctly fails closed in production. A tunnel or deployed environment is also needed before a real webhook has ever been delivered (A-3).
+
+### 5. Glance at the new dashboard card
+
+The "How reliable is this forecast?" card is unit-tested and prerenders at build, but I have not seen it with live data — the dashboard is behind authentication and I do not enter credentials (C-15).
+
+### Do NOT flip `FORECAST_EVENT_PIPELINE.enabled` yet
+
+It is one boolean from changing every forecast number. **C-14 lists the five preconditions.** The one that will bite is bumping `SCORING_CONFIG_VERSION` / `LIQUIDITY_CONFIG_VERSION` in the same change — without it, strategies built under the old pipeline keep passing the freshness gate into a forecast that no longer matches them.
 
 ---
 
@@ -104,11 +150,9 @@ The append-only spine exists and is idempotent, but no source produces events in
 
 **Owned by:** the connector phases (P17) and the ingestion wiring that precedes them.
 
-### B-2 🟡 Nothing writes `Claim` / `Evidence` (Phase 2)
+### B-2 ✅ Nothing writes `Claim` / `Evidence` — **DONE**
 
-`deriveFromInvoice` / `deriveFromTransaction` / `deriveFromPayout` map existing domain rows to claims and evidence, and `recordClaimWithEvidence` persists them idempotently. Neither is called, and **no backfill runner exists** to walk existing invoices/transactions/payouts.
-
-**Owned by:** P6, the first phase that actually needs claims to read. P5 consumes claim *types* but takes its observations as arguments.
+`syncFinancialBrain` stage 2 ingests every invoice, transaction and payout as claims + evidence. Run with `npm run brain:sync`.
 
 ### B-3 🟡 Nothing reads `counterpartyId` (Phase 4)
 
@@ -116,21 +160,21 @@ The append-only spine exists and is idempotent, but no source produces events in
 
 **Owned by:** P9 (behaviour model) is the first real consumer — it needs a stable entity to attach payment history to.
 
-### B-4 🟡 The counterparty backfill is not wired to a route or a job
+### B-4 ✅ The counterparty backfill is not wired — **DONE**
 
-`backfillInvoiceCounterparties` / `backfillPayoutCounterparties` are implemented, tenant-safe and tested (including re-run safety), but nothing invokes them. Running a backfill over real data should be an explicit, deliberate action — not a side effect of a deploy.
+`syncFinancialBrain` stage 1 runs both backfills. Exposed as a **script, not a route or cron**, on purpose: the entity set it produces from free-text names is what every later behaviour metric hangs off, so the first run over real data should be a decision someone makes deliberately.
 
-**Blocked behind:** A-1 (the columns must exist first).
+**Still blocked behind A-1** — the columns must exist before it can run.
 
 ### B-5 ✅ Nothing calls the cross-source reconciler — **DONE in P6**
 
 `runReconciliation` now assembles groups from stored claims/evidence and writes `consistencyScore` + re-derived `derivedConfidence` back. Still not *scheduled* — see B-6.
 
-### B-6 🟡 Nothing schedules state materialisation or reconciliation (Phase 6)
+### B-6 ◑ Scheduling state materialisation and reconciliation — **PARTLY DONE**
 
-`materializeFinancialState` and `runReconciliation` are implemented and tested, but no route, cron or post-write hook invokes either. And since B-2 still stands, a real run today would reconcile zero subjects.
+`syncFinancialBrain` stages 3 and 4 run both, and `npm run brain:sync` invokes it. What does *not* exist is any **automatic** trigger — no cron, no post-write hook. State advances only when someone runs the script.
 
-**Owned by:** P7/P8, where the state acquires its first reader.
+That is deliberate for a first release, but it means `Decision.financialStateVersion` should not be populated until state is being kept current, or the freshness gate would compare against a stale snapshot (B-8).
 
 ### B-7 🟡 Nothing reads `FinancialState` for forecasting (Phase 6)
 
@@ -295,7 +339,7 @@ From `UNIFIED_BRAIN_AUDIT.md` §5. P0–P4 are done; everything below is untouch
 | ~~**P9**~~ | ~~Behaviour model~~ | ✅ **Done.** See §14. Completes the C-1 mechanism. Inert until `paidAt` is populated (B-10). |
 | ~~**P10**~~ | ~~Scenario forecasting~~ | ✅ **Done.** See §15. Not surfaced by any route (B-12). |
 | **P11** ◑ | Freshness ↔ `stateVersion` | Largely delivered by P7. Remaining: strategy `expiresAt`, `forecastVersion` (§32) |
-| **P13** ◑ | Surface scenarios, confidence and conflicts in the UI | Forecast half done (§16). **Remaining: evidence trails, conflicts, the "why?" drill-down.** |
+| **P13** ◑ | Surface scenarios, confidence and conflicts in the UI | Forecast half done (§16). Remaining: evidence trails, conflicts, the "why?" drill-down — all of which read tables that are empty until A-1 + `brain:sync` run. |
 | **P12** 🟢 | Execution/webhook hardening | Mostly done; the open part is A-2/A-3/A-5 verification |
 | **P13** 🟢 | Cross-source reconciliation surfaced in UI/observability | |
 | **P14** 🟢 | Outcome measurement → behaviour model | Measurement exists; the connection does not |
@@ -337,7 +381,7 @@ Any change must keep this green.
 |---|---|
 | `npm run typecheck` | clean |
 | `npm run lint` | 0 problems |
-| `npm test` | 89 files, **1287 passed**, 5 skipped |
+| `npm test` | 90 files, **1298 passed**, 5 skipped |
 | `npm run build` | OK — 24 routes + middleware |
 
 The 5 skipped are A-5.

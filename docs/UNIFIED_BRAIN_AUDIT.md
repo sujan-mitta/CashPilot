@@ -613,3 +613,40 @@ Both new response fields are **optional** in `ForecastResponse`, so a cached res
 2. **The chart is unchanged** — no shaded band is drawn on `ForecastChart`; the range is stated numerically only.
 3. **Degenerate today**, and will stay so until C-14's preconditions are met.
 4. **Cross-source conflicts and evidence trails are still not surfaced** anywhere (§57's "Evidence" section, §58's "why" trace). That is the remaining part of P13.
+
+---
+
+## 17. The brain sync runner
+
+Phases 1–10 each landed as an additive library with no caller. That was the right way to build them and the wrong way to leave them: entity resolution, claim/evidence ingest, cross-source reconciliation and state materialisation were all implemented, tested, and invoked by nothing.
+
+`src/lib/brain/sync.ts` invokes them, in the only order that makes each useful to the next:
+
+| Stage | Does | Feeds |
+|---|---|---|
+| 1. Entities | resolves customers/suppliers, links invoices and payouts | gives history an owner |
+| 2. Claims | derives claims + evidence from the domain rows | gives reconciliation something to compare |
+| 3. Reconcile | cross-checks sources, rewrites evidence confidence | produces the conflict/missing rollup |
+| 4. State | materialises the unified state | carries stage 3's rollup |
+
+**Exposed as a script (`npm run brain:sync`), not a route or a cron.** The entity set it builds from free-text names is what every later behaviour metric hangs off, so the first run over real data should be a decision someone makes on purpose. It is idempotent, safe to interrupt, and deliberately *not* wrapped in one transaction — a full-tenant sync can be long, and holding a write transaction across it would block the money path. Partial progress is a correct intermediate state precisely because each stage is idempotent.
+
+The script prints two lines that demand a human, and says so:
+
+```
+** N possible duplicate counterparties need a human decision **
+** N source conflict(s) need a human decision **
+```
+
+Neither is ever resolved automatically. A wrong merge silently poisons one customer's payment history with another's, and §14 forbids silently resolving a material conflict.
+
+### Closes
+
+**B-2** (nothing wrote claims/evidence), **B-4** (backfill unwired), and most of **B-6** (nothing ran reconciliation or state).
+
+### Limitations
+
+1. **No automatic trigger.** No cron, no post-write hook. State advances only when someone runs the script — which is why `Decision.financialStateVersion` should stay unpopulated (B-8) until it is kept current.
+2. **Whole-tenant each run.** No incremental recomputation (§52).
+3. **Sequential by design** — resolution reads the entity set it writes.
+4. **Cannot run until the migrations are applied** (A-1). It fails immediately and harmlessly before touching anything.
