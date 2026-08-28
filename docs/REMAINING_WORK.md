@@ -1,6 +1,6 @@
 # CashPilot — Remaining Work
 
-**As of:** 2026-08-28, after Phase 4 (Entity Resolution).
+**As of:** 2026-08-28, after Phase 5 (Cross-Source Reconciliation).
 **Companion to:** [`UNIFIED_BRAIN_AUDIT.md`](./UNIFIED_BRAIN_AUDIT.md) (the plan), [`PHASE_17_RAZORPAY_CERTIFICATION.md`](./PHASE_17_RAZORPAY_CERTIFICATION.md) and [`PHASE_18_PRODUCTION_CLOSURE.md`](./PHASE_18_PRODUCTION_CLOSURE.md) (the provider boundary).
 
 This is the honest list of what is **not** done, and why. It exists so that nothing is silently assumed complete.
@@ -13,7 +13,7 @@ Every item is one of:
 | 🟡 **DEFERRED** | Deliberately not done. The phase that owns it has not run yet, or doing it early would violate the additive posture. |
 | 🟢 **READY** | No blocker. Just not built yet. |
 
-A note on how to read the test numbers anywhere in this repo: **a green `npm test` is not evidence that the branch typechecks** — see `R-13`.
+A note on how to read the test numbers anywhere in this repo: **a green `npm test` is not evidence that the branch typechecks** — vitest does not typecheck. Use `npm run typecheck` (see `R-13`).
 
 ---
 
@@ -83,15 +83,15 @@ npm run test:live
 
 ### A-6 🔴 Production GO / NO-GO is still **NO-GO**
 
-Stated in `PHASE_18_PRODUCTION_CLOSURE.md` §20 and unchanged by Phases 1–4, which added no production behaviour at all. A-2 and A-3 are the gating blockers.
+Stated in `PHASE_18_PRODUCTION_CLOSURE.md` §20 and unchanged by Phases 1–5, which added no production behaviour at all. A-2 and A-3 are the gating blockers.
 
 ---
 
 ## B. Deferred by design — the additive posture
 
-Phases 1–4 were each built as *additive*: new tables, new libraries, full test coverage, and **deliberately zero production consumers**. That is why four phases have landed without changing a single route or a single number in the forecast. The consumers arrive in later phases, once the primitives they depend on exist.
+Phases 1–5 were each built as *additive*: new tables, new libraries, full test coverage, and **deliberately zero production consumers**. That is why five phases have landed without changing a single route or a single number in the forecast. The consumers arrive in later phases, once the primitives they depend on exist.
 
-Verified by grep at the time of writing: `recordFinancialEvent`, `recordClaimWithEvidence` / `ingestInvoice` / `ingestTransaction` / `ingestPayout`, and `resolveCounterparty` / `mergeCounterparties` / `backfill*` have **no callers outside their own modules and tests**.
+Verified by grep at the time of writing: `recordFinancialEvent`, `recordClaimWithEvidence` / `ingest*`, `resolveCounterparty` / `mergeCounterparties` / `backfill*`, and `reconcileObservations` / `sourceAuthority` have **no callers outside their own modules and tests**.
 
 ### B-1 🟡 Nothing writes `FinancialEvent` (Phase 1)
 
@@ -103,7 +103,7 @@ The append-only spine exists and is idempotent, but no source produces events in
 
 `deriveFromInvoice` / `deriveFromTransaction` / `deriveFromPayout` map existing domain rows to claims and evidence, and `recordClaimWithEvidence` persists them idempotently. Neither is called, and **no backfill runner exists** to walk existing invoices/transactions/payouts.
 
-**Owned by:** P5–P6, which are the first phases that actually need claims to read.
+**Owned by:** P6, the first phase that actually needs claims to read. P5 consumes claim *types* but takes its observations as arguments.
 
 ### B-3 🟡 Nothing reads `counterpartyId` (Phase 4)
 
@@ -117,20 +117,26 @@ The append-only spine exists and is idempotent, but no source produces events in
 
 **Blocked behind:** A-1 (the columns must exist first).
 
+### B-5 🟡 Nothing calls the cross-source reconciler (Phase 5)
+
+`reconcileObservations` is pure and fully tested, but nothing assembles observation groups from stored claims and evidence, and nothing writes the computed `consistencyScore` back to `Evidence`. Until that happens, C-1's lifted ceiling is theoretical.
+
+**Owned by:** P6 — the persistence layer needs a state to attach reconciliation outcomes to.
+
 ---
 
 ## C. Known limitations of what has been built
 
 These are not bugs. They are places where the current implementation is deliberately conservative or deliberately incomplete, and where that fact must not be forgotten.
 
-### C-1 🟡 Predictive confidence is capped at 0.6 and cannot yet rise
+### C-1 🟡 Predictive confidence: half the ceiling lifted, half remains
 
-`src/lib/evidence/confidence.ts` computes two of its five dimensions as `null`:
+`src/lib/evidence/confidence.ts` computes five dimensions. As of **P5**:
 
-- `historicalAccuracyScore` — needs the behaviour model (**P9**)
-- `consistencyScore` — needs cross-source reconciliation (**P5**)
+- `consistencyScore` — ✅ **now computable** via `reconcile.ts`. A corroborated prediction reaches ~0.95 where it was capped at 0.6; a contradicted one drops to 0.
+- `historicalAccuracyScore` — ❌ still `null`, needs the behaviour model (**P9**)
 
-With neither available, any predictive claim (`EXPECTED` / `PREDICTED` / `UNCERTAIN`) is clamped by `UNKNOWN_PREDICTION_CAP = 0.6`. This is the correct behaviour — a prediction with no track record and no corroboration should not look confident — but it means **predictive confidence is currently structurally incapable of exceeding 0.6**, no matter how good the source. P5 lifts half that ceiling, P9 the other half.
+The `UNKNOWN_PREDICTION_CAP = 0.6` clamp still applies to any claim where *neither* dimension is known — which, since nothing calls the reconciler in production yet (B-5), is still every claim in practice. The mechanism exists and is tested; the wiring does not.
 
 ### C-2 🟡 Entity resolution is name-only
 
@@ -180,8 +186,8 @@ From `UNIFIED_BRAIN_AUDIT.md` §5. P0–P4 are done; everything below is untouch
 
 | Phase | Deliverable | Notes |
 |---|---|---|
-| **P5** 🟢 | Cross-source reconciliation of inbound evidence (`UNMATCHED → … → RECONCILED` / `CONFLICT`) | **Recommended next.** Consumes P4 entities + P2 claims, and is what makes C-1's `consistencyScore` computable. |
-| **P6** 🟢 | `FinancialState` materialisation, read-through only | Non-authoritative at first |
+| ~~**P5**~~ | ~~Cross-source reconciliation of inbound evidence~~ | ✅ **Done.** See `UNIFIED_BRAIN_AUDIT.md` §10. Persistence deferred to P6 (B-5). |
+| **P6** 🟢 | `FinancialState` materialisation, read-through only | **Recommended next.** Non-authoritative at first; also the home for B-5's persistence. |
 | **P7** 🟢 | `stateVersion` advancing on material mutation | Must run *alongside* `contextFingerprint`, never replace it, until parity is proven |
 | **P8** 🟢 | Feed unified state into `buildForecast` | **Highest-care phase.** Behind a flag, parity-tested against current output |
 | **P9** 🟢 | Customer/supplier behaviour model | First real consumer of P4; lifts the other half of C-1 |
@@ -200,35 +206,35 @@ From `UNIFIED_BRAIN_AUDIT.md` §5. P0–P4 are done; everything below is untouch
 
 ## E. Repo hygiene
 
-### R-13 🟢 `tsc` fails on a fresh checkout until `prisma generate` runs
+### R-13 ✅ `tsc` fails on a fresh checkout until `prisma generate` runs — **FIXED**
 
 Found while establishing the Phase 4 baseline, and it bit this session: `npx tsc --noEmit` reported 16 errors on a clean tree because the generated Prisma client is gitignored (regenerated by `postinstall`) and the local copy predated the Phase 1–3 models. `FinancialEvent`, `Claim`, `Evidence` and `ClaimType` simply did not exist as types.
 
 **The trap:** vitest does not typecheck, so `npm test` was fully green throughout. A green test run says nothing about whether the branch compiles.
 
-**Suggested fix** (not applied — it changes `package.json`, which felt out of scope for a phase commit):
+**Fixed** in `a8c77bf` — `package.json` now carries:
 
 ```json
 "typecheck": "prisma generate && tsc --noEmit"
 ```
 
-so the two can never drift apart again.
+so the two can never drift apart again. Use `npm run typecheck` rather than bare `tsc`.
 
-### R-14 🟢 Phase 4 is uncommitted
+### R-14 ✅ Phase 4 is uncommitted — **DONE**
 
-`prisma/schema.prisma`, `docs/UNIFIED_BRAIN_AUDIT.md`, `prisma/migrations/20260828020000_phase4_entity_resolution/` and `src/lib/entities/` are modified or untracked on `improvements-and-fixes`. Phases 1–3 each landed as their own commit; Phase 4 has not been committed.
+Committed as `dae385b`.
 
 ---
 
 ## Regression floor
 
-Any change must keep this green. Run `npx prisma generate` first (see R-13).
+Any change must keep this green.
 
 | Check | Result |
 |---|---|
-| `npx tsc --noEmit` | clean |
+| `npm run typecheck` | clean |
 | `npm run lint` | 0 problems |
-| `npm test` | 75 files, **1041 passed**, 5 skipped |
+| `npm test` | 77 files, **1082 passed**, 5 skipped |
 | `npm run build` | OK — 24 routes + middleware |
 
 The 5 skipped are A-5.
