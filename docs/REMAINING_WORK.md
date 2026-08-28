@@ -338,14 +338,15 @@ From `UNIFIED_BRAIN_AUDIT.md` §5. P0–P4 are done; everything below is untouch
 | ~~**P8**~~ | ~~ForecastEvent seam~~ | ✅ **Done.** See §13. Parity-proven identical; no call site switched over yet (B-9). |
 | ~~**P9**~~ | ~~Behaviour model~~ | ✅ **Done.** See §14. Completes the C-1 mechanism. Inert until `paidAt` is populated (B-10). |
 | ~~**P10**~~ | ~~Scenario forecasting~~ | ✅ **Done.** See §15. Not surfaced by any route (B-12). |
-| **P11** ◑ | Freshness ↔ `stateVersion` | Largely delivered by P7. Remaining: strategy `expiresAt`, `forecastVersion` (§32) |
-| **P13** ◑ | Surface scenarios, confidence and conflicts in the UI | Forecast half done (§16). Remaining: evidence trails, conflicts, the "why?" drill-down — all of which read tables that are empty until A-1 + `brain:sync` run. |
-| **P12** 🟢 | Execution/webhook hardening | Mostly done; the open part is A-2/A-3/A-5 verification |
-| **P13** 🟢 | Cross-source reconciliation surfaced in UI/observability | |
-| **P14** 🟢 | Outcome measurement → behaviour model | Measurement exists; the connection does not |
-| **P15** 🟢 | Forecast calibration / learning loop | |
-| **P16** 🟢 | AI explanation over evidence and state | Extends the existing explain layer |
-| **P17** 🟢 | Additional connectors and financial actions | Bank, ERP, email, documents — none exist today |
+| **P11** ◑ | Freshness ↔ `stateVersion` | Core delivered by P7. **Remaining work is NOT blocked by anything**: strategy `expiresAt` and `forecastVersion` (§32). Smallest unblocked item on this list. |
+| **P12** ◑ | Execution/webhook hardening | Certified in Phases 17/18. A fresh code audit against §37/§38 is unblocked; only the *live* verification needs A-2/A-3/A-5. |
+| **P13** ◑ | Surface it in the UI | Forecast half done (§16). Remaining — evidence trails, conflicts, the "why?" drill-down — reads tables that stay empty until A-1 + `brain:sync`, so the screens could not be verified against real data. |
+| **P14** ◑ | Outcome measurement → behaviour model | Per-**decision** calibration (`Decision.actualOutcome` → `computePredictionAccuracy`) is unblocked. Per-**counterparty** grouping needs the P4 links, so needs A-1. |
+| **P15** 🟡 | Forecast calibration / learning loop | Mechanism buildable; needs P14's accumulated observations to do anything. |
+| **P16** ◑ | AI explanation over evidence and state | Explaining **scenarios and forecast confidence** is unblocked — both exist and are computed regardless of A-1. Explaining **evidence** needs evidence. |
+| **P17** 🔴 | Additional connectors and financial actions | Not blocked by A-1. Blocked on **decisions only you can make**: which bank/ERP/provider, and whose credentials. Largest greenfield in the spec. |
+
+> **Correction (2026-08-29).** An earlier summary claimed the entire remainder was "downstream of A-1". That was wrong. P11's leftovers are blocked by nothing, and parts of P12, P14 and P16 are unblocked too. Only P13's remainder and P15 genuinely wait on the migrations; P17 waits on you for a different reason.
 
 **Spec areas with no implementation at all yet:** source adapters (§6), background sync + sync health + source freshness (§53–56), stale-data safety (§56), and dependency-aware incremental recomputation (§52). All of these presuppose connectors, so they are downstream of P17.
 
