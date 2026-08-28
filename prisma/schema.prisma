@@ -539,3 +539,102 @@ enum FinancialEventType {
   SETTLEMENT
   USER_ADJUSTMENT
 }
+
+/// Phase 2 - a CLAIM is an assertion about a financial fact, e.g. "invoice X is
+/// contractually due on Sep 5" or "money for invoice X actually arrived". It is
+/// deliberately typed (ClaimType) so a prediction is never stored as a fact
+/// (spec §13). One claim per (subject, claimType); its supporting evidence is
+/// append-only and may accumulate (spec §46).
+///
+/// A claim's `confidence` is derived from its evidence. In Phase 2 that is a
+/// provisional stand-in; the real multi-dimensional formula lands in Phase 3.
+model Claim {
+  id          String     @id @default(cuid())
+  businessId  String
+
+  claimType   ClaimType
+  /// What the claim is about: "INVOICE" | "PAYOUT" | "TRANSACTION" | ...
+  subjectType String
+  /// Stable id of the subject at its source (e.g. an Invoice id).
+  subjectId   String
+
+  /// The asserted fact, structured (e.g. { dueDate, amount }).
+  assertion   Json
+  /// Monetary value in paise, if the claim is about money.
+  amount      Int?
+  currency    String     @default("INR")
+  /// When the claim is expected to hold / take effect.
+  effectiveAt DateTime?
+
+  /// Aggregate confidence in [0,1] derived from supporting evidence.
+  confidence  Float      @default(0)
+  /// ACTIVE | SUPERSEDED | EXPIRED - claims are re-resolvable; evidence is not.
+  status      String     @default("ACTIVE")
+
+  evidence    Evidence[]
+
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@unique([businessId, subjectType, subjectId, claimType])
+  @@index([businessId])
+  @@index([businessId, subjectType, subjectId])
+  @@index([businessId, claimType])
+}
+
+/// Phase 2 - EVIDENCE is one observation supporting a claim, from one source.
+///
+/// Append-only (spec §46): when a customer says "I'll pay Sep 10" the original
+/// contractual-date evidence is NOT overwritten - a new row is added and the
+/// claim is re-resolved. The confidence components are multi-dimensional
+/// (spec §11); Phase 2 populates only what it can compute honestly and leaves
+/// the rest null for Phase 3 rather than manufacturing precision.
+model Evidence {
+  id             String   @id @default(cuid())
+  businessId     String
+
+  claim          Claim    @relation(fields: [claimId], references: [id])
+  claimId        String
+
+  /// Originating source, e.g. "ERP", "BANK", "RAZORPAY", "USER", "HISTORICAL".
+  sourceType     String
+  /// Stable id of the record at the source.
+  sourceRecordId String
+  /// Optional link to the canonical FinancialEvent once events exist (P1 spine).
+  financialEventId String?
+
+  /// A finer classification, e.g. "ERP_INVOICE", "BANK_TRANSACTION".
+  evidenceType   String
+
+  observedAt     DateTime
+  effectiveAt    DateTime?
+
+  /// Confidence components in [0,1]. Only the honestly-computable ones are set
+  /// in Phase 2; specificity/historicalAccuracy/consistency arrive in P3/P9.
+  reliabilityScore        Float?
+  freshnessScore          Float?
+  specificityScore        Float?
+  historicalAccuracyScore Float?
+  consistencyScore        Float?
+  derivedConfidence       Float?
+
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  @@unique([businessId, claimId, sourceType, sourceRecordId, evidenceType])
+  @@index([businessId])
+  @@index([claimId])
+  @@index([businessId, sourceType, sourceRecordId])
+}
+
+enum ClaimType {
+  ACTUAL
+  CONFIRMED
+  CONTRACTUAL
+  EXPECTED
+  PREDICTED
+  UNCERTAIN
+  CONTRADICTED
+  EXPIRED
+  RECONCILED
+}
