@@ -465,3 +465,77 @@ model WebhookDeliveryAttempt {
   @@index([status])
   @@index([businessId])
 }
+
+/// Phase 1 - the canonical, append-only spine of the Unified Financial Brain.
+///
+/// Every source (bank, ERP, invoices, Razorpay, email, user) will eventually
+/// normalise its raw records into FinancialEvents. This is deliberately NOT
+/// authoritative on its own: it is the evidence spine that later phases attach
+/// Evidence / Claims / unified state to. In Phase 1 it has NO consumers - it is
+/// written to but nothing reads it - so it cannot change any existing behaviour.
+///
+/// Idempotency: (businessId, sourceType, sourceRecordId) is the stable source
+/// identity. Re-delivering the same source record - webhook retry, re-sync, a
+/// restart mid-batch - must never create a duplicate event. Follows the newer
+/// convention (ExecutionIntent, WebhookDeliveryAttempt) of a bare businessId
+/// column with an index rather than a Prisma relation, so tenancy is enforced
+/// in queries and this table stays fully isolated from existing models.
+model FinancialEvent {
+  id             String             @id @default(cuid())
+  businessId     String
+
+  eventType      FinancialEventType
+  /// The originating source, e.g. "RAZORPAY", "BANK", "ERP", "INVOICE",
+  /// "USER", "SEED". A plain string so a new source needs no enum migration.
+  sourceType     String
+  /// Stable identifier of the underlying record AT THE SOURCE.
+  sourceRecordId String
+
+  /// Canonical entity (Customer / Supplier) once entity resolution lands (P4).
+  /// Null in Phase 1.
+  entityId       String?
+
+  /// In paise, like every amount in this system. Null for events that carry no
+  /// monetary value.
+  amount         Int?
+  currency       String             @default("INR")
+
+  /// When the event occurred at the source.
+  occurredAt     DateTime
+  /// When it takes financial effect (defaults to occurredAt at write time).
+  effectiveAt    DateTime
+
+  /// Source-specific lifecycle status, kept as a string for extensibility.
+  status         String?
+
+  /// Structured, normalised payload. MUST NOT contain secrets, credentials,
+  /// signatures or raw provider headers.
+  normalizedData Json?
+  /// A non-sensitive pointer back to the raw record (e.g. an internal row id).
+  rawReference   String?
+
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@unique([businessId, sourceType, sourceRecordId])
+  @@index([businessId])
+  @@index([businessId, effectiveAt])
+  @@index([businessId, entityId])
+  @@index([eventType])
+}
+
+enum FinancialEventType {
+  INVOICE_CREATED
+  INVOICE_DUE
+  INVOICE_OVERDUE
+  INVOICE_PAID
+  PAYMENT_RECEIVED
+  PAYMENT_FAILED
+  PAYOUT_SCHEDULED
+  PAYOUT_SETTLED
+  PAYOUT_RESCHEDULED
+  PAYOUT_PAUSED
+  BANK_TRANSACTION
+  SETTLEMENT
+  USER_ADJUSTMENT
+}
