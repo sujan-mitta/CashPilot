@@ -1,6 +1,6 @@
 import { Prisma, FinancialState } from "../../../generated/prisma/client";
 import { logger } from "@/lib/observability";
-import type { FinancialStateSnapshot } from "./financialState";
+import type { FinancialStateSnapshot, ReconciliationSummary } from "./financialState";
 
 /**
  * Phase 6 - materialise the Unified Financial State (spec §18, §19).
@@ -19,6 +19,41 @@ import type { FinancialStateSnapshot } from "./financialState";
  */
 
 export type FinancialStateClient = Pick<Prisma.TransactionClient, "financialState">;
+
+/**
+ * Rebuild the comparable snapshot from a stored row.
+ *
+ * Phase 7 needs to diff a decision's recorded state against the current one,
+ * and a row is not a snapshot: `horizonDays` and the component hashes live in
+ * `detail`. Missing or malformed `detail` yields empty components rather than
+ * throwing - a state we cannot fully read must degrade to "cannot certify",
+ * which is what an empty component set produces downstream.
+ */
+export function toSnapshot(row: FinancialState): FinancialStateSnapshot {
+  const detail = (row.detail ?? {}) as {
+    components?: Record<string, string>;
+    horizonDays?: number;
+  };
+  const reconciliation = (row.reconciliation ?? null) as ReconciliationSummary | null;
+
+  return {
+    asOf: row.asOf.toISOString(),
+    cashPosition: row.cashPosition,
+    receivables: row.receivables,
+    payables: row.payables,
+    expectedInflows: row.expectedInflows,
+    expectedOutflows: row.expectedOutflows,
+    activeCommitments: row.activeCommitments,
+    requiredBuffer: row.requiredBuffer,
+    projectedMinimumBalance: row.projectedMinimumBalance,
+    riskState: row.riskState as FinancialStateSnapshot["riskState"],
+    horizonDays: detail.horizonDays ?? 0,
+    reconciliation,
+    evidenceRefs: Array.isArray(row.evidenceRefs) ? (row.evidenceRefs as string[]) : [],
+    components: detail.components ?? {},
+    stateHash: row.stateHash,
+  };
+}
 
 const UNIQUE_VIOLATION = "P2002";
 

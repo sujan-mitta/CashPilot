@@ -365,6 +365,15 @@ model Decision {
   outcomePhase           OutcomePhase        @default(NOT_STARTED)
   finalOutcomeMeasuredAt DateTime?
 
+  /// ---- Phase 7 ----
+
+  /// The materialised financial state this recommendation was generated
+  /// against (spec §32). Nullable: every decision made before Phase 7, and any
+  /// made when no state has been materialised, carries null - and a null here
+  /// means the state freshness check is NOT_TRACKED and defers entirely to
+  /// `contextFingerprint`, so existing decisions behave exactly as before.
+  financialStateVersion  Int?
+
   /// Configuration identity at decision time (PART 27).
   scoringConfigVersion   String              @default("14.0.0")
   liquidityConfigVersion String              @default("14.0.0")

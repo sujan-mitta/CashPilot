@@ -2,6 +2,13 @@ import { buildDecisionContext } from "./decisionContext";
 import { classifyStaleness, FreshnessVerdict, FingerprintDetail } from "./strategyFreshness";
 import { appendDecisionEvent } from "./decisionStateMachine";
 import { DecisionEventType, Prisma } from "../../../generated/prisma/client";
+import { toSnapshot } from "@/lib/state/store";
+import {
+  classifyStateTransition,
+  combineFreshness,
+  type StateTransitionVerdict,
+  type VersionedState,
+} from "@/lib/state/stateTransition";
 
 /**
  * Server-side strategy freshness gate (PART 11 / PART 14).
@@ -21,6 +28,12 @@ export interface FreshnessGateResult {
   verdict: FreshnessVerdict;
   /** True when the caller must refuse the operation. */
   blocked: boolean;
+  /**
+   * Phase 7. The financial-state half of the check, reported separately so an
+   * explanation can say which half fired. `NOT_TRACKED` whenever the decision
+   * recorded no state version - which is every decision made before Phase 7.
+   */
+  stateVerdict: StateTransitionVerdict;
 }
 
 export async function checkStrategyFreshness(
@@ -43,12 +56,106 @@ export async function checkStrategyFreshness(
     today: params.today,
   });
 
-  const verdict = classifyStaleness(
+  const fingerprintVerdict = classifyStaleness(
     (decision?.fingerprintDetail as unknown as FingerprintDetail | null) ?? null,
     current
   );
 
-  return { verdict, blocked: verdict.blocksExecution };
+  // Phase 7: the financial-state half, layered ON TOP of the fingerprint and
+  // never in place of it. A state is an aggregate view, so it cannot see
+  // offsetting record-level changes the fingerprint catches; combining takes
+  // the more conservative verdict, so this can only ever tighten the gate.
+  const stateVerdict = await checkStateFreshness(client, params.businessId, decision);
+  const verdict = combineFreshness(fingerprintVerdict, stateVerdict);
+
+  return { verdict, blocked: verdict.blocksExecution, stateVerdict };
+}
+
+/**
+ * Compare the state a decision was generated against with the current one.
+ *
+ * Returns NOT_TRACKED - which contributes nothing to the combined verdict -
+ * whenever the decision carries no `financialStateVersion`. That is the case for
+ * every decision written before Phase 7, so no existing recommendation changes
+ * behaviour, and no extra query is issued for one either.
+ */
+async function checkStateFreshness(
+  client: Prisma.TransactionClient,
+  businessId: string,
+  decision: { financialStateVersion?: number | null } | null
+): Promise<StateTransitionVerdict> {
+  const recordedVersion = decision?.financialStateVersion ?? null;
+  if (recordedVersion === null) {
+    return {
+      classification: "NOT_TRACKED",
+      changes: [],
+      fromVersion: null,
+      toVersion: null,
+      blocksExecution: false,
+    };
+  }
+
+  // Optional-chained like `client.decision` above: engine tests supply partial
+  // clients, and an absent table must degrade rather than throw.
+  if (!client?.financialState) {
+    return {
+      classification: "UNKNOWN",
+      changes: [
+        {
+          field: "financialState",
+          severity: "UNKNOWN",
+          from: recordedVersion,
+          to: null,
+          reason:
+            "This decision recorded a financial state that cannot be read back, so it cannot be verified.",
+        },
+      ],
+      fromVersion: recordedVersion,
+      toVersion: null,
+      blocksExecution: true,
+    };
+  }
+
+  const [recorded, latest] = await Promise.all([
+    client.financialState.findFirst({
+      where: { businessId, stateVersion: recordedVersion },
+    }),
+    client.financialState.findFirst({
+      where: { businessId },
+      orderBy: { stateVersion: "desc" },
+    }),
+  ]);
+
+  const from: VersionedState | null = recorded
+    ? { stateVersion: recorded.stateVersion, snapshot: toSnapshot(recorded) }
+    : null;
+  const to: VersionedState | null = latest
+    ? { stateVersion: latest.stateVersion, snapshot: toSnapshot(latest) }
+    : null;
+
+  // `from` null here means the decision named a version that is gone - a real
+  // problem, not an untracked decision. classifyStateTransition would read a
+  // null `from` as NOT_TRACKED, so say UNKNOWN explicitly instead.
+  if (!from) {
+    return {
+      classification: "UNKNOWN",
+      changes: [
+        {
+          field: "financialState",
+          severity: "UNKNOWN",
+          from: recordedVersion,
+          to: to?.stateVersion ?? null,
+          reason:
+            "The financial state this decision was generated against is no longer on record, so it cannot be verified.",
+        },
+      ],
+      fromVersion: recordedVersion,
+      toVersion: to?.stateVersion ?? null,
+      blocksExecution: true,
+    };
+  }
+
+  return classifyStateTransition(from, to);
 }
 
 /**

@@ -1,6 +1,6 @@
 # CashPilot — Remaining Work
 
-**As of:** 2026-08-28, after Phase 6 (Unified Financial State).
+**As of:** 2026-08-28, after Phase 7 (State Versioning ↔ Freshness).
 **Companion to:** [`UNIFIED_BRAIN_AUDIT.md`](./UNIFIED_BRAIN_AUDIT.md) (the plan), [`PHASE_17_RAZORPAY_CERTIFICATION.md`](./PHASE_17_RAZORPAY_CERTIFICATION.md) and [`PHASE_18_PRODUCTION_CLOSURE.md`](./PHASE_18_PRODUCTION_CLOSURE.md) (the provider boundary).
 
 This is the honest list of what is **not** done, and why. It exists so that nothing is silently assumed complete.
@@ -19,9 +19,9 @@ A note on how to read the test numbers anywhere in this repo: **a green `npm tes
 
 ## A. Blocked — these need you
 
-### A-1 🔴 Phase 1/2/4/6 migrations have never been applied to a database
+### A-1 🔴 Phase 1/2/4/6/7 migrations have never been applied to a database
 
-Four migration directories exist and have never been run by me against your Neon database:
+Five migration directories exist and have never been run by me against your Neon database:
 
 | Migration | Adds |
 |---|---|
@@ -29,8 +29,9 @@ Four migration directories exist and have never been run by me against your Neon
 | `20260828010000_phase2_evidence_claims` | `Claim`, `Evidence` + `ClaimType` |
 | `20260828020000_phase4_entity_resolution` | `Counterparty`, `CounterpartyAlias`, `CounterpartyType`, nullable `Invoice.counterpartyId` / `Payout.counterpartyId` |
 | `20260828030000_phase6_financial_state` | `FinancialState` |
+| `20260828040000_phase7_decision_state_version` | nullable `Decision.financialStateVersion` |
 
-All four are additive — new tables, one new enum each for P1/P2/P4, and two nullable columns with no default and no backfill — so no existing row is rewritten and every existing query reads back identically.
+All five are additive — new tables, one new enum each for P1/P2/P4, and three nullable columns with no default and no backfill — so no existing row is rewritten and every existing query reads back identically.
 
 **Why blocked:** running migrations against a database holding real financial data is your call, not mine. The Phase 4 DDL was verified byte-for-byte against `prisma migrate diff` output, but *verified* is not *applied*.
 
@@ -40,7 +41,7 @@ All four are additive — new tables, one new enum each for P1/P2/P4, and two nu
 npx prisma migrate status
 ```
 
-and if the four are listed as pending, `npx prisma migrate deploy`.
+and if the five are listed as pending, `npx prisma migrate deploy`.
 
 **Rollback:** drop the new tables and the two nullable columns. Nothing reads them (see B-1), so rollback is isolated.
 
@@ -84,13 +85,15 @@ npm run test:live
 
 ### A-6 🔴 Production GO / NO-GO is still **NO-GO**
 
-Stated in `PHASE_18_PRODUCTION_CLOSURE.md` §20 and unchanged by Phases 1–6, which added no production behaviour at all. A-2 and A-3 are the gating blockers.
+Stated in `PHASE_18_PRODUCTION_CLOSURE.md` §20. A-2 and A-3 remain the gating blockers. Phases 1–6 added no production behaviour at all; P7 modifies the freshness gate but is provably inert for every existing decision (see C-10).
 
 ---
 
 ## B. Deferred by design — the additive posture
 
-Phases 1–6 were each built as *additive*: new tables, new libraries, full test coverage, and **deliberately zero production consumers**. That is why six phases have landed without changing a single route or a single number in the forecast. The consumers arrive in later phases, once the primitives they depend on exist.
+Phases 1–6 were each built as *additive*: new tables, new libraries, full test coverage, and **deliberately zero production consumers**. P7 is the first to touch the money path, and does so under a proved safety property (C-10). No route and no forecast number has changed.
+
+**⚠️ The additive posture ends here.** P8 feeds unified state into `buildForecast`, which changes what the product computes. It must be flag-gated and parity-tested.
 
 Verified by grep at the time of writing: `recordFinancialEvent`, `recordClaimWithEvidence` / `ingest*`, `resolveCounterparty` / `mergeCounterparties` / `backfill*`, and `reconcileObservations` / `sourceAuthority` have **no callers outside their own modules and tests**.
 
@@ -128,11 +131,19 @@ The append-only spine exists and is idempotent, but no source produces events in
 
 **Owned by:** P7/P8, where the state acquires its first reader.
 
-### B-7 🟡 Nothing reads `FinancialState` (Phase 6)
+### B-7 🟡 Nothing reads `FinancialState` for forecasting (Phase 6)
 
-`buildForecast` still reads the canonical rows directly. The state is materialised for nobody.
+`buildForecast` still reads the canonical rows directly. P7 made the freshness gate read state, but only for decisions that record a version — which is none (B-8).
 
 **Owned by:** P8 — feeding unified state into the forecast, behind a flag and parity-tested.
+
+### B-8 🟡 Nothing writes `Decision.financialStateVersion` (Phase 7)
+
+The freshness gate consults the financial state whenever a decision records the version it was generated against. No decision records one, so the state half reports `NOT_TRACKED` everywhere and contributes nothing.
+
+This is deliberate ordering, not an oversight: arming a gate against states that nothing maintains (B-6) would block real work. Setting the version belongs with P8, where state acquires its first real reader.
+
+**Owned by:** P8.
 
 ---
 
@@ -148,6 +159,15 @@ These are not bugs. They are places where the current implementation is delibera
 - `historicalAccuracyScore` — ❌ still `null`, needs the behaviour model (**P9**)
 
 The `UNKNOWN_PREDICTION_CAP = 0.6` clamp still applies to any claim where *neither* dimension is known. P6 added `runReconciliation`, which writes the score back to `Evidence` — but nothing schedules it (B-6) and nothing writes claims in the first place (B-2), so in practice every stored claim is still capped.
+
+### C-10 🟡 The freshness gate now has a second, coarser check
+
+P7 added a financial-state comparison alongside the record-level `contextFingerprint`. It is **strictly additive conservatism**: `combineFreshness` takes the more severe of the two verdicts, so it can only block something that would have passed — never the reverse. All sixteen verdict combinations are asserted.
+
+Two things to keep in mind:
+
+- The state half is **aggregate-level** and structurally cannot see record substitution. One ₹5L invoice replaced by a different ₹5L invoice leaves every aggregate identical. That is the fingerprint's job, and always will be — which is why neither check may be removed in favour of the other.
+- It is currently **inert** (B-8). Once decisions start recording a state version, the gate becomes stricter, and a state that goes stale or unreadable will begin blocking execution. That is intended, but it is a behaviour change that will first appear when B-8 lands — not now.
 
 ### C-2 🟡 Entity resolution is name-only
 
@@ -199,8 +219,8 @@ From `UNIFIED_BRAIN_AUDIT.md` §5. P0–P4 are done; everything below is untouch
 |---|---|---|
 | ~~**P5**~~ | ~~Cross-source reconciliation of inbound evidence~~ | ✅ **Done.** See `UNIFIED_BRAIN_AUDIT.md` §10. Persistence deferred to P6 (B-5). |
 | ~~**P6**~~ | ~~`FinancialState` materialisation~~ | ✅ **Done.** See `UNIFIED_BRAIN_AUDIT.md` §11. Not scheduled (B-6), not read (B-7). |
-| **P7** 🟢 | `stateVersion` advancing on material mutation | **Recommended next.** Must run *alongside* `contextFingerprint`, never replace it, until parity is proven |
-| **P8** 🟢 | Feed unified state into `buildForecast` | **Highest-care phase.** Behind a flag, parity-tested against current output |
+| ~~**P7**~~ | ~~`stateVersion` ↔ freshness~~ | ✅ **Done.** See §12. Wired alongside the fingerprint; inert until B-8 writes the version. |
+| **P8** 🟢 | Feed unified state into `buildForecast` | **Recommended next — and the highest-care phase of all.** Behind a flag, parity-tested against current output. First change to what the product actually computes. |
 | **P9** 🟢 | Customer/supplier behaviour model | First real consumer of P4; lifts the other half of C-1 |
 | **P10** 🟢 | Scenario forecasting (OPTIMISTIC / BASE / CONSERVATIVE) | |
 | **P11** 🟢 | Freshness ↔ `stateVersion` | Mostly done already; needs integration only |
@@ -245,7 +265,7 @@ Any change must keep this green.
 |---|---|
 | `npm run typecheck` | clean |
 | `npm run lint` | 0 problems |
-| `npm test` | 80 files, **1131 passed**, 5 skipped |
+| `npm test` | 82 files, **1162 passed**, 5 skipped |
 | `npm run build` | OK — 24 routes + middleware |
 
 The 5 skipped are A-5.
