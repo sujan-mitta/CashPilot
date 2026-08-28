@@ -1,6 +1,6 @@
 # CashPilot — Remaining Work
 
-**As of:** 2026-08-28, after Phase 9 + B-10 (settlement records `paidAt`).
+**As of:** 2026-08-28, after Phase 9, B-10, B-11 and B-9. **The full chain is now wired and one flag flip from live** — see C-14.
 **Companion to:** [`UNIFIED_BRAIN_AUDIT.md`](./UNIFIED_BRAIN_AUDIT.md) (the plan), [`PHASE_17_RAZORPAY_CERTIFICATION.md`](./PHASE_17_RAZORPAY_CERTIFICATION.md) and [`PHASE_18_PRODUCTION_CLOSURE.md`](./PHASE_18_PRODUCTION_CLOSURE.md) (the provider boundary).
 
 This is the honest list of what is **not** done, and why. It exists so that nothing is silently assumed complete.
@@ -146,11 +146,11 @@ This is deliberate ordering, not an oversight: arming a gate against states that
 
 **Owned by:** P8.
 
-### B-9 🟡 No call site uses the ForecastEvent pipeline (Phase 8)
+### B-9 ✅ No call site uses the ForecastEvent pipeline — **DONE**
 
-The five production forecast call sites (`forecast`, `explain`, `investigate`, `strategies`, `execute` routes, plus `strategyEngine` and `testEngine`) still call `transactionsToMovements` directly rather than `buildMovements`. Switching them is safe — parity is proven strictly, including the resulting forecasts and runway metrics — but it is a separate, reviewable change and buys nothing until P9 gives the pipeline something to do.
+All five production forecast routes (`forecast`, `explain`, `investigate`, `strategies`, `execute`) now call `buildMovementsForBusiness` instead of `transactionsToMovements`.
 
-**Owned by:** P9 — still not done, since P9 gave the pipeline something to do but did not switch the call sites.
+With the flag off this is **provably inert**: the disabled path issues no query at all and returns exactly what `transactionsToMovements` returned, asserted by test. `financialState.ts` deliberately still uses the direct call — it must stay pure and synchronous, and a materialised state should record contractual reality rather than a behavioural projection. `testEngine.ts` has no callers and was left alone.
 
 ### B-10 ✅ Nothing populates `Invoice.paidAt` — **DONE**
 
@@ -160,13 +160,11 @@ The CAS guard makes it **write-once**: only the settler that actually moves the 
 
 **Timestamp choice — deliberate.** It defaults to *observation time*, not a provider-attested `paid_at`. A provider timestamp would be strictly better, but this system has never received a real Razorpay webhook (A-3), so the field name and units cannot be verified, and §37 forbids assuming provider payload structure. Observation time has a known bounded meaning, and the behaviour model buckets by **day**, so webhook lag of seconds or minutes moves no metric. `settlePayment` takes an optional `paidAt` — pass a verified provider timestamp there as soon as A-3 is closed. See C-13.
 
-### B-11 🟡 Nothing assembles the behaviour map (Phase 9)
+### B-11 ✅ Nothing assembles the behaviour map — **DONE**
 
-No query groups settled invoices by counterparty and calls `computePaymentBehavior`. Callers must build the `Map<counterpartyId, PaymentBehavior>` themselves.
+`loadPaymentBehavior` reads settled invoices (tenant-scoped, bounded by a 365-day window and a row cap) and returns `Map<counterpartyId, PaymentBehavior>`. It reports what it could not use — `skippedUnlinked` counts settled invoices with no counterparty link, making the B-4 gap visible rather than silent.
 
-B-10 is now done, so the *data* will accumulate — but this is still blocked behind **B-4** (the counterparty backfill has never run, so invoices carry no `counterpartyId` to group by) and **A-1** (the columns do not exist in the database yet).
-
-**This is now the highest-value remaining item.** With it, plus B-9, the P1–P9 spine finally produces a different forecast number.
+`buildMovementsForBusiness` joins it to the forecast pipeline, degrading to contractual dates if the history read fails: behaviour is an enhancement, and losing it must not take the forecast down.
 
 ---
 
@@ -193,6 +191,22 @@ Two things to keep in mind:
 
 - The state half is **aggregate-level** and structurally cannot see record substitution. One ₹5L invoice replaced by a different ₹5L invoice leaves every aggregate identical. That is the fingerprint's job, and always will be — which is why neither check may be removed in favour of the other.
 - It is currently **inert** (B-8). Once decisions start recording a state version, the gate becomes stricter, and a state that goes stale or unreadable will begin blocking execution. That is intended, but it is a behaviour change that will first appear when B-8 lands — not now.
+
+### C-14 🟠 The whole chain is now one flag flip from changing forecasts
+
+`FORECAST_EVENT_PIPELINE.enabled = false`. Turning it `true` activates, in one step: forecast events → behaviour lookup → shifted expected dates → different forecast days → different runway, risk level and strategy scoring.
+
+**Before flipping it, all of these must be true:**
+
+| # | Precondition | Status |
+|---|---|---|
+| 1 | Migrations applied (`paidAt`, `counterpartyId` exist) | 🔴 A-1 |
+| 2 | Counterparty backfill run, so invoices are linked | 🟡 B-4 |
+| 3 | Enough settled history for the model to act (5+ payments per customer) | accumulates from B-10 |
+| 4 | `SCORING_CONFIG_VERSION` / `LIQUIDITY_CONFIG_VERSION` bumped | 🟡 C-11 |
+| 5 | Manual-settlement timestamp skew reviewed | 🟡 C-13 |
+
+Until (1)–(3) hold the flag is *also* inert in practice — `loadPaymentBehavior` returns an empty map — so flipping it early is safe but pointless. Flipping it after (1)–(3) but without (4) is the actual hazard: forecasts would change while existing strategies kept passing the freshness gate.
 
 ### C-13 🟡 `paidAt` records observation time, not provider-attested payment time
 
@@ -310,7 +324,7 @@ Any change must keep this green.
 |---|---|
 | `npm run typecheck` | clean |
 | `npm run lint` | 0 problems |
-| `npm test` | 86 files, **1247 passed**, 5 skipped |
+| `npm test` | 87 files, **1261 passed**, 5 skipped |
 | `npm run build` | OK — 24 routes + middleware |
 
 The 5 skipped are A-5.

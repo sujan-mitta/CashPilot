@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { runAgent } from "@/lib/ai/agents";
 import { investigatorPrompt } from "@/lib/ai/prompts";
-import { buildForecast, transactionsToMovements, calculateRunway } from "@/lib/engine/forecast";
+import { buildForecast, calculateRunway } from "@/lib/engine/forecast";
+import { buildMovementsForBusiness } from "@/lib/forecast/movements";
 import { calculateRisk } from "@/lib/engine/riskDetector";
 import { getSession } from "@/lib/auth";
 import { calculateLiquiditySafetyRequirement } from "@/lib/engine/liquiditySafety";
@@ -30,7 +31,7 @@ export async function POST() {
     });
 
     // 1. Run baseline forecast
-    const movements = transactionsToMovements(transactions);
+    const movements = await buildMovementsForBusiness(prisma, business.id, transactions);
     const forecast = buildForecast(business.currentCash, movements, 14);
     const { requiredBuffer } = await calculateLiquiditySafetyRequirement(business.id, prisma);
     const runway = calculateRunway(forecast, requiredBuffer);

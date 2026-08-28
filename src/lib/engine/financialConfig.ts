@@ -14,6 +14,7 @@ export interface FinancialConfig {
   FORECAST_HORIZON_DAYS: number;
   RESCHEDULE_DELAY_DAYS: number;
   HISTORICAL_LOOKBACK_DAYS: number;
+  BEHAVIOR_HISTORY_LOOKBACK_DAYS: number;
   OUTCOME_WINDOW_DAYS: number;
   OUTCOME_VARIANCE_THRESHOLD: number;
   EXECUTION_DRIFT_THRESHOLD: number;
@@ -78,6 +79,16 @@ export const FINANCIAL_CONFIG: FinancialConfig = {
 
   /** Days of history used to compute the outflow run-rate. */
   HISTORICAL_LOOKBACK_DAYS: 30,
+
+  /**
+   * How far back payment-behaviour history is read, in days (Phase 9).
+   *
+   * Deliberately NOT HISTORICAL_LOOKBACK_DAYS, which is 30 days because it
+   * measures an outflow run-rate. Payment behaviour needs a year: a customer
+   * invoiced monthly produces one observation a month, so a 30-day window would
+   * never reach the five payments the model requires before it will act.
+   */
+  BEHAVIOR_HISTORY_LOOKBACK_DAYS: 365,
 
   /**
    * Outcome measurement window in days. Deliberately equal to the forecast

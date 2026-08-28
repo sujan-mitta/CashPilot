@@ -5,7 +5,8 @@ import { actionNarratorPrompt } from "@/lib/ai/prompts";
 import { ActionStatus, Prisma } from "../../../../generated/prisma/client";
 import { addDays } from "date-fns";
 import { getSession } from "@/lib/auth";
-import { buildForecast, transactionsToMovements } from "@/lib/engine/forecast";
+import { buildForecast } from "@/lib/engine/forecast";
+import { buildMovementsForBusiness } from "@/lib/forecast/movements";
 import { validateActionTransition } from "@/lib/engine/stateTransitions";
 import { transitionDecision, InvalidDecisionTransitionError } from "@/lib/engine/decisionStateMachine";
 import { DecisionStatus, DecisionEventType } from "../../../../generated/prisma/client";
@@ -455,7 +456,7 @@ export const POST = withCorrelationId(async (req: Request) => {
     });
 
     const today = new Date();
-    const committedMovements = transactionsToMovements(updatedTransactions);
+    const committedMovements = await buildMovementsForBusiness(prisma, business.id, updatedTransactions, { now: today });
     const committedForecast = buildForecast(
       business.currentCash,
       committedMovements,

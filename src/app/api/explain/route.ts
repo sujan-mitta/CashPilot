@@ -3,7 +3,8 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { runAgent } from "@/lib/ai/agents";
 import { investigatorPrompt, recommenderPrompt } from "@/lib/ai/prompts";
-import { buildForecast, transactionsToMovements, calculateRunway } from "@/lib/engine/forecast";
+import { buildForecast, calculateRunway } from "@/lib/engine/forecast";
+import { buildMovementsForBusiness } from "@/lib/forecast/movements";
 import { calculateRisk } from "@/lib/engine/riskDetector";
 import { identifyRootCauses } from "@/lib/engine/rootCause";
 import { calculateLiquiditySafetyRequirement } from "@/lib/engine/liquiditySafety";
@@ -44,7 +45,7 @@ export async function POST(req: Request) {
 
     if (type === "investigation") {
       // Run deterministic calculations
-      const movements = transactionsToMovements(business.transactions);
+      const movements = await buildMovementsForBusiness(prisma, business.id, business.transactions);
       const forecast = buildForecast(business.currentCash, movements);
       const { requiredBuffer } = await calculateLiquiditySafetyRequirement(business.id, prisma);
       const runway = calculateRunway(forecast, requiredBuffer);

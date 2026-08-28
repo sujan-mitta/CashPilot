@@ -4,7 +4,8 @@ import { generateStrategies, type DeferredObligation } from "@/lib/engine/strate
 import { scoreAllStrategies, type ScoredStrategy } from "@/lib/engine/scorer";
 import { runAgent } from "@/lib/ai/agents";
 import { recommenderPrompt } from "@/lib/ai/prompts";
-import { transactionsToMovements, buildForecast, calculateRunway } from "@/lib/engine/forecast";
+import { buildForecast, calculateRunway } from "@/lib/engine/forecast";
+import { buildMovementsForBusiness } from "@/lib/forecast/movements";
 import { calculateRisk } from "@/lib/engine/riskDetector";
 import { addDays } from "date-fns";
 import { getSession } from "@/lib/auth";
@@ -138,7 +139,7 @@ export async function POST() {
     // 2. Generate baseline forecast
     const safetyReq = await calculateLiquiditySafetyRequirement(business.id, prisma, today);
     const requiredBuffer = safetyReq.requiredBuffer;
-    const baseMovements = transactionsToMovements(transactions);
+    const baseMovements = await buildMovementsForBusiness(prisma, business.id, transactions, { now: today });
     const HORIZON = FINANCIAL_CONFIG.FORECAST_HORIZON_DAYS;
     const baselineForecast = buildForecast(business.currentCash, baseMovements, HORIZON, today);
     const baselineRunway = calculateRunway(baselineForecast, requiredBuffer);

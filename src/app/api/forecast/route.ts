@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { buildForecast, transactionsToMovements, calculateRunway } from "@/lib/engine/forecast";
+import { buildForecast, calculateRunway } from "@/lib/engine/forecast";
+import { buildMovementsForBusiness } from "@/lib/forecast/movements";
 import { calculateRisk } from "@/lib/engine/riskDetector";
 import { getSession } from "@/lib/auth";
 import { calculateLiquiditySafetyRequirement, extractObligations, calculateTemporalRequiredLiquidity } from "@/lib/engine/liquiditySafety";
@@ -47,7 +48,7 @@ export async function GET() {
     }
 
     const today = new Date();
-    const movements = transactionsToMovements(transactions);
+    const movements = await buildMovementsForBusiness(prisma, business.id, transactions, { now: today });
     const days = buildForecast(
       business.currentCash,
       movements,
