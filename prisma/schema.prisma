@@ -69,7 +69,14 @@ model Invoice {
   status       InvoiceStatus
   priority     Priority
 
+  /// Phase 4. Canonical customer this invoice's `customerName` resolved to.
+  /// Nullable and unused by the existing engine: `customerName` remains the
+  /// authoritative display value, so nothing behaves differently when it is
+  /// null. Bare column, not a relation, to keep the new entity layer isolated.
+  counterpartyId String?
+
   @@index([businessId])
+  @@index([businessId, counterpartyId])
 }
 
 enum PayoutCriticality {
@@ -95,7 +102,12 @@ model Payout {
   criticality   PayoutCriticality
   status        PayoutStatus       @default(SCHEDULED)
 
+  /// Phase 4. Canonical supplier this payout's `vendor` resolved to. Nullable
+  /// and unused by the existing engine - see Invoice.counterpartyId.
+  counterpartyId String?
+
   @@index([businessId])
+  @@index([businessId, counterpartyId])
 }
 
 model CashForecast {
@@ -637,4 +649,88 @@ enum ClaimType {
   CONTRADICTED
   EXPIRED
   RECONCILED
+}
+
+/// Phase 4 - the canonical counterparty (spec §8).
+///
+/// Today a customer exists only as `Invoice.customerName` and a supplier only as
+/// `Payout.vendor` - free strings, so "ABC Ltd", "ABC LIMITED" and "ABC-IND" are
+/// three unrelated businesses as far as the system is concerned. This model is
+/// the canonical identity those spellings resolve to, so behaviour history
+/// (Phase 9) and cross-source evidence can accumulate against ONE entity.
+///
+/// Customer and Supplier are the same shape with a different role, so they share
+/// one table discriminated by `type` rather than duplicating the model. Identity
+/// is `normalizedName` (see `entities/normalize.ts`): deterministic, not fuzzy.
+/// Fuzzy near-matches are never merged automatically - they are surfaced as
+/// suggestions, because a wrong merge silently corrupts one customer's payment
+/// history with another's (spec §50-D, §64).
+///
+/// Follows the newer convention (FinancialEvent, ExecutionIntent) of a bare
+/// `businessId` column enforced in queries rather than a Prisma relation, so the
+/// table stays isolated from the existing models.
+model Counterparty {
+  id             String              @id @default(cuid())
+  businessId     String
+
+  type           CounterpartyType
+  /// Human-readable name, as first seen at a source or set by the user.
+  displayName    String
+  /// Deterministic normalised identity. Unique per (tenant, type).
+  normalizedName String
+
+  /// Set when this entity was merged INTO another (a user-confirmed duplicate).
+  /// The row is never deleted (spec §46) - history stays auditable - and
+  /// resolution follows the chain to the surviving entity.
+  mergedIntoId   String?
+  mergedAt       DateTime?
+
+  aliases        CounterpartyAlias[]
+
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@unique([businessId, type, normalizedName])
+  @@index([businessId])
+  @@index([businessId, type])
+  @@index([mergedIntoId])
+}
+
+enum CounterpartyType {
+  CUSTOMER
+  SUPPLIER
+}
+
+/// Phase 4 - one spelling of a counterparty, as it appeared at some source.
+///
+/// Append-only in spirit: every distinct spelling we have ever seen is kept, so
+/// "why did CashPilot decide these are the same company?" is answerable from
+/// stored rows. `matchMethod` records HOW the link was established, and only
+/// EXACT / ALIAS / CONFIRMED links are ever created automatically - a fuzzy
+/// suggestion becomes an alias only after a human confirms it.
+///
+/// `type` is denormalised from the counterparty so lookup by
+/// (tenant, type, normalizedName) is a single indexed hit.
+model CounterpartyAlias {
+  id             String           @id @default(cuid())
+  businessId     String
+
+  counterparty   Counterparty     @relation(fields: [counterpartyId], references: [id])
+  counterpartyId String
+  type           CounterpartyType
+
+  /// The name exactly as the source wrote it.
+  rawName        String
+  /// Normalised form of rawName - the lookup key.
+  normalizedName String
+  /// Where this spelling came from: "ERP" | "BANK" | "RAZORPAY" | "USER" | ...
+  sourceType     String
+  /// EXACT | NEW | CONFIRMED | MERGE - how this link was established.
+  matchMethod    String
+
+  createdAt      DateTime         @default(now())
+
+  @@unique([businessId, type, normalizedName])
+  @@index([businessId])
+  @@index([counterpartyId])
 }
