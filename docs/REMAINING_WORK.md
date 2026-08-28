@@ -1,6 +1,6 @@
 # CashPilot — Remaining Work
 
-**As of:** 2026-08-28, after Phase 7 (State Versioning ↔ Freshness).
+**As of:** 2026-08-28, after Phase 8 (ForecastEvent seam).
 **Companion to:** [`UNIFIED_BRAIN_AUDIT.md`](./UNIFIED_BRAIN_AUDIT.md) (the plan), [`PHASE_17_RAZORPAY_CERTIFICATION.md`](./PHASE_17_RAZORPAY_CERTIFICATION.md) and [`PHASE_18_PRODUCTION_CLOSURE.md`](./PHASE_18_PRODUCTION_CLOSURE.md) (the provider boundary).
 
 This is the honest list of what is **not** done, and why. It exists so that nothing is silently assumed complete.
@@ -85,7 +85,7 @@ npm run test:live
 
 ### A-6 🔴 Production GO / NO-GO is still **NO-GO**
 
-Stated in `PHASE_18_PRODUCTION_CLOSURE.md` §20. A-2 and A-3 remain the gating blockers. Phases 1–6 added no production behaviour at all; P7 modifies the freshness gate but is provably inert for every existing decision (see C-10).
+Stated in `PHASE_18_PRODUCTION_CLOSURE.md` §20. A-2 and A-3 remain the gating blockers. Phases 1–6 and P8 added no production behaviour at all; P7 modifies the freshness gate but is provably inert for every existing decision (see C-10).
 
 ---
 
@@ -93,7 +93,7 @@ Stated in `PHASE_18_PRODUCTION_CLOSURE.md` §20. A-2 and A-3 remain the gating b
 
 Phases 1–6 were each built as *additive*: new tables, new libraries, full test coverage, and **deliberately zero production consumers**. P7 is the first to touch the money path, and does so under a proved safety property (C-10). No route and no forecast number has changed.
 
-**⚠️ The additive posture ends here.** P8 feeds unified state into `buildForecast`, which changes what the product computes. It must be flag-gated and parity-tested.
+**⚠️ The additive posture ends at P9.** P8 built the forecast seam but is parity-proven to change no number. **P9 is the first phase that will intentionally change a forecast figure**, and flipping `FORECAST_EVENT_PIPELINE.enabled` at that point requires a config-version bump so existing strategies go stale (see C-11).
 
 Verified by grep at the time of writing: `recordFinancialEvent`, `recordClaimWithEvidence` / `ingest*`, `resolveCounterparty` / `mergeCounterparties` / `backfill*`, and `reconcileObservations` / `sourceAuthority` have **no callers outside their own modules and tests**.
 
@@ -145,6 +145,12 @@ This is deliberate ordering, not an oversight: arming a gate against states that
 
 **Owned by:** P8.
 
+### B-9 🟡 No call site uses the ForecastEvent pipeline (Phase 8)
+
+The five production forecast call sites (`forecast`, `explain`, `investigate`, `strategies`, `execute` routes, plus `strategyEngine` and `testEngine`) still call `transactionsToMovements` directly rather than `buildMovements`. Switching them is safe — parity is proven strictly, including the resulting forecasts and runway metrics — but it is a separate, reviewable change and buys nothing until P9 gives the pipeline something to do.
+
+**Owned by:** P9.
+
 ---
 
 ## C. Known limitations of what has been built
@@ -168,6 +174,12 @@ Two things to keep in mind:
 
 - The state half is **aggregate-level** and structurally cannot see record substitution. One ₹5L invoice replaced by a different ₹5L invoice leaves every aggregate identical. That is the fingerprint's job, and always will be — which is why neither check may be removed in favour of the other.
 - It is currently **inert** (B-8). Once decisions start recording a state version, the gate becomes stricter, and a state that goes stale or unreadable will begin blocking execution. That is intended, but it is a behaviour change that will first appear when B-8 lands — not now.
+
+### C-11 🟡 Turning on the forecast pipeline will eventually need a config bump
+
+`FORECAST_EVENT_PIPELINE.enabled` is off and currently a no-op either way — the pipeline is parity-proven identical. That stops being true the moment P9 makes `applyExpectedTiming` move dates.
+
+**When that happens, `SCORING_CONFIG_VERSION` / `LIQUIDITY_CONFIG_VERSION` must be bumped in the same change.** Otherwise strategies generated under the old pipeline would survive into a different forecast without the freshness gate classifying them `MATERIAL_CHANGE`. The requirement is written in the code beside the flag, but it is a manual step and nothing enforces it.
 
 ### C-2 🟡 Entity resolution is name-only
 
@@ -220,8 +232,8 @@ From `UNIFIED_BRAIN_AUDIT.md` §5. P0–P4 are done; everything below is untouch
 | ~~**P5**~~ | ~~Cross-source reconciliation of inbound evidence~~ | ✅ **Done.** See `UNIFIED_BRAIN_AUDIT.md` §10. Persistence deferred to P6 (B-5). |
 | ~~**P6**~~ | ~~`FinancialState` materialisation~~ | ✅ **Done.** See `UNIFIED_BRAIN_AUDIT.md` §11. Not scheduled (B-6), not read (B-7). |
 | ~~**P7**~~ | ~~`stateVersion` ↔ freshness~~ | ✅ **Done.** See §12. Wired alongside the fingerprint; inert until B-8 writes the version. |
-| **P8** 🟢 | Feed unified state into `buildForecast` | **Recommended next — and the highest-care phase of all.** Behind a flag, parity-tested against current output. First change to what the product actually computes. |
-| **P9** 🟢 | Customer/supplier behaviour model | First real consumer of P4; lifts the other half of C-1 |
+| ~~**P8**~~ | ~~ForecastEvent seam~~ | ✅ **Done.** See §13. Parity-proven identical; no call site switched over yet (B-9). |
+| **P9** 🟢 | Customer/supplier behaviour model | **Recommended next.** First real consumer of P4, lifts the other half of C-1, and the first phase to intentionally change a forecast number. |
 | **P10** 🟢 | Scenario forecasting (OPTIMISTIC / BASE / CONSERVATIVE) | |
 | **P11** 🟢 | Freshness ↔ `stateVersion` | Mostly done already; needs integration only |
 | **P12** 🟢 | Execution/webhook hardening | Mostly done; the open part is A-2/A-3/A-5 verification |
@@ -265,7 +277,7 @@ Any change must keep this green.
 |---|---|
 | `npm run typecheck` | clean |
 | `npm run lint` | 0 problems |
-| `npm test` | 82 files, **1162 passed**, 5 skipped |
+| `npm test` | 83 files, **1201 passed**, 5 skipped |
 | `npm run build` | OK — 24 routes + middleware |
 
 The 5 skipped are A-5.
