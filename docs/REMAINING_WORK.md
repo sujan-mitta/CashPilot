@@ -1,6 +1,6 @@
 # CashPilot — Remaining Work
 
-**As of:** 2026-08-28, after Phase 9, B-10, B-11 and B-9. **The full chain is now wired and one flag flip from live** — see C-14.
+**As of:** 2026-08-28, after Phase 10. **The forecast chain is wired and one flag flip from live** — see C-14.
 **Companion to:** [`UNIFIED_BRAIN_AUDIT.md`](./UNIFIED_BRAIN_AUDIT.md) (the plan), [`PHASE_17_RAZORPAY_CERTIFICATION.md`](./PHASE_17_RAZORPAY_CERTIFICATION.md) and [`PHASE_18_PRODUCTION_CLOSURE.md`](./PHASE_18_PRODUCTION_CLOSURE.md) (the provider boundary).
 
 This is the honest list of what is **not** done, and why. It exists so that nothing is silently assumed complete.
@@ -160,6 +160,12 @@ The CAS guard makes it **write-once**: only the settler that actually moves the 
 
 **Timestamp choice — deliberate.** It defaults to *observation time*, not a provider-attested `paid_at`. A provider timestamp would be strictly better, but this system has never received a real Razorpay webhook (A-3), so the field name and units cannot be verified, and §37 forbids assuming provider payload structure. Observation time has a known bounded meaning, and the behaviour model buckets by **day**, so webhook lag of seconds or minutes moves no metric. `settlePayment` takes an optional `paidAt` — pass a verified provider timestamp there as soon as A-3 is closed. See C-13.
 
+### B-12 🟡 Nothing surfaces scenarios or forecast confidence (Phase 10)
+
+`buildScenarios` produces OPTIMISTIC/BASE/CONSERVATIVE plus a confidence level and readable reasons. No route returns any of it and no screen shows it, so the UI still presents a single forecast line with no stated uncertainty — which §57 and §29 both ask for.
+
+**Owned by:** P13.
+
 ### B-11 ✅ Nothing assembles the behaviour map — **DONE**
 
 `loadPaymentBehavior` reads settled invoices (tenant-scoped, bounded by a 365-day window and a row cap) and returns `Map<counterpartyId, PaymentBehavior>`. It reports what it could not use — `skippedUnlinked` counts settled invoices with no counterparty link, making the B-4 gap visible rather than silent.
@@ -281,8 +287,9 @@ From `UNIFIED_BRAIN_AUDIT.md` §5. P0–P4 are done; everything below is untouch
 | ~~**P7**~~ | ~~`stateVersion` ↔ freshness~~ | ✅ **Done.** See §12. Wired alongside the fingerprint; inert until B-8 writes the version. |
 | ~~**P8**~~ | ~~ForecastEvent seam~~ | ✅ **Done.** See §13. Parity-proven identical; no call site switched over yet (B-9). |
 | ~~**P9**~~ | ~~Behaviour model~~ | ✅ **Done.** See §14. Completes the C-1 mechanism. Inert until `paidAt` is populated (B-10). |
-| **P10** 🟢 | Scenario forecasting (OPTIMISTIC / BASE / CONSERVATIVE) | **Recommended next.** P9's `[earliestDate, latestDate]` band is exactly the input scenarios need. |
-| **P11** 🟢 | Freshness ↔ `stateVersion` | Mostly done already; needs integration only |
+| ~~**P10**~~ | ~~Scenario forecasting~~ | ✅ **Done.** See §15. Not surfaced by any route (B-12). |
+| **P11** ◑ | Freshness ↔ `stateVersion` | Largely delivered by P7. Remaining: strategy `expiresAt`, `forecastVersion` (§32) |
+| **P13** 🟢 | Surface scenarios, confidence and conflicts in the UI | **Recommended next.** Everything it needs now exists and nothing displays it. |
 | **P12** 🟢 | Execution/webhook hardening | Mostly done; the open part is A-2/A-3/A-5 verification |
 | **P13** 🟢 | Cross-source reconciliation surfaced in UI/observability | |
 | **P14** 🟢 | Outcome measurement → behaviour model | Measurement exists; the connection does not |
@@ -324,7 +331,7 @@ Any change must keep this green.
 |---|---|
 | `npm run typecheck` | clean |
 | `npm run lint` | 0 problems |
-| `npm test` | 87 files, **1261 passed**, 5 skipped |
+| `npm test` | 88 files, **1279 passed**, 5 skipped |
 | `npm run build` | OK — 24 routes + middleware |
 
 The 5 skipped are A-5.
