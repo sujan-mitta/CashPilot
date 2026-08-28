@@ -64,7 +64,7 @@ export async function POST(req: Request) {
       providerStatus: reconciliation.result.providerStatus ?? null,
       checkedAt: reconciliation.result.checkedAt,
       // Server-decided, from stored evidence.
-      retryPermitted: after ? isRetryPermitted(after as any) : false,
+      retryPermitted: after ? isRetryPermitted(after) : false,
     });
   } catch (error) {
     console.error("API error in reconcile:", error);

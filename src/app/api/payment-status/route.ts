@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import Razorpay from "razorpay";
 import { getSession } from "@/lib/auth";
-import { ActionStatus, RecoveryStatus } from "../../../../generated/prisma/client";
+import { ActionStatus, RecoveryStatus, AgentAction, Prisma } from "../../../../generated/prisma/client";
 import { settlePayment, reconcileDecisionForStrategy } from "@/lib/razorpay/settlement";
 import { readProviderPaidAmount } from "@/lib/razorpay/amounts";
 import { validateActionTransition } from "@/lib/engine/stateTransitions";
@@ -11,7 +11,7 @@ import { errorMessage } from "@/lib/errors";
 
 export async function GET(req: Request) {
   let paymentLinkId: string | null = null;
-  let action: any = null;
+  let action: AgentAction | null = null;
   // Captured for the catch block, which must stay tenant-scoped.
   let callerBusinessId: string | null = null;
   try {
@@ -153,7 +153,9 @@ export async function GET(req: Request) {
         } else if (action.actionType === "PRIORITIZE_COLLECTIONS" && action.result) {
           try {
             const parsed = JSON.parse(action.result);
-            const matchingLink = parsed.links?.find((l: any) => l.paymentLinkId === paymentLinkId);
+            const matchingLink = parsed.links?.find(
+              (l: { paymentLinkId?: string }) => l.paymentLinkId === paymentLinkId
+            );
             if (matchingLink) {
               // Tenant-scoped, like every other read in this file.
               const invoice = await prisma.invoice.findFirst({
@@ -163,7 +165,7 @@ export async function GET(req: Request) {
                 isInvoicePaid = true;
               }
             }
-          } catch (e) {}
+          } catch {}
         }
       }
 
@@ -191,7 +193,7 @@ export async function GET(req: Request) {
           where: { id: action.id },
           data: {
             status: ActionStatus.FAILED,
-            auditLog: [...existingAudit, auditEntry] as any,
+            auditLog: [...existingAudit, auditEntry] as Prisma.InputJsonValue,
           },
         });
       }

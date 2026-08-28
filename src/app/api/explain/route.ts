@@ -118,9 +118,10 @@ export async function POST(req: Request) {
       }
 
       // Parse actions from JSON safely
-      const parseActions = (actionsJson: any): ActionDefinition[] => {
+      const parseActions = (actionsJson: unknown): ActionDefinition[] => {
         try {
-          return typeof actionsJson === "string" ? JSON.parse(actionsJson) : actionsJson;
+          const parsed = typeof actionsJson === "string" ? JSON.parse(actionsJson) : actionsJson;
+          return Array.isArray(parsed) ? (parsed as ActionDefinition[]) : [];
         } catch {
           return [];
         }

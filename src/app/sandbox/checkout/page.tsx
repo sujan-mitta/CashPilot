@@ -2,11 +2,10 @@
 
 import React, { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence } from "framer-motion";
 import { CreditCard, CheckCircle2, ShieldCheck, AlertTriangle, ArrowRight } from "lucide-react";
 import { PilotIcon } from "@/components/PilotIcon";
 import { Button } from "@/components/ui/Button";
-import { EASE_OUT_EXPO } from "@/components/ui/motion";
 import { errorMessage } from "@/lib/errors";
 
 function CheckoutContent() {

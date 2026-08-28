@@ -1,9 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { generateStrategies, StrategyResult } from "../strategyEngine";
+import { StrategyResult } from "../strategyEngine";
 import { scoreAllStrategies } from "../scorer";
-import { buildForecast } from "../forecast";
 import { extractObligations, calculateTemporalRequiredLiquidity, CashObligation } from "../liquiditySafety";
-import { addDays, isSameDay } from "date-fns";
+import { addDays } from "date-fns";
 import { PayoutRecord } from "../../db/records";
 
 describe("Obligation-Aware Liquidity & Temporal Risk Engine (Tests 1-20)", () => {

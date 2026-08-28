@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { generateStrategies, StrategyResult } from "../strategyEngine";
+import { generateStrategies } from "../strategyEngine";
 import { scoreAllStrategies } from "../scorer";
 import { POST as handleApprove } from "../../../app/api/approve/route";
 import { seedFreshDecision } from "./helpers/prismaFakes";
@@ -49,7 +49,7 @@ vi.mock("@/lib/prisma", async () => {
       business: {
         findUnique: vi.fn(async () => dbState.business),
         findFirst: vi.fn(async () => dbState.business),
-        update: vi.fn(async ({ where, data }) => {
+        update: vi.fn(async ({ data }) => {
           if (data.currentCash && data.currentCash.increment) {
             dbState.business.currentCash += data.currentCash.increment;
           }
@@ -196,7 +196,7 @@ vi.mock("@/lib/auth", () => {
 
 vi.mock("@/lib/razorpay/client", () => {
   return {
-    createRecoveryPaymentLink: vi.fn(async (amount, desc) => {
+    createRecoveryPaymentLink: vi.fn(async () => {
       return {
         id: "plink_mock",
         short_url: "https://rzp.io/i/mockurl",

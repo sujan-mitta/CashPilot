@@ -138,7 +138,6 @@ export function scoreAllStrategies(
   const baselineStrategy = strategies.find((s) => s.name === "DO_NOTHING");
   
   let baselineMinimumBalance = 0;
-  let baselineFinalBalance = 0;
   let baselineDeficitDays = 0;
   let baselineCoverageRatio = 1.0;
   let baselineProtectedCount = 0;
@@ -146,7 +145,6 @@ export function scoreAllStrategies(
 
   if (baselineStrategy) {
     baselineMinimumBalance = baselineStrategy.runway.minimumBalance;
-    baselineFinalBalance = baselineStrategy.projectedBalance;
     baselineDeficitDays = baselineStrategy.forecast.filter((d) => d.closingBalance < 0).length;
 
     let requiredLiquidityByDay = new Array(baselineStrategy.forecast.length).fill(safetyThreshold);
@@ -208,7 +206,6 @@ export function scoreAllStrategies(
     const minBalance = strategy.runway.minimumBalance;
     const isDeficitEliminated = minBalance >= 0;
     const strategyMinimumBalance = minBalance;
-    const strategyFinalBalance = strategy.projectedBalance;
     const strategyDeficitDays = strategy.forecast.filter((d) => d.closingBalance < 0).length;
     let strategyProtectedCount = 0;
 

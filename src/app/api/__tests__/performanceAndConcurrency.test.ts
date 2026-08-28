@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { GET as getPerformance } from "../strategy-performance/route";
-import { FINANCIAL_CONFIG } from "@/lib/engine/financialConfig";
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {

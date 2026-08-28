@@ -301,10 +301,20 @@ export async function measureDeferredObligations(
  * Idempotent: once a decision is OUTCOME_MEASURED it is returned untouched.
  * Never rewrites baselineSnapshot / recommendedSnapshot / engineVersion.
  */
+/**
+ * A measured decision. Prisma types the `actualOutcome` column as an opaque
+ * JsonValue, but this function only ever writes an ActualOutcomePayload into it,
+ * so the return type restores that structure for callers.
+ */
+export type MeasuredDecision = Omit<
+  Prisma.DecisionGetPayload<{ include: { strategy: true } }>,
+  "actualOutcome"
+> & { actualOutcome: ActualOutcomePayload };
+
 export async function measureDecisionOutcome(
   decisionId: string,
   todayOverride?: Date
-): Promise<any> {
+): Promise<MeasuredDecision> {
   const decision = await prisma.decision.findUnique({
     where: { id: decisionId },
     include: { strategy: true },
@@ -316,7 +326,7 @@ export async function measureDecisionOutcome(
 
   // Idempotency: history is closed.
   if (decision.status === "OUTCOME_MEASURED") {
-    return decision;
+    return decision as unknown as MeasuredDecision;
   }
 
   const today = todayOverride || new Date();
@@ -381,10 +391,10 @@ export async function measureDecisionOutcome(
         outcomePhase: OutcomePhase.POST_HORIZON_PENDING,
       },
     });
-    return await prisma.decision.findUnique({
+    return (await prisma.decision.findUnique({
       where: { id: decisionId },
       include: { strategy: true },
-    });
+    })) as unknown as MeasuredDecision;
   }
 
   if (today < outcomeWindowEnd) {
@@ -423,10 +433,10 @@ export async function measureDecisionOutcome(
         outcomePhase: OutcomePhase.WINDOW_OPEN,
       },
     });
-    return await prisma.decision.findUnique({
+    return (await prisma.decision.findUnique({
       where: { id: decisionId },
       include: { strategy: true },
-    });
+    })) as unknown as MeasuredDecision;
   }
 
   // A decision that cannot legally reach OUTCOME_MEASURED is left alone rather
@@ -746,8 +756,8 @@ export async function measureDecisionOutcome(
     }
   );
 
-  return await prisma.decision.findUnique({
+  return (await prisma.decision.findUnique({
     where: { id: decisionId },
     include: { strategy: true },
-  });
+  })) as unknown as MeasuredDecision;
 }

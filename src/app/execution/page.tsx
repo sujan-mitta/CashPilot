@@ -3,7 +3,7 @@
 import React, { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence } from "framer-motion";
-import { useCashPilot } from "@/context/CashPilotContext";
+import { useCashPilot, type Strategy } from "@/context/CashPilotContext";
 import { formatINR } from "@/lib/format";
 import { UnknownExecutionPanel } from "@/components/UnknownExecutionPanel";
 import { Card } from "@/components/ui/Card";
@@ -145,7 +145,7 @@ function ExecutionContent() {
   const { setCachedForecast, setCachedStrategies, setCachedInvestigation, cachedStrategies } = useCashPilot();
   const { toast } = useToast();
 
-  const [strategy, setStrategy] = useState<any | null>(null);
+  const [strategy, setStrategy] = useState<Strategy | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -250,7 +250,7 @@ function ExecutionContent() {
       // the screen where money moves. It also named "Packaging Co" and "SaaS"
       // from the demo dataset, which is somebody else's vendor for every real
       // business.
-      data.steps.forEach((step: any) => {
+      data.steps.forEach((step: { action: string; status: string; result?: string }) => {
         addTimelineEvent(timelineLineFor(step));
       });
 
@@ -341,7 +341,7 @@ function ExecutionContent() {
   // every business.
   // The DO_NOTHING simulation IS the baseline. If it is not in cache we say so
   // rather than inventing a figure.
-  const doNothing = cachedStrategies?.find((s: any) => s.name === "DO_NOTHING");
+  const doNothing = cachedStrategies?.find((s) => s.name === "DO_NOTHING");
   const baselineShortfall: number | null =
     typeof doNothing?.result?.projectedBalance === "number"
       ? doNothing.result.projectedBalance
@@ -349,10 +349,10 @@ function ExecutionContent() {
   const hasBaseline = baselineShortfall !== null;
 
   // Retrieve amount variables from actions
-  const failedAction = strategy.actions.find((a: any) => a.type === "RECOVER_FAILED_PAYMENTS");
+  const failedAction = strategy.actions.find((a) => a.type === "RECOVER_FAILED_PAYMENTS");
   const failedActionAmount = failedAction ? failedAction.amount : 0;
 
-  const collectionsAction = strategy.actions.find((a: any) => a.type === "PRIORITIZE_COLLECTIONS");
+  const collectionsAction = strategy.actions.find((a) => a.type === "PRIORITIZE_COLLECTIONS");
 
   // Locate the individual link URLs and reference IDs.
   //
@@ -370,7 +370,13 @@ function ExecutionContent() {
       : null);
 
   const collectionsStep = steps.find((s) => s.action === "PRIORITIZE_COLLECTIONS");
-  let collectionsInvoices: any[] = [];
+  let collectionsInvoices: Array<{
+    paymentLinkId: string;
+    amount: number;
+    invoiceId: string;
+    customerName: string;
+    shortUrl: string;
+  }> = [];
   if (collectionsStep?.result) {
     try {
       const parsed = JSON.parse(collectionsStep.result);
@@ -726,7 +732,7 @@ function ExecutionContent() {
 
                 <div className="flex justify-between text-[11px] text-ink-400 font-bold italic">
                   <span>Projected Balance If All Pending Clear</span>
-                  <span>{formatINR(potentialPosition)}</span>
+                  <span>{potentialPosition === null ? "Unavailable" : formatINR(potentialPosition)}</span>
                 </div>
               </div>
             </Card>

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { generateStrategies, StrategyResult, applyActionsToMovements } from "../strategyEngine";
+import { generateStrategies, applyActionsToMovements } from "../strategyEngine";
 import { scoreAllStrategies } from "../scorer";
 import { buildForecast } from "../forecast";
 import { addDays, isSameDay } from "date-fns";

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { generateStrategies } from "@/lib/engine/strategyEngine";
-import { scoreAllStrategies } from "@/lib/engine/scorer";
+import { generateStrategies, type DeferredObligation } from "@/lib/engine/strategyEngine";
+import { scoreAllStrategies, type ScoredStrategy } from "@/lib/engine/scorer";
 import { runAgent } from "@/lib/ai/agents";
 import { recommenderPrompt } from "@/lib/ai/prompts";
 import { transactionsToMovements, buildForecast, calculateRunway } from "@/lib/engine/forecast";
@@ -17,6 +17,37 @@ import { errorMessage } from "@/lib/errors";
 import { logger } from "@/lib/observability";
 import { rateLimit } from "@/lib/auth/rateLimit";
 import type { Prisma } from "../../../../generated/prisma/client";
+
+/** The per-strategy object returned to the client and fed to the AI narrator. */
+interface ResponseStrategy {
+  id: string;
+  name: string;
+  actions: {
+    id: string;
+    type: string;
+    sourceEntityId: string;
+    amount: number;
+    effectiveDate: string;
+    status: "SIMULATED";
+    label: string;
+  }[];
+  forecast: {
+    date: string;
+    openingBalance: number;
+    expectedInflows: number;
+    expectedOutflows: number;
+    projectedBalance: number;
+  }[];
+  result: {
+    projectedBalance: number;
+    minimumProjectedBalance: number;
+    crisisDay: number | null;
+    riskLevel: string;
+  };
+  scoring: ScoredStrategy["scoring"];
+  recommended: boolean;
+  deferredObligations: DeferredObligation[];
+}
 
 export async function POST() {
   try {
@@ -174,7 +205,7 @@ export async function POST() {
     }
 
     // 4. Clear old strategies and persist new ones in the database atomically inside a transaction
-    const responseStrategies: any[] = [];
+    const responseStrategies: ResponseStrategy[] = [];
     let recommendedStrategyId = "";
 
     await prisma.$transaction(
@@ -234,16 +265,16 @@ export async function POST() {
           data: {
             businessId: business.id,
             name: s.name,
-            actions: s.actions as any,
+            actions: s.actions as unknown as Prisma.InputJsonValue,
             projectedBalance: s.projectedBalance,
             riskLevel: s.riskLevel,
             score: s.score,
             recommended: s.recommended,
             startingCash: business.currentCash,
             scoring: {
-              ...(s.scoring as any),
+              ...s.scoring,
               deferredObligations: s.deferredObligations || [],
-            } as any,
+            } as unknown as Prisma.InputJsonValue,
             agentActions: {
               create: s.actions.map((a) => {
                 let targetTransactionId: string | null = null;
@@ -438,7 +469,7 @@ export async function POST() {
         projectedBalance: recommendedStrategy.result.projectedBalance,
         riskLevel: recommendedStrategy.result.riskLevel,
         score: recommendedStrategy.scoring.finalScore,
-        actions: recommendedStrategy.actions.map((a: any) => ({
+        actions: recommendedStrategy.actions.map((a) => ({
           label: a.label,
           amount: a.amount,
         })),

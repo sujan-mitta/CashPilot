@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { measureDecisionOutcome } from "../outcomeMeasurer";
-import { GET as handleDecisionsList } from "../../../app/api/decisions/route";
 import { GET as handleDecisionDetail } from "../../../app/api/decisions/[id]/route";
 import { GET as handlePerformance } from "../../../app/api/strategy-performance/route";
 import { prisma } from "../../../lib/prisma";

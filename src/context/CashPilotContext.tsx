@@ -43,7 +43,47 @@ export interface Strategy {
     lowDisruption: number;
     executionConfidence: number;
     finalScore: number;
+    strengths?: string[];
+    tradeoffs?: string[];
+    // Present on the fuller payloads; absent on some cached shapes, hence the
+    // object itself is optional. When present it is complete.
+    counterfactual?: {
+      baselineMinimumBalance: number;
+      strategyMinimumBalance: number;
+      minimumBalanceDelta: number;
+      baselineDeficitDays: number;
+      strategyDeficitDays: number;
+      deficitDaysDelta: number;
+      baselineCoverageRatio: number;
+      strategyCoverageRatio: number;
+      coverageRatioDelta: number;
+      baselineCriticalObligationsProtected: number;
+      strategyCriticalObligationsProtected: number;
+      criticalObligationsProtectedDelta: number;
+      effectiveness: string;
+    };
+    deferredObligations?: {
+      count: number;
+      amount: number;
+      latestDueDate?: string | null;
+      items?: {
+        sourceId: string;
+        amount: number;
+        originalDueDate: string;
+        newDueDate: string;
+      }[];
+    };
   };
+  /** Top-level balance on the single-strategy GET payload (result carries it too). */
+  projectedBalance?: number;
+  /** Obligations this strategy pushed beyond the forecast horizon. */
+  deferredObligations?: {
+    sourceId?: string;
+    amount: number;
+    originalDueDate: string;
+    newDueDate: string;
+    daysBeyondHorizon: number;
+  }[];
   recommended: boolean;
   agentActions?: Action[];
 }

@@ -1,7 +1,7 @@
 import { buildDecisionContext } from "./decisionContext";
-import { classifyStaleness, FreshnessVerdict } from "./strategyFreshness";
+import { classifyStaleness, FreshnessVerdict, FingerprintDetail } from "./strategyFreshness";
 import { appendDecisionEvent } from "./decisionStateMachine";
-import { DecisionEventType } from "../../../generated/prisma/client";
+import { DecisionEventType, Prisma } from "../../../generated/prisma/client";
 
 /**
  * Server-side strategy freshness gate (PART 11 / PART 14).
@@ -24,7 +24,7 @@ export interface FreshnessGateResult {
 }
 
 export async function checkStrategyFreshness(
-  client: any,
+  client: Prisma.TransactionClient,
   params: {
     businessId: string;
     strategyId: string;
@@ -43,7 +43,10 @@ export async function checkStrategyFreshness(
     today: params.today,
   });
 
-  const verdict = classifyStaleness((decision?.fingerprintDetail as any) ?? null, current);
+  const verdict = classifyStaleness(
+    (decision?.fingerprintDetail as unknown as FingerprintDetail | null) ?? null,
+    current
+  );
 
   return { verdict, blocked: verdict.blocksExecution };
 }
@@ -57,7 +60,7 @@ export async function checkStrategyFreshness(
  * refused to do about it", which Phase 14 established as separate concepts.
  */
 export async function recordStaleBlock(
-  client: any,
+  client: Prisma.TransactionClient,
   decision: { id: string; businessId: string },
   verdict: FreshnessVerdict,
   actorId?: string | null

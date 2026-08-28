@@ -1,6 +1,4 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { POST as executeAction } from "../../execute/route";
-import { POST as approveStrategy } from "../../approve/route";
 import { GET as getPaymentStatus } from "../../payment-status/route";
 import { POST as handleWebhook } from "../../webhooks/route";
 import { prisma } from "@/lib/prisma";

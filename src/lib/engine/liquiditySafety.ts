@@ -167,7 +167,7 @@ export async function calculateLiquiditySafetyRequirement(
 export function extractObligations(
   payouts: PayoutRecord[],
   transactions: TransactionRecord[],
-  today: Date = new Date()
+  _today: Date = new Date()
 ): CashObligation[] {
   const obligations: CashObligation[] = [];
   const dataWarnings: string[] = [];

@@ -59,7 +59,7 @@ describe("Observability & Safe Logging", () => {
   });
 
   it("handles existing correlation IDs safely and issues new ones if unsafe", async () => {
-    const safeHandler = async (req: Request) => new Response("ok");
+    const safeHandler = async () => new Response("ok");
     const wrapped = withCorrelationId(safeHandler);
 
     // Case 1: Safe correlation ID passed

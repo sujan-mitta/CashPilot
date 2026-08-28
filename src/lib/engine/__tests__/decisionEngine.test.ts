@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { generateStrategies, StrategyResult } from "../strategyEngine";
-import { scoreAllStrategies, ScoredStrategy, SCORING_CONFIG } from "../scorer";
+import { scoreAllStrategies, SCORING_CONFIG } from "../scorer";
 import { addDays } from "date-fns";
 
 // Helper to generate template forecast days

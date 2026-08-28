@@ -3,7 +3,7 @@
 import React, { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { useCashPilot } from "@/context/CashPilotContext";
+import { useCashPilot, type Strategy } from "@/context/CashPilotContext";
 import { formatINR } from "@/lib/format";
 import { planName } from "@/lib/planNames";
 import { FINANCIAL_CONFIG } from "@/lib/engine/financialConfig";
@@ -67,9 +67,17 @@ function ApprovalContent() {
 
   const { cachedForecast, cachedStrategies } = useCashPilot();
   const { toast } = useToast();
-  const [strategy, setStrategy] = useState<any | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const cachedStrategy = strategyId ? cachedStrategies?.find((s) => s.id === strategyId) ?? null : null;
+  const [fetchedStrategy, setFetchedStrategy] = useState<Strategy | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
+  // Derived, not stored: a cache hit or a fetched result both flow into
+  // `strategy` without the effect ever setting it synchronously, and this also
+  // picks up the cache the moment it populates. loading/error fall out of the
+  // same values.
+  const strategy = cachedStrategy ?? fetchedStrategy;
+  const error = strategyId ? fetchError : "No strategy selection was found in current session.";
+  const loading = !!strategyId && !strategy && !fetchError;
   const [approving, setApproving] = useState(false);
 
   // Track stale state simulation
@@ -102,35 +110,28 @@ function ApprovalContent() {
   }, [cachedForecast]);
 
   useEffect(() => {
-    if (!strategyId) {
-      setError("No strategy selection was found in current session.");
-      setLoading(false);
-      return;
-    }
-
-    // Try loading details from cache first, otherwise fetch GET
-    const cached = cachedStrategies?.find((s) => s.id === strategyId);
-    if (cached) {
-      setStrategy(cached);
-      setLoading(false);
-    } else {
-      async function fetchStrategyDetails() {
-        try {
-          const res = await fetch(`/api/strategies/${strategyId}`);
-          if (!res.ok) {
-            throw new Error("Unable to retrieve strategy details.");
-          }
-          const data = await res.json();
-          setStrategy(data);
-        } catch (err) {
-          setError(errorMessage(err));
-        } finally {
-          setLoading(false);
+    // Only fetch when there is a selection with no cached copy. A cache hit is
+    // reflected by the derived `strategy` above, so nothing is set here
+    // synchronously; the request starts at the await.
+    if (!strategyId || cachedStrategy) return;
+    let cancelled = false;
+    async function fetchStrategyDetails() {
+      try {
+        const res = await fetch(`/api/strategies/${strategyId}`);
+        if (!res.ok) {
+          throw new Error("Unable to retrieve strategy details.");
         }
+        const data = await res.json();
+        if (!cancelled) setFetchedStrategy(data);
+      } catch (err) {
+        if (!cancelled) setFetchError(errorMessage(err));
       }
-      fetchStrategyDetails();
     }
-  }, [strategyId, cachedStrategies]);
+    fetchStrategyDetails();
+    return () => {
+      cancelled = true;
+    };
+  }, [strategyId, cachedStrategy]);
 
   const handleConfirmApproval = async () => {
     if (!strategyId || approving) return;
@@ -304,7 +305,7 @@ function ApprovalContent() {
             </Card>
           ) : (
             <div className="space-y-4">
-              {strategy.actions.map((act: any, idx: number) => (
+              {strategy.actions.map((act, idx: number) => (
                 <Card key={act.id ?? `action-${idx}`} className="rounded-md space-y-4">
                   <div className="flex justify-between items-center border-b border-line-faint pb-3">
                     <span className="text-[11px] font-semibold text-brand-300 block">

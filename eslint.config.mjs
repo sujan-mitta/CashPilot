@@ -16,6 +16,23 @@ const eslintConfig = defineConfig([
     "generated/**",
   ]),
   {
+    // An underscore prefix is the intent marker for a binding that must exist
+    // but is deliberately unused: a param kept for signature/arity compatibility
+    // (e.g. extractObligations' `today`, passed by every caller yet unused in the
+    // body), or a caught error we choose not to inspect. This is the standard
+    // typescript-eslint convention and keeps genuinely-dead code still flagged.
+    rules: {
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+        },
+      ],
+    },
+  },
+  {
     // Test doubles deliberately model partial shapes - a fake Prisma client
     // implements the four methods a test exercises, not the full surface. Typing
     // those fully would mean re-declaring the generated client by hand, which

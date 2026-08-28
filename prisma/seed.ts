@@ -57,7 +57,7 @@ async function main() {
   });
 
   // Create second business and user for tenant isolation testing
-  const otherBusiness = await prisma.business.create({
+  await prisma.business.create({
     data: {
       name: "Deficit Inc",
       currentCash: 50000000, // ₹5.0L
@@ -79,7 +79,7 @@ async function main() {
   const today = new Date();
 
   // Expected successful inflows (committed) inside 14 days: ₹5.8L total
-  const inflow1 = await prisma.transaction.create({
+  await prisma.transaction.create({
     data: {
       businessId: business.id,
       amount: 30000000, // ₹3.0L
@@ -90,7 +90,7 @@ async function main() {
     },
   });
 
-  const inflow2 = await prisma.transaction.create({
+  await prisma.transaction.create({
     data: {
       businessId: business.id,
       amount: 28000000, // ₹2.8L
@@ -124,7 +124,7 @@ async function main() {
 
   // Upcoming critical outflows: ₹20.0L total
   // Day 4: Components Supplier (₹7.0L) - Criticality HIGH
-  const payoutTx1 = await prisma.transaction.create({
+  await prisma.transaction.create({
     data: {
       businessId: business.id,
       amount: 70000000, // ₹7.0L
@@ -147,7 +147,7 @@ async function main() {
   });
 
   // Day 5: Payroll (₹6.0L) - Criticality HIGH
-  const payoutTx2 = await prisma.transaction.create({
+  await prisma.transaction.create({
     data: {
       businessId: business.id,
       amount: 60000000, // ₹6.0L
@@ -159,7 +159,7 @@ async function main() {
   });
 
   // Day 7: Operational SaaS/recurring (₹1.5L) - Criticality LOW
-  const payoutTx3 = await prisma.transaction.create({
+  await prisma.transaction.create({
     data: {
       businessId: business.id,
       amount: 15000000, // ₹1.5L
@@ -171,7 +171,7 @@ async function main() {
   });
 
   // Day 8: Packaging Co (₹5.5L) - Criticality MEDIUM
-  const payoutTx4 = await prisma.transaction.create({
+  await prisma.transaction.create({
     data: {
       businessId: business.id,
       amount: 55000000, // ₹5.5L

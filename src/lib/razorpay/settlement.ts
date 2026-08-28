@@ -44,7 +44,7 @@ import {
  * never be able to break the settlement path it is observing.
  */
 export async function recordSettlementDiscrepancy(
-  client: any,
+  client: Prisma.TransactionClient,
   details: {
     kind: "INVOICE_ALREADY_PAID" | "RECOVERY_ALREADY_RECOVERED";
     paymentLinkId: string;

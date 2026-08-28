@@ -13,6 +13,66 @@ import { BarChart2, Clock, ChevronRight, X, ShieldAlert, ArrowLeft } from "lucid
 import clsx from "clsx";
 import { errorMessage } from "@/lib/errors";
 
+/** Per-strategy aggregate from GET /api/strategy-performance. */
+interface PerformanceEntry {
+  strategyType: string;
+  sampleSize: number;
+  timesRecommended: number;
+  timesApproved: number;
+  successCount: number;
+  avgPredictionError: number;
+  medianPredictionError: number;
+}
+
+/** The snapshot blobs a decision carries. Stored as JSON, shaped on read. */
+interface RecommendedSnapshot {
+  minimumBalance: number;
+  finalBalance: number;
+  deficitDays: number;
+  strategyType: string;
+}
+interface BaselineSnapshot {
+  minimumBalance: number;
+  deficitDays: number;
+  coverageRatio: number;
+  forecastHorizon: number;
+  requiredLiquidity: number;
+  startingCash: number;
+}
+interface ActualOutcomeSnapshot {
+  status: string;
+  actualDeficitDays: number;
+  actualFinalBalance: number;
+  actualMinimumBalance: number;
+  dataWarnings: string[];
+  predictionError: { minimumBalance: number; deficitDays: number };
+  varianceClassification: string;
+}
+
+interface ApprovalSnapshot {
+  status: string;
+  approvedAt: string;
+  approvedByName: string;
+  rejectedAt: string;
+  rejectedByName: string;
+  rejectionReason: string;
+}
+
+/** One decision as GET /api/decisions returns it. */
+interface DecisionRecord {
+  id: string;
+  status: string;
+  createdAt: string;
+  engineVersion: string;
+  outcomeMeasuredAt: string | null;
+  strategy: { recommended: boolean } | null;
+  recommendedSnapshot: RecommendedSnapshot | null;
+  baselineSnapshot: BaselineSnapshot | null;
+  actualOutcome: ActualOutcomeSnapshot | null;
+  approvalSnapshot: ApprovalSnapshot | null;
+  executionSnapshot: { timestamp: string } | null;
+  reconciliationSnapshot: { timestamp: string } | null;
+}
 
 const FILTERS = ["ALL", "RECOMMENDED", "APPROVED", "REJECTED", "EXECUTED", "SUCCESSFUL", "PENDING_OUTCOME"];
 
@@ -32,40 +92,46 @@ function outcomeTone(status: string): BadgeTone {
 
 export default function DecisionHistoryPage() {
   const router = useRouter();
-  const [decisions, setDecisions] = useState<any[]>([]);
-  const [performance, setPerformance] = useState<any>(null);
+  const [decisions, setDecisions] = useState<DecisionRecord[]>([]);
+  const [performance, setPerformance] = useState<Record<string, PerformanceEntry> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedFilter, setSelectedFilter] = useState<string>("ALL");
   const [selectedDecisionId, setSelectedDecisionId] = useState<string | null>(null);
 
-  const fetchHistory = async () => {
-    try {
-      setLoading(true);
-      const res = await fetch("/api/decisions");
-      if (res.status === 401) {
-        router.push("/login");
-        return;
-      }
-      if (!res.ok) throw new Error("Failed to load decision history.");
-      const data = await res.json();
-      setDecisions(data.decisions || []);
-
-      const perfRes = await fetch("/api/strategy-performance");
-      if (perfRes.ok) {
-        const perfData = await perfRes.json();
-        setPerformance(perfData.performance || null);
-      }
-    } catch (err) {
-      setError(errorMessage(err));
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // Load-once on mount. Declared inside the effect and started with the await
+  // (loading already initialises to true) so nothing sets state synchronously
+  // in the effect body, and `cancelled` drops a late response after unmount.
   useEffect(() => {
-    fetchHistory();
-  }, []);
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch("/api/decisions");
+        if (res.status === 401) {
+          router.push("/login");
+          return;
+        }
+        if (!res.ok) throw new Error("Failed to load decision history.");
+        const data = await res.json();
+        if (cancelled) return;
+        setDecisions(data.decisions || []);
+
+        const perfRes = await fetch("/api/strategy-performance");
+        if (perfRes.ok) {
+          const perfData = await perfRes.json();
+          if (!cancelled) setPerformance(perfData.performance || null);
+        }
+      } catch (err) {
+        if (!cancelled) setError(errorMessage(err));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
 
   const filteredDecisions = decisions.filter((d) => {
     if (selectedFilter === "ALL") return true;
@@ -225,11 +291,11 @@ export default function DecisionHistoryPage() {
                   </thead>
                   <tbody>
                     {filteredDecisions.map((d) => {
-                      const rec = d.recommendedSnapshot as any;
-                      const base = d.baselineSnapshot as any;
+                      const rec = d.recommendedSnapshot as RecommendedSnapshot;
+                      const base = d.baselineSnapshot as BaselineSnapshot;
                       const expectedDiff = rec ? rec.minimumBalance - base.minimumBalance : 0;
 
-                      const actualOut = d.actualOutcome as any;
+                      const actualOut = d.actualOutcome as ActualOutcomeSnapshot;
                       const actualDiff =
                         actualOut && actualOut.status !== "OUTCOME_PENDING" ? actualOut.actualMinimumBalance - base.minimumBalance : null;
 
@@ -281,11 +347,11 @@ export default function DecisionHistoryPage() {
       <AnimatePresence>
         {selectedDecisionId && selectedDecision && (() => {
           const d = selectedDecision;
-          const rec = d.recommendedSnapshot as any;
-          const base = d.baselineSnapshot as any;
+          const rec = d.recommendedSnapshot as RecommendedSnapshot;
+          const base = d.baselineSnapshot as BaselineSnapshot;
           const expectedDiff = rec ? rec.minimumBalance - base.minimumBalance : 0;
 
-          const actualOut = d.actualOutcome as any;
+          const actualOut = d.actualOutcome as ActualOutcomeSnapshot;
 
           return (
             <motion.div

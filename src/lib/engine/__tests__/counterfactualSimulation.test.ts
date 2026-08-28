@@ -1,8 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { generateStrategies, StrategyResult } from "../strategyEngine";
 import { scoreAllStrategies } from "../scorer";
-import { buildForecast } from "../forecast";
-import { extractObligations, calculateTemporalRequiredLiquidity, CashObligation } from "../liquiditySafety";
+import { CashObligation } from "../liquiditySafety";
 import { addDays } from "date-fns";
 
 describe("Counterfactual Simulation Engine (Tests 1-24)", () => {

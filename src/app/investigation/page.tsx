@@ -56,11 +56,30 @@ export default function Investigation() {
     }
   };
 
+  // Run the diagnostic once when there is no cached result. Inlined and started
+  // with the await (loading already initialises from the cache) so the effect
+  // body sets no state synchronously; the retry button still uses
+  // fetchInvestigation, where a synchronous setState is fine.
   useEffect(() => {
-    if (!cachedInvestigation) {
-      fetchInvestigation();
+    if (cachedInvestigation) return;
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch("/api/investigate", { method: "POST" });
+        if (!res.ok) throw new Error("Unable to retrieve diagnostic details.");
+        const data = await res.json();
+        if (!cancelled) setCachedInvestigation(data);
+      } catch (err) {
+        if (!cancelled) setError(errorMessage(err));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     }
-  }, [cachedInvestigation]);
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [cachedInvestigation, setCachedInvestigation]);
 
   const toggleExpand = (id: string) => {
     setExpandedCauseId((prev) => (prev === id ? null : id));
@@ -109,11 +128,11 @@ export default function Investigation() {
   const forecastDays = cachedForecast?.forecast?.days ?? fetchedDays;
   const startingCash = forecastDays[0]?.openingBalance ?? null;
   const committedInflows = forecastDays.reduce(
-    (sum: number, d: any) => sum + (d.expectedInflows ?? 0),
+    (sum, d) => sum + (d.expectedInflows ?? 0),
     0
   );
   const upcomingObligations = forecastDays.reduce(
-    (sum: number, d: any) => sum + (d.expectedOutflows ?? 0),
+    (sum, d) => sum + (d.expectedOutflows ?? 0),
     0
   );
   const availableLiquidity =
@@ -206,7 +225,7 @@ export default function Investigation() {
             What is causing this, and what you can do
           </h3>
 
-          {causes.map((cause: any) => {
+          {causes.map((cause) => {
             const isExpanded = expandedCauseId === cause.id;
 
             return (
@@ -261,7 +280,7 @@ export default function Investigation() {
                               Money in versus money out
                             </span>
                             <div className="space-y-2 max-h-52 overflow-y-auto">
-                              {cause.evidence.events.map((e: any, idx: number) => {
+                              {(cause.evidence.events ?? []).map((e, idx: number) => {
                                 const isNegative = e.amount < 0;
                                 const isPayroll = e.description.toLowerCase().includes("payroll");
                                 const isSupplier = e.description.toLowerCase().includes("supplier");
@@ -292,8 +311,8 @@ export default function Investigation() {
                               })}
                             </div>
                             {(() => {
-                              const inflows = cause.evidence.events.filter((e: any) => e.amount > 0).reduce((sum: number, e: any) => sum + e.amount, 0);
-                              const outflows = cause.evidence.events.filter((e: any) => e.amount < 0).reduce((sum: number, e: any) => sum + e.amount, 0);
+                              const inflows = (cause.evidence.events ?? []).filter((e) => e.amount > 0).reduce((sum, e) => sum + e.amount, 0);
+                              const outflows = (cause.evidence.events ?? []).filter((e) => e.amount < 0).reduce((sum, e) => sum + e.amount, 0);
                               const timingGap = inflows + outflows;
                               return (
                                 <div className="pt-2 border-t border-line-soft flex flex-wrap justify-between gap-2 text-xs font-bold text-ink-300">
@@ -312,7 +331,7 @@ export default function Investigation() {
                             <span className="label block">
                               A payment that failed
                             </span>
-                            {cause.evidence.transactions.map((tx: any, idx: number) => (
+                            {(cause.evidence.transactions ?? []).map((tx, idx: number) => (
                               <div
                                 key={idx}
                                 className="bg-ground-100 border border-line-soft p-4 rounded-md flex items-center justify-between"
@@ -345,7 +364,7 @@ export default function Investigation() {
                               Invoices past their due date
                             </span>
                             <div className="space-y-2">
-                              {cause.evidence.invoices.map((inv: any, idx: number) => {
+                              {(cause.evidence.invoices ?? []).map((inv, idx: number) => {
                                 const due = new Date(inv.dueDate);
                                 const todayDate = new Date();
                                 const diffDays = Math.max(1, Math.round((todayDate.getTime() - due.getTime()) / (1000 * 60 * 60 * 24)));

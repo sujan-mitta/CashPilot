@@ -6,13 +6,11 @@ import { transactionsToMovements, buildForecast } from "../forecast";
 import { calculateLiquiditySafetyRequirement, extractObligations } from "../liquiditySafety";
 import { buildDecisionContext } from "../decisionContext";
 import { classifyStaleness } from "../strategyFreshness";
-import { classifyObligation, summariseObligationOutcomes } from "../obligationOutcome";
 import { validateDecisionTransition } from "../decisionStateMachine";
 import { FINANCIAL_CONFIG } from "../financialConfig";
 import {
   recordExecutionIntent,
   claimExecutionIntent,
-  sweepAbandonedIntents,
 } from "../../execution/executionIntent";
 import { executeWithDurableIntent } from "../../execution/executor";
 import { makeExecutionIntentFake } from "./helpers/prismaFakes";

@@ -41,7 +41,9 @@ export async function GET(
     // The stored `actions` JSON is the raw engine output, which carries no id —
     // ids live on the AgentAction rows. POST /api/strategies returns actions with
     // ids attached, so do the same here to keep both paths on one shape.
-    const storedActions = Array.isArray(strategy.actions) ? (strategy.actions as any[]) : [];
+    const storedActions = Array.isArray(strategy.actions)
+      ? (strategy.actions as unknown as Array<{ type: string; [key: string]: unknown }>)
+      : [];
     const claimed = new Set<string>();
     const actions = storedActions.map((a, idx) => {
       const match = strategy.agentActions.find(

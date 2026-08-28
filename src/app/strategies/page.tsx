@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { ForecastChart } from "@/components/ForecastChart";
-import { useCashPilot } from "@/context/CashPilotContext";
+import { useCashPilot, type Strategy } from "@/context/CashPilotContext";
 import { FINANCIAL_CONFIG } from "@/lib/engine/financialConfig";
 import { formatINR } from "@/lib/format";
 import { planName, planNameShort, planSummary } from "@/lib/planNames";
@@ -124,7 +124,7 @@ export default function Strategies() {
         if (data.recommendedStrategyId) {
           if (!cancelled) setSelectedStrategyId(data.recommendedStrategyId);
         } else {
-          const rec = data.strategies.find((s: any) => s.recommended);
+          const rec = data.strategies.find((s: Strategy) => s.recommended);
           if (rec && !cancelled) setSelectedStrategyId(rec.id);
         }
       } catch (err) {
@@ -196,11 +196,8 @@ export default function Strategies() {
   const safetyThreshold = cachedForecast.forecast!.safetyThreshold;
 
   // Selection mapping
-  const selectedStrategy = (cachedStrategies.find((s) => s.id === selectedStrategyId) || cachedStrategies[0]) as any;
+  const selectedStrategy = cachedStrategies.find((s) => s.id === selectedStrategyId) || cachedStrategies[0];
   const strategyResult = selectedStrategy.result;
-
-  const strategyC = cachedStrategies.find((s) => s.name === "RECOVER_AND_COLLECT");
-  const strategyD = cachedStrategies.find((s) => s.name === "FULL_INTERVENTION");
 
   return (
     <main className="flex-1 max-w-5xl mx-auto px-6 py-10 w-full space-y-8">
@@ -413,7 +410,7 @@ export default function Strategies() {
                       No adjustments applied.
                     </span>
                   ) : (
-                    selectedStrategy.actions.map((act: any) => (
+                    selectedStrategy.actions.map((act) => (
                       <div key={act.id} className="text-xs">
                         <span className="text-safe-400 font-bold block">
                           +{formatINR(act.amount)}
@@ -556,7 +553,7 @@ export default function Strategies() {
                 This strategy resolves the immediate 14-day cash runway deficit by rescheduling supplier payouts beyond the forecast horizon. The obligations have been shifted, not eliminated.
               </p>
               <div className="space-y-3 pt-2">
-                {selectedStrategy.deferredObligations.map((def: any, idx: number) => (
+                {(selectedStrategy.deferredObligations ?? []).map((def, idx: number) => (
                   <div key={idx} className="bg-ground-100 border border-risk-500/20 p-4 rounded-md grid grid-cols-1 sm:grid-cols-4 gap-4 text-xs font-semibold text-ink-200">
                     <div>
                       <span className="text-[11px] text-ink-400 block">Deferred Amount</span>
@@ -594,7 +591,7 @@ export default function Strategies() {
                   This strategy includes no active interventions. Forecast remains on baseline trajectory.
                 </div>
               ) : (
-                selectedStrategy.actions.map((act: any) => (
+                selectedStrategy.actions.map((act) => (
                   <div
                     key={act.id}
                     className="flex items-center justify-between p-3.5 bg-ground-200 border border-line-faint rounded-md text-xs"
@@ -694,7 +691,7 @@ export default function Strategies() {
                 Postponing the vendor payout beyond the forecast horizon creates a larger bank surplus of{" "}
                 <strong>
                   {(() => {
-                    const fi = cachedStrategies?.find((x: any) => x.name === "FULL_INTERVENTION");
+                    const fi = cachedStrategies?.find((x) => x.name === "FULL_INTERVENTION");
                     return typeof fi?.result?.projectedBalance === "number"
                       ? formatINR(fi.result.projectedBalance)
                       : "an unavailable amount";
@@ -750,7 +747,7 @@ export default function Strategies() {
       {/* STRATEGY DETAIL DRAWER */}
       <AnimatePresence>
         {drawerStrategyId && (() => {
-          const drawerStrategy = cachedStrategies.find((s) => s.id === drawerStrategyId) as any;
+          const drawerStrategy = cachedStrategies.find((s) => s.id === drawerStrategyId);
           if (!drawerStrategy) return null;
 
           return (
@@ -812,7 +809,7 @@ export default function Strategies() {
                         {drawerStrategy.actions.length === 0 ? (
                           <span className="italic text-ink-400 font-normal">No interventions. Forecast stays on baseline.</span>
                         ) : (
-                          drawerStrategy.actions.map((act: any) => (
+                          drawerStrategy.actions.map((act) => (
                             <div key={act.id} className="bg-ground-200 border border-line-faint p-3 rounded-md flex justify-between items-center">
                               <div>
                                 <span className="text-ink-100 font-bold block">{act.label}</span>
@@ -853,7 +850,7 @@ export default function Strategies() {
                         <p className="text-[11px] text-risk-400 leading-normal font-semibold">
                           This plan delays some payments past the 14 days shown above — they still have to be paid.
                         </p>
-                        {drawerStrategy.deferredObligations.map((def: any, idx: number) => (
+                        {(drawerStrategy.deferredObligations ?? []).map((def, idx: number) => (
                           <div key={idx} className="flex justify-between pt-1 border-t border-risk-500/25 text-[11px]">
                             <span>Amount: {formatINR(def.amount)}</span>
                             <span>Days beyond horizon: {def.daysBeyondHorizon}</span>

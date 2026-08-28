@@ -4,7 +4,6 @@ import {
   claimExecutionIntent,
   resolveIntentUnknown,
   resolveIntentFailed,
-  sweepAbandonedIntents,
   isDispatchable,
 } from "../../execution/executionIntent";
 import { executeWithDurableIntent, reconcileUnknownIntent, isRetryPermitted } from "../../execution/executor";
@@ -18,7 +17,7 @@ import {
 } from "../decisionStateMachine";
 import { classifyStaleness, computeContextFingerprint } from "../strategyFreshness";
 import { verifiedMovements } from "../outcomeMeasurer";
-import { isUsableAmount, safeRatio, FINANCIAL_CONFIG } from "../financialConfig";
+import { isUsableAmount, safeRatio } from "../financialConfig";
 import { summariseObligationOutcomes, classifyObligation } from "../obligationOutcome";
 import { inspectConfiguration } from "../../config/productionConfig";
 import { makeExecutionIntentFake, makeDecisionFakes } from "./helpers/prismaFakes";
@@ -60,7 +59,6 @@ const base = {
   amount: 2400000,
 };
 
-const DAY = 24 * 60 * 60 * 1000;
 const T0 = new Date("2026-09-01T00:00:00.000Z");
 
 beforeEach(() => {

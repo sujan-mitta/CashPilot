@@ -67,7 +67,7 @@ vi.mock("@/lib/prisma", async () => {
           }
           return dbState.business;
         }),
-        update: vi.fn(async ({ where, data }) => {
+        update: vi.fn(async ({ data }) => {
           if (data.currentCash && data.currentCash.increment) {
             dbState.business.currentCash += data.currentCash.increment;
           }
@@ -597,7 +597,7 @@ describe("CashPilot Phase 11 — Closed-Loop Reliability, Recovery & State Consi
     const req = new Request("http://localhost/api/execute", { method: "POST", body: JSON.stringify({ strategyId: "strat_1" }) });
     const res = await handleExecute(req);
     expect(res.status).toBe(200);
-    const body = await res.json();
+    await res.json();
     // Checks that payout is ignored or not updated
     expect(dbState.payouts[0].status).toBe("SCHEDULED");
   });

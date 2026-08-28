@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { runAgent } from "@/lib/ai/agents";
 import { actionNarratorPrompt } from "@/lib/ai/prompts";
-import { RecoveryStatus, PayoutStatus, TransactionStatus, ActionStatus } from "../../../../generated/prisma/client";
+import { ActionStatus, Prisma } from "../../../../generated/prisma/client";
 import { addDays } from "date-fns";
 import { getSession } from "@/lib/auth";
 import { buildForecast, transactionsToMovements } from "@/lib/engine/forecast";
@@ -388,8 +388,8 @@ export const POST = withCorrelationId(async (req: Request) => {
         data: {
           status,
           result: resultDetail,
-          predictionActual: predictionActual as any,
-          auditLog: [...existingAudit, auditEntry] as any,
+          predictionActual: predictionActual as Prisma.InputJsonValue,
+          auditLog: [...existingAudit, auditEntry] as Prisma.InputJsonValue,
         },
       });
 

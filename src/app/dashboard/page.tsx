@@ -10,7 +10,6 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { StatTile } from "@/components/ui/StatTile";
 import { Reveal, Stagger, StaggerItem } from "@/components/ui/Reveal";
 import { EASE_OUT_EXPO } from "@/components/ui/motion";
 import {
@@ -35,12 +34,18 @@ export default function Dashboard() {
   const { toast } = useToast();
   const { cachedForecast, setCachedForecast, setCachedInvestigation, logout } = useCashPilot();
 
-  const [loading, setLoading] = useState(!cachedForecast);
+  const [, setLoading] = useState(!cachedForecast);
   const [error, setError] = useState<string | null>(null);
 
   // Page states: "LOADING" | "SUCCESS" | "INVESTIGATING" | "ERROR"
-  const [pageState, setPageState] = useState<"LOADING" | "SUCCESS" | "INVESTIGATING" | "ERROR">("LOADING");
-  const [monitoringState, setMonitoringState] = useState<"ACTIVE" | "CALCULATING" | "ERROR">("CALCULATING");
+  // Derived from the cache at mount so the effect never has to set them
+  // synchronously; both still transition during fetch/diagnostics.
+  const [pageState, setPageState] = useState<"LOADING" | "SUCCESS" | "INVESTIGATING" | "ERROR">(
+    cachedForecast ? "SUCCESS" : "LOADING"
+  );
+  const [, setMonitoringState] = useState<"ACTIVE" | "CALCULATING" | "ERROR">(
+    cachedForecast ? (cachedForecast.status === "SUCCESS" ? "ACTIVE" : "ERROR") : "CALCULATING"
+  );
 
   // Staged loading items for diagnostics transitions
   const [visibleStepCount, setVisibleStepCount] = useState(0);
@@ -72,15 +77,42 @@ export default function Dashboard() {
     }
   };
 
+  // First-load only. When the cache is already populated the initial state
+  // above reflects it, so this returns without touching state. Otherwise it
+  // loads inline, starting with the await so nothing is set synchronously; the
+  // retry button and diagnostics reuse fetchForecast, where that is fine.
   useEffect(() => {
-    if (cachedForecast) {
-      setPageState("SUCCESS");
-      setMonitoringState(cachedForecast.status === "SUCCESS" ? "ACTIVE" : "ERROR");
-      setLoading(false);
-      return;
+    if (cachedForecast) return;
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch("/api/forecast");
+        if (res.status === 401) {
+          logout();
+          router.push("/login");
+          return;
+        }
+        if (!res.ok) throw new Error("Unable to generate the latest forecast.");
+        const data = await res.json();
+        if (cancelled) return;
+        setCachedForecast(data);
+        setPageState("SUCCESS");
+        setMonitoringState(data.status === "SUCCESS" ? "ACTIVE" : "ERROR");
+      } catch (err) {
+        if (!cancelled) {
+          setError(errorMessage(err));
+          setPageState("ERROR");
+          setMonitoringState("ERROR");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     }
-    fetchForecast();
-  }, [cachedForecast]);
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [cachedForecast, setCachedForecast, logout, router]);
 
   /**
    * Runs the ledger scan and narrates it while it works.
@@ -242,7 +274,7 @@ export default function Dashboard() {
 
   // Destructure variables from structured API response
   const business = cachedForecast!.business!;
-  const forecast = cachedForecast!.forecast as any;
+  const forecast = cachedForecast!.forecast!;
   const currentCash = business.currentCash;
   const safetyThreshold = forecast.safetyThreshold;
   const days = forecast.days;
@@ -270,7 +302,7 @@ export default function Dashboard() {
    * and the survivor is a named function.
    */
   const daysUntilNegative = (() => {
-    const idx = days.findIndex((d: any) => d.projectedBalance < 0);
+    const idx = days.findIndex((d) => d.projectedBalance < 0);
     return idx >= 0 ? idx + 1 : null;
   })();
 
@@ -328,8 +360,8 @@ export default function Dashboard() {
     );
   }
 
-  const totalInflows = days.reduce((sum: number, d: any) => sum + d.expectedInflows, 0);
-  const totalOutflows = days.reduce((sum: number, d: any) => sum + d.expectedOutflows, 0);
+  const totalInflows = days.reduce((sum, d) => sum + d.expectedInflows, 0);
+  const totalOutflows = days.reduce((sum, d) => sum + d.expectedOutflows, 0);
   const safetyRequirement = forecast.safetyRequirement;
 
   const statusTone = minProjected < 0 ? "danger" : minProjected < safetyThreshold ? "warning" : "success";
@@ -625,7 +657,7 @@ export default function Dashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {days.map((d: any, idx: number) => {
+                  {days.map((d, idx: number) => {
                     if (d.expectedInflows <= 0 && d.expectedOutflows <= 0) return null;
                     const date = new Date(d.date).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
                     return (

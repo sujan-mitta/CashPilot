@@ -6,10 +6,10 @@ import {
   sweepAbandonedIntents,
 } from "../executionIntent";
 import { executeWithDurableIntent, reconcileUnknownIntent, isRetryPermitted } from "../executor";
-import { interpretScan, scanForReference, providerUnavailable } from "../providerReconciliation";
-import { reconcileReschedulePayout, reconcilePauseExpense } from "../ledgerReconciliation";
+import { interpretScan, providerUnavailable } from "../providerReconciliation";
+import { reconcilePauseExpense } from "../ledgerReconciliation";
 import { classifyProviderError, ProviderRejectedError, ProviderIndeterminateError } from "../../razorpay/client";
-import { transitionDecision, InvalidDecisionTransitionError } from "../../engine/decisionStateMachine";
+import { transitionDecision } from "../../engine/decisionStateMachine";
 import { makeExecutionIntentFake, makeDecisionFakes } from "../../engine/__tests__/helpers/prismaFakes";
 import { ExecutionOperation } from "../../../../generated/prisma/client";
 
@@ -36,7 +36,6 @@ const client: any = {
 };
 
 const T0 = new Date("2026-10-01T00:00:00.000Z");
-const DAY = 24 * 60 * 60 * 1000;
 
 const linkBase = {
   businessId: "biz-A",

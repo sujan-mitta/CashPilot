@@ -4,7 +4,7 @@ import { getSession } from "@/lib/auth";
 import { isRetryPermitted } from "@/lib/execution/executor";
 import { FINANCIAL_CONFIG } from "@/lib/engine/financialConfig";
 import { errorMessage } from "@/lib/errors";
-import { ExecutionIntentStatus } from "../../../../generated/prisma/client";
+import { ExecutionIntentStatus, Prisma } from "../../../../generated/prisma/client";
 
 /**
  * Operator view of unresolved execution intents (Phase 16 PART 5/6).
@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       intents: intents.map((i) => {
         const action = actionById.get(i.actionId);
-        const recon = i.reconciliationResult as any;
+        const recon = i.reconciliationResult as Record<string, unknown> | null;
         return {
           intentId: i.id,
           strategyId: i.strategyId,
@@ -84,8 +84,8 @@ export async function GET(req: NextRequest) {
               }
             : null,
           // SERVER-decided. Never trust a client to compute this.
-          retryPermitted: isRetryPermitted(i as any),
-          nextSafeAction: describeNextSafeAction(i as any),
+          retryPermitted: isRetryPermitted(i),
+          nextSafeAction: describeNextSafeAction(i),
         };
       }),
     });
@@ -99,7 +99,7 @@ export async function GET(req: NextRequest) {
 function describeNextSafeAction(intent: {
   status: string;
   retrySafe?: boolean | null;
-  reconciliationResult?: any;
+  reconciliationResult?: Prisma.JsonValue;
   lastReconciledAt?: Date | null;
 }): string {
   if (intent.status === "SUCCEEDED") return "Nothing to do. The operation is confirmed.";
@@ -107,7 +107,7 @@ function describeNextSafeAction(intent: {
     return "An attempt is still in flight. Wait for it to resolve or be swept before acting.";
 
   if (intent.status === "FAILED") {
-    return isRetryPermitted(intent as any)
+    return isRetryPermitted(intent)
       ? "Reconciliation proved the original operation did not occur. Re-running it is safe."
       : "The operation failed but re-running it is NOT safe - the original effect may have partially landed. Verify at the provider before acting.";
   }

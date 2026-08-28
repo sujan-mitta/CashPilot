@@ -85,6 +85,11 @@ export function UnknownExecutionPanel({
   }, [strategyId]);
 
   useEffect(() => {
+    // load() is the shared refresh routine (the reconcile handler awaits it too)
+    // and resets loading/error synchronously by design. Running it on mount and
+    // on strategyId change is exactly this fetch-on-mount case, so the
+    // synchronous setState it performs is intentional here.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, [load]);
 
