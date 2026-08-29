@@ -1,3 +1,9 @@
 {
-  "ignoreCommand": "bash ./scripts/vercel-ignore.sh"
+  "ignoreCommand": "bash ./scripts/vercel-ignore.sh",
+  "crons": [
+    {
+      "path": "/api/notifications/check-and-dispatch",
+      "schedule": "*/10 * * * *"
+    }
+  ]
 }
