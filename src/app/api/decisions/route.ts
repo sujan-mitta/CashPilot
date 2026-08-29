@@ -5,6 +5,7 @@ import { measureDecisionOutcome } from "@/lib/engine/outcomeMeasurer";
 import { InvalidDecisionTransitionError } from "@/lib/engine/decisionStateMachine";
 import { FINANCIAL_CONFIG } from "@/lib/engine/financialConfig";
 import { errorMessage } from "@/lib/errors";
+import { logger } from "@/lib/observability";
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -61,7 +62,7 @@ export async function GET(req: NextRequest) {
       } catch (err) {
         // A decision that cannot legally be measured is left exactly as it is.
         if (err instanceof InvalidDecisionTransitionError) continue;
-        console.error(`Error measuring decision ${d.id}:`, err);
+        logger.error(`Error measuring decision ${d.id}:`, { error: String(err) });
       }
     }
 
@@ -98,7 +99,7 @@ export async function GET(req: NextRequest) {
       },
     });
   } catch (error) {
-    console.error("API error in decisions list:", error);
+    logger.error("API error in decisions list:", { error: String(error) });
     return NextResponse.json({ error: errorMessage(error) }, { status: 500 });
   }
 }

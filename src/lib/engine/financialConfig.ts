@@ -206,7 +206,7 @@ export const FINANCIAL_CONFIG: FinancialConfig = {
  * it as a real figure. 2^53 paise is far beyond any real balance sheet, and
  * staying under Number.MAX_SAFE_INTEGER keeps integer arithmetic exact.
  */
-export const MAX_SAFE_PAISE = Number.MAX_SAFE_INTEGER;
+const MAX_SAFE_PAISE = Number.MAX_SAFE_INTEGER;
 
 /**
  * Returns true only for a finite, non-NaN number inside the safe integer range.

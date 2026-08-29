@@ -202,10 +202,7 @@ export function classifyProviderError(
   return result;
 }
 
-/** True when the SDK is running against simulated (non-live) credentials. */
-export function isSimulatedProvider(): boolean {
-  return isPlaceholder || !razorpay;
-}
+
 
 /**
  * Creates a Razorpay payment link.

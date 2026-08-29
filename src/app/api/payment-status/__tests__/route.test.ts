@@ -103,6 +103,7 @@ describe("Payment Status Verification Route", () => {
         },
         business: {
           findFirst: vi.fn().mockResolvedValue(mockBusiness as any),
+          findUnique: vi.fn().mockResolvedValue(mockBusiness as any),
           update: vi.fn(),
         },
         agentAction: {
@@ -376,6 +377,7 @@ describe("Payment Status Verification Route", () => {
       },
       business: {
         findFirst: vi.fn().mockResolvedValue(mockBusiness as any),
+        findUnique: vi.fn().mockResolvedValue(mockBusiness as any),
         update: vi.fn(),
       },
       agentAction: {

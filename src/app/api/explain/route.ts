@@ -9,6 +9,7 @@ import { calculateRisk } from "@/lib/engine/riskDetector";
 import { identifyRootCauses } from "@/lib/engine/rootCause";
 import { calculateLiquiditySafetyRequirement } from "@/lib/engine/liquiditySafety";
 import { errorMessage } from "@/lib/errors";
+import { logger } from "@/lib/observability";
 
 interface ActionDefinition {
   label: string;
@@ -156,7 +157,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ error: "Unknown type" }, { status: 400 });
   } catch (error) {
-    console.error("AI explain endpoint error:", error);
+    logger.error("AI explain endpoint error:", { error: String(error) });
     return NextResponse.json({ error: errorMessage(error) }, { status: 500 });
   }
 }

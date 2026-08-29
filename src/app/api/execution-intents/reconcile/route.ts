@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth";
 import { reconcileUnknownIntent, isRetryPermitted } from "@/lib/execution/executor";
 import { assertFinanciallySafeConfiguration, ConfigurationError } from "@/lib/config/productionConfig";
 import { errorMessage } from "@/lib/errors";
+import { logger } from "@/lib/observability";
 
 /**
  * Operator-triggered reconciliation of one unresolved execution intent
@@ -67,7 +68,7 @@ export async function POST(req: Request) {
       retryPermitted: after ? isRetryPermitted(after) : false,
     });
   } catch (error) {
-    console.error("API error in reconcile:", error);
+    logger.error("API error in reconcile:", { error: String(error) });
     return NextResponse.json({ error: errorMessage(error) }, { status: 500 });
   }
 }

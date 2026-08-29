@@ -275,7 +275,7 @@ describe("Safe Intervention Approval, Execution & Reconciliation (Phase 10)", ()
     dbState.agentActions = [
       { id: "act-1", strategyId: "strategy-1", actionType: "RECOVER_FAILED_PAYMENTS" as const, amount: 3000000, status: "PENDING" as const },
       { id: "act-2", strategyId: "strategy-1", actionType: "PRIORITIZE_COLLECTIONS" as const, amount: 2000000, status: "PENDING" as const },
-      { id: "act-3", strategyId: "strategy-1", actionType: "RESCHEDULE_PAYOUT" as const, amount: 5000000, status: "PENDING" as const },
+      { id: "act-3", strategyId: "strategy-1", actionType: "RESCHEDULE_PAYOUT" as const, amount: 5000000, status: "PENDING" as const, targetPayoutId: "payout_1", targetTransactionId: "tx_payout" },
     ];
 
     // Approval runs a server-side freshness gate, so the strategy needs a
@@ -290,7 +290,7 @@ describe("Safe Intervention Approval, Execution & Reconciliation (Phase 10)", ()
       actions: [
         { type: "RECOVER_FAILED_PAYMENTS", amount: 3000000 },
         { type: "PRIORITIZE_COLLECTIONS", amount: 2000000 },
-        { type: "RESCHEDULE_PAYOUT", amount: 5000000 },
+        { type: "RESCHEDULE_PAYOUT", amount: 5000000, targetPayoutId: "payout_1", targetTransactionId: "tx_payout" },
       ],
       status: "PRESENTED",
     });

@@ -8,6 +8,7 @@ export interface DailyMovement {
   isRecovered?: boolean;
   isAccelerated?: boolean;
   transactionId?: string;
+  payoutId?: string;
 }
 
 export interface ForecastDay {

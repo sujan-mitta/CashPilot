@@ -354,12 +354,11 @@ export async function sweepAbandonedIntents(
     logger.info("Sweeping abandoned dispatching intents to UNKNOWN", { sweptCount: abandoned.length, intentIds: abandoned.map(a => a.id) });
   }
 
-  for (const a of abandoned) {
-    await resolveIntentUnknown(
-      client,
-      a.id,
-      "Process did not report a result before the dispatch deadline; external effect is indeterminate."
-    );
+  const reason = "Process did not report a result before the dispatch deadline; external effect is indeterminate.";
+  const BATCH_SIZE = 10;
+  for (let i = 0; i < abandoned.length; i += BATCH_SIZE) {
+    const batch = abandoned.slice(i, i + BATCH_SIZE);
+    await Promise.allSettled(batch.map(a => resolveIntentUnknown(client, a.id, reason)));
   }
 
   return abandoned.map((a: { id: string }) => a.id);

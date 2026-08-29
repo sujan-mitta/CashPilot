@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCashPilot } from "@/context/CashPilotContext";
@@ -138,9 +138,24 @@ export default function Investigation() {
   const availableLiquidity =
     startingCash === null ? null : startingCash + committedInflows;
 
-  // "Unavailable" is the honest rendering of a figure we do not have. Showing
-  // ₹0 would be a claim about the business's cash, not an absence of one.
   const money = (v: number | null) => (v === null ? "Unavailable" : formatINR(v));
+
+  const causeEvidenceTotals = useMemo(() => {
+    const totals: Record<string, { inflows: number; outflows: number; timingGap: number }> = {};
+    if (!causes) return totals;
+    for (const cause of causes) {
+      if (cause.type === "TIMING_MISMATCH") {
+        let inflows = 0;
+        let outflows = 0;
+        for (const e of cause.evidence?.events ?? []) {
+          if (e.amount > 0) inflows += e.amount;
+          else outflows += e.amount;
+        }
+        totals[cause.id] = { inflows, outflows, timingGap: inflows + outflows };
+      }
+    }
+    return totals;
+  }, [causes]);
 
   const causalMap = [
     { label: "Cash you start with", value: money(startingCash), tone: "bg-ground-200 border-line-soft text-ink-200" },
@@ -280,7 +295,7 @@ export default function Investigation() {
                               Money in versus money out
                             </span>
                             <div className="space-y-2 max-h-52 overflow-y-auto">
-                              {(cause.evidence.events ?? []).map((e, idx: number) => {
+                              {(cause.evidence?.events ?? []).map((e, idx: number) => {
                                 const isNegative = e.amount < 0;
                                 const isPayroll = e.description.toLowerCase().includes("payroll");
                                 const isSupplier = e.description.toLowerCase().includes("supplier");
@@ -311,14 +326,12 @@ export default function Investigation() {
                               })}
                             </div>
                             {(() => {
-                              const inflows = (cause.evidence.events ?? []).filter((e) => e.amount > 0).reduce((sum, e) => sum + e.amount, 0);
-                              const outflows = (cause.evidence.events ?? []).filter((e) => e.amount < 0).reduce((sum, e) => sum + e.amount, 0);
-                              const timingGap = inflows + outflows;
+                              const totals = causeEvidenceTotals[cause.id] || { inflows: 0, outflows: 0, timingGap: 0 };
                               return (
                                 <div className="pt-2 border-t border-line-soft flex flex-wrap justify-between gap-2 text-xs font-bold text-ink-300">
-                                  <span>Money due in: {formatINR(inflows)}</span>
-                                  <span>Committed Outflows: {formatINR(Math.abs(outflows))}</span>
-                                  <span className="text-risk-400">Projected Shortfall: {formatINR(Math.abs(timingGap))}</span>
+                                  <span>Money due in: {formatINR(totals.inflows)}</span>
+                                  <span>Committed Outflows: {formatINR(Math.abs(totals.outflows))}</span>
+                                  <span className="text-risk-400">Projected Shortfall: {formatINR(Math.abs(totals.timingGap))}</span>
                                 </div>
                               );
                             })()}

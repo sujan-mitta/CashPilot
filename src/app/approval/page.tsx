@@ -8,7 +8,8 @@ import { formatINR } from "@/lib/format";
 import { planName } from "@/lib/planNames";
 import { FINANCIAL_CONFIG } from "@/lib/engine/financialConfig";
 import { Card } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
+import { Button, buttonClasses } from "@/components/ui/Button";
+import Link from "next/link";
 import { Badge } from "@/components/ui/Badge";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Reveal, Stagger, StaggerItem } from "@/components/ui/Reveal";
@@ -212,9 +213,9 @@ function ApprovalContent() {
           <p className="text-ink-300 text-xs mt-2 font-semibold">
             {error || "That plan is no longer in this session."} Nothing was approved and no money moved. Go back and pick a plan again.
           </p>
-          <Button variant="primary" size="lg" onClick={() => router.push("/strategies")} className="mt-6 w-full">
+          <Link href="/strategies" className={buttonClasses("primary", "lg", "mt-6 w-full")}>
             Back to the plans
-          </Button>
+          </Link>
         </Card>
       </main>
     );

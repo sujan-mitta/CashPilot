@@ -61,7 +61,11 @@ export interface TransactionRecord {
 
 function dateOnly(v: Date | string): string {
   const d = typeof v === "string" ? new Date(v) : v;
-  return Number.isFinite(d.getTime()) ? d.toISOString().split("T")[0] : "unknown";
+  if (!Number.isFinite(d.getTime())) return "unknown";
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function result(

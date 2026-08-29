@@ -69,9 +69,10 @@ export async function buildDecisionContext(
   }
 
   // Obligations, reduced to identity + the fields that change a recommendation.
+  const payoutsMap = new Map(payouts.map(p => [p.id, p]));
   const obligations: ContextObligation[] = extractObligations(payouts, transactions, today).map(
     (o) => {
-      const payout = payouts.find((p) => p.id === o.sourceId);
+      const payout = payoutsMap.get(o.sourceId);
       return {
         sourceType: payout ? ("PAYOUT" as const) : ("TRANSACTION" as const),
         sourceId: o.sourceId,

@@ -101,9 +101,12 @@ export async function calculateLiquiditySafetyRequirement(
     dataWarnings.push("Payout database client not available.");
   }
 
-  const totalProjectedOutflow =
-    projectedTransactions.reduce((sum: number, t: TransactionRecord) => sum + t.amount, 0) +
-    projectedPayouts.reduce((sum: number, p: PayoutRecord) => sum + p.amount, 0);
+  const sumTransactions = projectedTransactions.reduce((sum: number, t: TransactionRecord) => sum + t.amount, 0);
+  const sumPayouts = projectedPayouts.reduce((sum: number, p: PayoutRecord) => sum + p.amount, 0);
+  
+  // Known limitation: Payouts and pending transactions may overlap.
+  // We use Math.max as a conservative deduplication heuristic to avoid double-counting.
+  const totalProjectedOutflow = Math.max(sumTransactions, sumPayouts);
   const projectedDailyOutflow = totalProjectedOutflow / FINANCIAL_CONFIG.FORECAST_HORIZON_DAYS;
 
   // 3. Compute weighted daily run-rate
@@ -326,7 +329,10 @@ export function calculateTemporalRequiredLiquidity(
         
         // Exclude active obligation outflows to prevent double counting
         const dayOutflows = dayMovements.reduce((sum, m) => {
-          const isObligationOutflow = activeObligations.some((o) => o.sourceId === m.transactionId);
+          const isObligationOutflow = activeObligations.some((o) => {
+            const isPayout = o.id.startsWith("payout-");
+            return isPayout ? o.sourceId === m.payoutId : o.sourceId === m.transactionId;
+          });
           return sum + (isObligationOutflow ? 0 : m.outflows);
         }, 0);
         outflowsExcludingObligations += dayOutflows;

@@ -5,6 +5,7 @@ import { CashPilotProvider } from "@/context/CashPilotContext";
 import { ChromeShell } from "@/components/ChromeShell";
 import { ToastProvider } from "@/components/ui/Toast";
 import { THEME_INIT_SCRIPT } from "@/lib/theme";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -39,11 +40,13 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-full flex flex-col`}
       >
-        <ToastProvider>
-          <CashPilotProvider>
-            <ChromeShell>{children}</ChromeShell>
-          </CashPilotProvider>
-        </ToastProvider>
+        <ErrorBoundary>
+          <ToastProvider>
+            <CashPilotProvider>
+              <ChromeShell>{children}</ChromeShell>
+            </CashPilotProvider>
+          </ToastProvider>
+        </ErrorBoundary>
       </body>
     </html>
   );

@@ -366,7 +366,7 @@ function ExecutionContent() {
     failedStep?.externalRefs?.[0] ??
     (failedStep?.result?.includes("generated: ")
       ? // Legacy fallback for steps recorded before externalRefs existed.
-        failedStep.result.split("generated: ")[1]
+        failedStep.result.split("generated: ")[1] ?? null
       : null);
 
   const collectionsStep = steps.find((s) => s.action === "PRIORITIZE_COLLECTIONS");
@@ -381,8 +381,8 @@ function ExecutionContent() {
     try {
       const parsed = JSON.parse(collectionsStep.result);
       collectionsInvoices = parsed.links || [];
-    } catch {
-      // Fallback if not json
+    } catch (e) {
+      console.error("Failed to parse collectionsStep result:", e);
     }
   }
 

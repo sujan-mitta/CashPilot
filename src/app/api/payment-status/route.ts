@@ -105,7 +105,7 @@ export async function GET(req: Request) {
           });
         }
       } catch (err) {
-        console.error("Razorpay fetch error, returning current database status:", err);
+        logger.error("Razorpay fetch error, returning current database status:", { error: String(err) });
         // Safe connection error handling: read status from database
         const dbRecovery = recovery || await prisma.paymentRecovery.findFirst({
           where: {
@@ -180,7 +180,7 @@ export async function GET(req: Request) {
     if (status === "paid" && action) {
       await settlePayment(paymentLinkId, business.id, observedPaidAmount, undefined, "POLL");
     } else if (status === "cancelled" || status === "expired") {
-      if (action && action.status !== ActionStatus.FAILED) {
+      if (action && validateActionTransition(action.status, ActionStatus.FAILED)) {
         const auditEntry = {
           who: "SYSTEM_RECOVERY",
           what: `Transition ${action.status} -> FAILED`,
@@ -302,7 +302,7 @@ export async function GET(req: Request) {
         }
       }
     } catch (refetchError) {
-      console.error("Refetch check error in payment-status catch block:", refetchError);
+      logger.error("Refetch check error in payment-status catch block:", { error: String(refetchError) });
     }
 
     if (errorMessage(error).includes("Invalid recovery transition") || 

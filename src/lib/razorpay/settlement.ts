@@ -1,5 +1,13 @@
 import { logger } from "@/lib/observability";
 import { prisma } from "@/lib/prisma";
+
+const PAISE_PER_LAKH = 10_000_000;
+
+function formatPaise(paise: number): string {
+  if (Math.abs(paise) >= PAISE_PER_LAKH) return `₹${(paise / PAISE_PER_LAKH).toFixed(2)}L`;
+  return `₹${(paise / 100).toFixed(2)}`;
+}
+
 import {
   validateSettlementAmount,
   describeRejection,
@@ -297,6 +305,99 @@ export function settlementActor(trigger: SettlementTrigger): string {
   }
 }
 
+async function applySettlementUpdates(
+  tx: Prisma.TransactionClient,
+  params: {
+    actionId: string;
+    paymentLinkId: string;
+    businessId: string;
+    expectedAmount: number;
+    actualAmount?: number;
+    successMessage: string;
+    trigger: SettlementTrigger;
+    formatResult?: (resultDetail: string) => string;
+  }
+) {
+  const freshAction = await tx.agentAction.findUnique({
+    where: { id: params.actionId },
+  });
+  if (freshAction && freshAction.status !== ActionStatus.COMPLETED) {
+    const canReconcile = validateActionTransition(freshAction.status, ActionStatus.RECONCILING);
+    if (canReconcile) {
+      await tx.agentAction.updateMany({
+        where: { id: freshAction.id },
+        data: { status: ActionStatus.RECONCILING },
+      });
+    }
+
+    if (!canReconcile) {
+      logger.warn("Settled money against an action that cannot advance", {
+        paymentLinkId: params.paymentLinkId,
+        actionId: freshAction.id,
+        actionStatus: freshAction.status,
+        settlementRecordedButActionNotAdvanced: true,
+      });
+      return;
+    }
+
+    let targetStatus: ActionStatus = ActionStatus.COMPLETED;
+    let resultDetail = params.successMessage;
+
+    if (params.actualAmount !== undefined && params.actualAmount !== params.expectedAmount) {
+      targetStatus = ActionStatus.RECONCILIATION_MISMATCH;
+      resultDetail = `Discrepancy: Expected ${formatPaise(params.expectedAmount)}, but received ${formatPaise(params.actualAmount)}`;
+    }
+
+    if (!validateActionTransition(ActionStatus.RECONCILING, targetStatus)) {
+      throw new Error(`Invalid action transition from RECONCILING to ${targetStatus}`);
+    }
+
+    const existingPrediction = freshAction.predictionActual as Record<string, unknown> | null | undefined;
+    const updatedPrediction = {
+      prediction: existingPrediction?.prediction || null,
+      actual: {
+        balance: (await tx.business.findUnique({ where: { id: params.businessId } }))?.currentCash || null,
+        status: targetStatus,
+      },
+      error: targetStatus === ActionStatus.RECONCILIATION_MISMATCH ? "Amount mismatch" : null,
+    };
+
+    const auditEntry = {
+      who: settlementActor(params.trigger),
+      trigger: params.trigger,
+      what: `Transition RECONCILING -> ${targetStatus}`,
+      when: new Date().toISOString(),
+      why: `Reconciliation check: ${resultDetail}`,
+      result: targetStatus === ActionStatus.RECONCILIATION_MISMATCH ? "MISMATCH" : "SUCCESS",
+    };
+
+    const existingAudit = Array.isArray(freshAction.auditLog) ? freshAction.auditLog : [];
+    const finalResult = params.formatResult ? params.formatResult(resultDetail) : resultDetail;
+
+    const actionUpdate = await tx.agentAction.updateMany({
+      where: {
+        id: freshAction.id,
+        status: ActionStatus.RECONCILING,
+      },
+      data: {
+        status: targetStatus,
+        result: finalResult,
+        predictionActual: updatedPrediction as Prisma.InputJsonValue,
+        auditLog: [...existingAudit, auditEntry] as Prisma.InputJsonValue,
+      },
+    });
+    if (actionUpdate && actionUpdate.count === 0) {
+      const refetchedAct = await tx.agentAction.findUnique({
+        where: { id: freshAction.id },
+      });
+      if (refetchedAct && refetchedAct.status === targetStatus) {
+        return;
+      }
+      throw new Error("Action concurrently modified");
+    }
+  }
+}
+
 /**
  * Settles a payment recovery or overdue collections link by executing the ledger balance updates.
  * Returns the final resolved status of the link ("paid" or "created").
@@ -492,103 +593,15 @@ export async function settlePayment(
         });
 
         if (action) {
-          const freshAction = await tx.agentAction.findUnique({
-            where: { id: action.id },
+          await applySettlementUpdates(tx, {
+            actionId: action.id,
+            paymentLinkId,
+            businessId: targetBusinessId,
+            expectedAmount: freshRecovery.amount,
+            actualAmount,
+            successMessage: `Successfully recovered via Razorpay Link ${paymentLinkId}`,
+            trigger,
           });
-          if (freshAction && freshAction.status !== ActionStatus.COMPLETED) {
-            // First transition PENDING/APPROVED/EXECUTING -> RECONCILING
-            const canReconcile = validateActionTransition(
-              freshAction.status,
-              ActionStatus.RECONCILING
-            );
-            if (canReconcile) {
-              await tx.agentAction.updateMany({
-                where: { id: freshAction.id },
-                data: { status: ActionStatus.RECONCILING },
-              });
-            }
-
-            // THE LEDGER IS AUTHORITATIVE.
-            //
-            // When the action cannot legally reach RECONCILING - an APPROVED
-            // action whose intent nevertheless SUCCEEDED, for example - the
-            // guarded update below matches nothing, and the "concurrently
-            // modified" branch used to throw. That threw out of the enclosing
-            // transaction and rolled back the recovery status AND the cash
-            // credit, so money that genuinely arrived at the provider left no
-            // trace in the ledger. Verified live against a paid link whose
-            // action was still APPROVED.
-            //
-            // A status transition the state machine refuses is not a reason to
-            // un-settle real money. Record the divergence and let the money
-            // stand, exactly as reconcileDecisionForStrategy already does when
-            // the Decision machine refuses a late transition.
-            if (!canReconcile) {
-              logger.warn("Settled money against an action that cannot advance", {
-                paymentLinkId,
-                actionId: freshAction.id,
-                actionStatus: freshAction.status,
-                settlementRecordedButActionNotAdvanced: true,
-              });
-              return;
-            }
-
-            let targetStatus: ActionStatus = ActionStatus.COMPLETED;
-            let resultDetail = `Successfully recovered via Razorpay Link ${paymentLinkId}`;
-
-            if (actualAmount !== undefined && actualAmount !== freshRecovery.amount) {
-              targetStatus = ActionStatus.RECONCILIATION_MISMATCH;
-              resultDetail = `Discrepancy: Expected ₹${(freshRecovery.amount / 10000000).toFixed(2)}L, but received ₹${(actualAmount / 10000000).toFixed(2)}L`;
-            }
-
-            if (!validateActionTransition(ActionStatus.RECONCILING, targetStatus)) {
-              throw new Error(`Invalid action transition from RECONCILING to ${targetStatus}`);
-            }
-
-            // Record prediction vs actual
-            const existingPrediction = freshAction.predictionActual as Record<string, unknown> | null | undefined;
-            const updatedPrediction = {
-              prediction: existingPrediction?.prediction || null,
-              actual: {
-                balance: (await (tx.business.findUnique || tx.business.findFirst)({ where: { id: targetBusinessId } }))?.currentCash || null,
-                status: targetStatus,
-              },
-              error: targetStatus === ActionStatus.RECONCILIATION_MISMATCH ? "Amount mismatch" : null,
-            };
-
-            const auditEntry = {
-              who: settlementActor(trigger),
-              trigger,
-              what: `Transition RECONCILING -> ${targetStatus}`,
-              when: new Date().toISOString(),
-              why: `Reconciliation check: ${resultDetail}`,
-              result: targetStatus === ActionStatus.RECONCILIATION_MISMATCH ? "MISMATCH" : "SUCCESS",
-            };
-
-            const existingAudit = Array.isArray(freshAction.auditLog) ? freshAction.auditLog : [];
-
-            const actionUpdate = await tx.agentAction.updateMany({
-              where: {
-                id: freshAction.id,
-                status: ActionStatus.RECONCILING,
-              },
-              data: {
-                status: targetStatus,
-                result: resultDetail,
-                predictionActual: updatedPrediction as Prisma.InputJsonValue,
-                auditLog: [...existingAudit, auditEntry] as Prisma.InputJsonValue,
-              },
-            });
-            if (actionUpdate && actionUpdate.count === 0) {
-              const refetchedAct = await tx.agentAction.findUnique({
-                where: { id: freshAction.id },
-              });
-              if (refetchedAct && refetchedAct.status === targetStatus) {
-                return;
-              }
-              throw new Error("Action concurrently modified");
-            }
-          }
         }
       });
     }
@@ -742,80 +755,16 @@ export async function settlePayment(
             }
 
             if (allPaid) {
-              const freshAction = await tx.agentAction.findUnique({
-                where: { id: action.id },
+              await applySettlementUpdates(tx, {
+                actionId: action.id,
+                paymentLinkId,
+                businessId,
+                expectedAmount: freshInvoice.amount,
+                actualAmount,
+                successMessage: `Successfully prioritized collections via Razorpay Link ${paymentLinkId}`,
+                trigger,
+                formatResult: (resultDetail) => JSON.stringify({ ...parsedResult, settlement: resultDetail }),
               });
-              if (freshAction && freshAction.status !== ActionStatus.COMPLETED) {
-                // First transition EXECUTING -> RECONCILING
-                  await tx.agentAction.updateMany({
-                    where: { id: freshAction.id },
-                    data: { status: ActionStatus.RECONCILING },
-                  });
-
-                let targetStatus: ActionStatus = ActionStatus.COMPLETED;
-                let resultDetail = `Successfully prioritized collections via Razorpay Link ${paymentLinkId}`;
-
-                if (actualAmount !== undefined && actualAmount !== freshInvoice.amount) {
-                  targetStatus = ActionStatus.RECONCILIATION_MISMATCH;
-                  resultDetail = `Discrepancy: Expected ₹${(freshInvoice.amount / 10000000).toFixed(2)}L, but received ₹${(actualAmount / 10000000).toFixed(2)}L`;
-                }
-
-                if (!validateActionTransition(ActionStatus.RECONCILING, targetStatus)) {
-                  throw new Error(`Invalid action transition from RECONCILING to ${targetStatus}`);
-                }
-
-                // Record prediction vs actual
-                const existingPrediction = freshAction.predictionActual as Record<string, unknown> | null | undefined;
-                const updatedPrediction = {
-                  prediction: existingPrediction?.prediction || null,
-                  actual: {
-                    balance: (await (tx.business.findUnique || tx.business.findFirst)({ where: { id: businessId } }))?.currentCash || null,
-                    status: targetStatus,
-                  },
-                  error: targetStatus === ActionStatus.RECONCILIATION_MISMATCH ? "Amount mismatch" : null,
-                };
-
-                const auditEntry = {
-                  who: settlementActor(trigger),
-                  trigger,
-                  what: `Transition RECONCILING -> ${targetStatus}`,
-                  when: new Date().toISOString(),
-                  why: `Reconciliation check: ${resultDetail}`,
-                  result: targetStatus === ActionStatus.RECONCILIATION_MISMATCH ? "MISMATCH" : "SUCCESS",
-                };
-
-                const existingAudit = Array.isArray(freshAction.auditLog) ? freshAction.auditLog : [];
-
-                const actionUpdate = await tx.agentAction.updateMany({
-                  where: {
-                    id: freshAction.id,
-                    status: ActionStatus.RECONCILING,
-                  },
-                  data: {
-                    status: targetStatus,
-                    // Preserve the links JSON and append the outcome alongside it.
-                    //
-                    // This field is the ONLY record of which payment link maps to
-                    // which invoice, and the collections branch re-parses it on
-                    // every settlement. Replacing it with a prose string made a
-                    // second settlement attempt unparseable and therefore
-                    // undetectable - verified live in Phase 20, where a duplicate
-                    // settlement was correctly prevented but could not be recorded.
-                    result: JSON.stringify({ ...parsedResult, settlement: resultDetail }),
-                    predictionActual: updatedPrediction as Prisma.InputJsonValue,
-                    auditLog: [...existingAudit, auditEntry] as Prisma.InputJsonValue,
-                  },
-                });
-                if (actionUpdate && actionUpdate.count === 0) {
-                  const refetchedAct = await tx.agentAction.findUnique({
-                    where: { id: freshAction.id },
-                  });
-                  if (refetchedAct && refetchedAct.status === targetStatus) {
-                    return;
-                  }
-                  throw new Error("Action concurrently modified");
-                }
-              }
             }
           });
         }

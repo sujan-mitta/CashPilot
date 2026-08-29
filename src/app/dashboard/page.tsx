@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { ForecastChart } from "@/components/ForecastChart";
 import { useCashPilot } from "@/context/CashPilotContext";
@@ -59,8 +59,8 @@ export default function Dashboard() {
   const router = useRouter();
   const { toast } = useToast();
   const { cachedForecast, setCachedForecast, setCachedInvestigation, logout } = useCashPilot();
+  const chartRef = useRef<HTMLDivElement>(null);
 
-  const [, setLoading] = useState(!cachedForecast);
   const [error, setError] = useState<string | null>(null);
 
   // Page states: "LOADING" | "SUCCESS" | "INVESTIGATING" | "ERROR"
@@ -69,9 +69,7 @@ export default function Dashboard() {
   const [pageState, setPageState] = useState<"LOADING" | "SUCCESS" | "INVESTIGATING" | "ERROR">(
     cachedForecast ? "SUCCESS" : "LOADING"
   );
-  const [, setMonitoringState] = useState<"ACTIVE" | "CALCULATING" | "ERROR">(
-    cachedForecast ? (cachedForecast.status === "SUCCESS" ? "ACTIVE" : "ERROR") : "CALCULATING"
-  );
+
 
   // Staged loading items for diagnostics transitions
   const [visibleStepCount, setVisibleStepCount] = useState(0);
@@ -79,7 +77,7 @@ export default function Dashboard() {
 
   const fetchForecast = async () => {
     setPageState("LOADING");
-    setMonitoringState("CALCULATING");
+
     try {
       const res = await fetch("/api/forecast");
       if (res.status === 401) {
@@ -93,13 +91,12 @@ export default function Dashboard() {
       const data = await res.json();
       setCachedForecast(data);
       setPageState("SUCCESS");
-      setMonitoringState(data.status === "SUCCESS" ? "ACTIVE" : "ERROR");
+
     } catch (err) {
       setError(errorMessage(err));
       setPageState("ERROR");
-      setMonitoringState("ERROR");
+
     } finally {
-      setLoading(false);
     }
   };
 
@@ -123,15 +120,14 @@ export default function Dashboard() {
         if (cancelled) return;
         setCachedForecast(data);
         setPageState("SUCCESS");
-        setMonitoringState(data.status === "SUCCESS" ? "ACTIVE" : "ERROR");
+  
       } catch (err) {
         if (!cancelled) {
           setError(errorMessage(err));
           setPageState("ERROR");
-          setMonitoringState("ERROR");
+    
         }
       } finally {
-        if (!cancelled) setLoading(false);
       }
     }
     load();
@@ -705,7 +701,7 @@ export default function Dashboard() {
                 </span>
               </div>
             </div>
-            <div className="card-body">
+            <div className="card-body" ref={chartRef}>
               <ForecastChart data={days} safetyThreshold={safetyRequirement?.requiredBuffer} />
             </div>
           </div>
@@ -775,8 +771,7 @@ export default function Dashboard() {
               variant="secondary"
               size="lg"
               onClick={() => {
-                const element = document.querySelector(".recharts-responsive-container");
-                element?.scrollIntoView({ behavior: "smooth" });
+                chartRef.current?.scrollIntoView({ behavior: "smooth" });
               }}
             >
               <ShieldCheck className="w-4 h-4 text-safe-400" />

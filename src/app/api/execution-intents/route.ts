@@ -5,6 +5,7 @@ import { isRetryPermitted } from "@/lib/execution/executor";
 import { FINANCIAL_CONFIG } from "@/lib/engine/financialConfig";
 import { errorMessage } from "@/lib/errors";
 import { ExecutionIntentStatus, Prisma } from "../../../../generated/prisma/client";
+import { logger } from "@/lib/observability";
 
 /**
  * Operator view of unresolved execution intents (Phase 16 PART 5/6).
@@ -90,7 +91,7 @@ export async function GET(req: NextRequest) {
       }),
     });
   } catch (error) {
-    console.error("API error in execution-intents:", error);
+    logger.error("API error in execution-intents:", { error: String(error) });
     return NextResponse.json({ error: errorMessage(error) }, { status: 500 });
   }
 }

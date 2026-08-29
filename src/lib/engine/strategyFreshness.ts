@@ -122,11 +122,13 @@ export function stableStringify(value: unknown): string {
 function normaliseObligations(obligations: ContextObligation[]): ContextObligation[] {
   return [...obligations]
     .filter((o) => isUsableAmount(o.amount) && o.amount > 0)
-    .sort((a, b) =>
-      a.sourceId === b.sourceId
+    .sort((a, b) => {
+      const aKey = `${a.sourceType}:${a.sourceId}`;
+      const bKey = `${b.sourceType}:${b.sourceId}`;
+      return aKey === bKey
         ? a.dueDate.localeCompare(b.dueDate)
-        : a.sourceId.localeCompare(b.sourceId)
-    );
+        : aKey.localeCompare(bKey);
+    });
 }
 
 function normaliseMovements(movements: ContextMovement[]): ContextMovement[] {
@@ -384,8 +386,8 @@ export function classifyStaleness(
   }
 
   // --- obligations ---------------------------------------------------------
-  const beforeById = new Map(before.obligations.map((o) => [o.sourceId, o]));
-  const afterById = new Map(after.obligations.map((o) => [o.sourceId, o]));
+  const beforeById = new Map(before.obligations.map((o) => [`${o.sourceType}:${o.sourceId}`, o]));
+  const afterById = new Map(after.obligations.map((o) => [`${o.sourceType}:${o.sourceId}`, o]));
 
   for (const [id, now] of afterById) {
     const then = beforeById.get(id);

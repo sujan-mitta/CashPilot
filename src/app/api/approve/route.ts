@@ -301,7 +301,7 @@ export async function POST(req: Request) {
           });
         }
       } catch (refetchError) {
-        console.error("Refetch check error in approve catch block:", refetchError);
+        logger.error("Refetch check error in approve catch block:", { error: String(refetchError) });
       }
       logger.warn("Approve lost a concurrency race", { strategyId, reason: errorMessage(error) });
       return NextResponse.json(

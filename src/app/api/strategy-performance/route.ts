@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth";
 import { FINANCIAL_CONFIG } from "@/lib/engine/financialConfig";
 import { STRATEGY_NAMES, StrategyName } from "@/lib/engine/strategyEngine";
 import { DecisionStatus, Prisma } from "../../../../generated/prisma/client";
+import { logger } from "@/lib/observability";
 
 /** The measured-outcome payload, as written by outcomeMeasurer into Json. */
 interface MeasuredOutcome {
@@ -220,7 +221,7 @@ export async function GET(req?: NextRequest) {
       },
     });
   } catch (error) {
-    console.error("API error in strategy-performance GET:", error);
+    logger.error("API error in strategy-performance GET:", { error: String(error) });
     const message = error instanceof Error ? error.message : "Unexpected error";
     return NextResponse.json({ error: message }, { status: 500 });
   }

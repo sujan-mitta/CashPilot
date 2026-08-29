@@ -83,7 +83,7 @@ export function applyActionsToMovements(
     if (action.type === "RESCHEDULE_PAYOUT") {
       if (action.amount === 0) return;
 
-      const targetId = action.targetTransactionId;
+      const targetId = action.targetTransactionId || action.targetPayoutId;
       const idx = movements.findIndex((m) => {
         if (targetId) return m.transactionId === targetId;
         // Fallback for backward compatibility in existing tests
@@ -119,7 +119,7 @@ export function applyActionsToMovements(
     if (action.type === "PAUSE_EXPENSE") {
       if (action.amount === 0) return;
 
-      const targetId = action.targetTransactionId;
+      const targetId = action.targetTransactionId || action.targetPayoutId;
       const idx = movements.findIndex((m) => {
         if (targetId) return m.transactionId === targetId;
         // Fallback for backward compatibility in existing tests
@@ -234,7 +234,7 @@ export function generateStrategies(
 
       s.actions.forEach((action) => {
         if (action.type === "RESCHEDULE_PAYOUT") {
-          const targetId = action.targetTransactionId;
+          const targetId = action.targetTransactionId || action.targetPayoutId;
           const originalMovement = baseMovements.find((m) => {
             if (targetId) return m.transactionId === targetId;
             return m.outflows >= action.amount && m.description?.includes("Packaging Co");
