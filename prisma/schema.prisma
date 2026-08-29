@@ -832,3 +832,89 @@ model FinancialState {
   @@index([businessId, createdAt])
   @@index([businessId, stateHash])
 }
+
+/// Phase 32: Production-grade persistent notification preferences per tenant and user.
+model NotificationPreference {
+  id                      String   @id @default(cuid())
+  userId                  String
+  businessId              String
+  criticalEmailEnabled    Boolean  @default(true)
+  warningEmailEnabled     Boolean  @default(true)
+  weeklyDigestEnabled     Boolean  @default(true)
+  criticalCooldownHours   Int      @default(72)
+  warningCooldownHours    Int      @default(168)
+  offlineThresholdMinutes Int      @default(30)
+  recipientEmail          String?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@unique([businessId, userId])
+  @@index([businessId])
+  @@index([userId])
+}
+
+/// Phase 32: Tracks user activity and dashboard views for offline email alert gating.
+model UserActivityRecord {
+  id                  String   @id @default(cuid())
+  userId              String
+  businessId          String
+  userEmail           String?
+  userName            String?
+  lastSeenAt          DateTime @default(now())
+  lastDashboardViewAt DateTime @default(now())
+  lastViewedCrisisKey String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([businessId, userId])
+  @@index([businessId])
+  @@index([userId])
+}
+
+/// Phase 32: Authoritative notification decision and lifecycle record.
+model NotificationAlertRecord {
+  id                String    @id
+  tenantId          String
+  businessId        String
+  userId            String
+  severity          String
+  crisisKey         String
+  crisisTitle       String?
+  occurredAt        DateTime
+  detectedAt        DateTime  @default(now())
+  viewedAt          DateTime?
+  emailEligibleAt   DateTime?
+  sentAt            DateTime?
+  deliveryStatus    String
+  suppressionReason String?
+  renderedSubject   String?
+  claimedAt         DateTime?
+  claimedByWorker   String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([businessId, crisisKey])
+  @@index([businessId, detectedAt])
+  @@index([businessId, userId])
+  @@index([deliveryStatus])
+}
+
+/// Phase 32: Audit log for all notification delivery attempts.
+model NotificationDeliveryAudit {
+  id                    String   @id
+  alertId               String
+  businessId            String
+  recipientEmail        String
+  provider              String
+  attemptedAt           DateTime @default(now())
+  status                String
+  providerMessageId     String?
+  errorCode             String?
+  errorMessageSanitized String?
+  createdAt             DateTime @default(now())
+
+  @@index([businessId])
+  @@index([alertId])
+  @@index([attemptedAt])
+}
+
