@@ -48,3 +48,6 @@ generated/
 # Database migration snapshots contain real financial + personal data.
 # Keep them local; never commit a data dump.
 migration-snapshots/
+
+# Local persistent state for notifications & runtime cache
+.cashpilot_data/

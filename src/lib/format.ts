@@ -21,6 +21,12 @@ export function formatLakhs(paise: number): string {
   return `₹${sign}${Math.abs(lakhs).toFixed(2)}L`;
 }
 
+/** Formats an integer amount of paise in lakhs if >= 1L, otherwise in rupees. */
+export function formatPaise(paise: number): string {
+  if (Math.abs(paise) >= 10000000) return `₹${(paise / 10000000).toFixed(2)}L`;
+  return `₹${(paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 export function formatPercent(ratio: number): string {
   return `${(ratio * 100).toFixed(0)}%`;
 }

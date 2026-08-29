@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import { useCashPilot } from "@/context/CashPilotContext";
 import { PilotIcon } from "./PilotIcon";
 import { ThemeToggle } from "./ThemeToggle";
+import { NotificationCenter } from "./NotificationCenter";
 import { Check, ChevronDown, LogOut } from "lucide-react";
 import { initialsOf } from "@/lib/format";
 import { errorMessage } from "@/lib/errors";
@@ -216,9 +217,7 @@ export function Navbar({ activeStep }: { activeStep: number }) {
 
           {/* ── Operator ─────────────────────────────────────────────── */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-            {/* Visible at every width. Hiding it under sm meant phone users — the
-                most likely to want light mode outdoors — were the only ones
-                who could not switch. It fits: 92px in a 343px content box. */}
+            <NotificationCenter />
             <ThemeToggle />
 
             {/* The profile link and the business switcher are SIBLINGS.

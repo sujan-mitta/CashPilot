@@ -120,6 +120,15 @@ export default function Dashboard() {
         if (cancelled) return;
         setCachedForecast(data);
         setPageState("SUCCESS");
+
+        // Record dashboard view activity to prevent redundant offline alert emails
+        fetch("/api/notifications/activity", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            crisisKey: data?.forecast?.riskLevel === "HIGH" ? "CRITICAL_VIEWED" : undefined,
+          }),
+        }).catch(() => {});
   
       } catch (err) {
         if (!cancelled) {

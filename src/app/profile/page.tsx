@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Reveal, Stagger, StaggerItem } from "@/components/ui/Reveal";
 import { AnimatedNumber } from "@/components/ui/AnimatedNumber";
 import { Briefcase, Key, ArrowLeft, Shield, CheckCircle2, TrendingUp, Landmark } from "lucide-react";
+import { NotificationPreferences } from "@/components/NotificationPreferences";
 
 interface Integration {
   label: string;
@@ -203,6 +204,11 @@ export default function Profile() {
               </div>
             </Card>
           </StaggerItem>
+        </div>
+
+        {/* ── Notification & Alert Preferences ────────────────────── */}
+        <div className="pt-2">
+          <NotificationPreferences />
         </div>
       </Stagger>
     </main>
