@@ -23,6 +23,7 @@ import type {
   RecommendedStrategySummary,
   RootCauseItem,
 } from "./types";
+import { buildCrisisKey } from "./crisisIdentity";
 
 /**
  * Assesses the financial health of a business using authoritative CashPilot engine calculations.
@@ -111,30 +112,23 @@ export async function assessBusinessHealth(
   let crisisKey: string | null = null;
 
   const hasDeficit = projectedDeficitDate !== null;
-  const hasShortRunway = runwayDays < 14;
-  const hasUnprotectedObligations = !temporalMetrics.criticalObligationsProtected && temporalMetrics.criticalObligationsCount > 0;
+  const hasDeficitWithin14Days = runwayMetrics.crisisDay !== null && runwayMetrics.crisisDay < 14;
+  const hasUnprotectedObligations =
+    !temporalMetrics.criticalObligationsProtected && temporalMetrics.criticalObligationsCount > 0;
   const isBelowSafetyBuffer = business.currentCash < requiredBuffer || firstBelowSafetyDate !== null;
 
-  if (hasDeficit) {
+  if (hasDeficit || hasDeficitWithin14Days) {
     severity = "CRITICAL";
     crisisType = "DEFICIT";
-    const deficitDateKey = projectedDeficitDate.split("T")[0];
-    crisisKey = `DEFICIT:${deficitDateKey}`;
-  } else if (hasShortRunway) {
-    severity = "CRITICAL";
-    crisisType = "RUNWAY_LT_14";
-    const runwayDateKey = firstBelowSafetyDate ? firstBelowSafetyDate.split("T")[0] : "immediate";
-    crisisKey = `RUNWAY_LT_14:${runwayDateKey}`;
+    crisisKey = buildCrisisKey({ type: crisisType, projectedDeficitDate });
   } else if (hasUnprotectedObligations) {
     severity = "CRITICAL";
     crisisType = "OBLIGATION_RISK";
-    const oblDateKey = temporalMetrics.firstCriticalDate ? temporalMetrics.firstCriticalDate.split("T")[0] : "immediate";
-    crisisKey = `OBLIGATION_RISK:${oblDateKey}`;
+    crisisKey = buildCrisisKey({ type: crisisType, criticalObligationDate: temporalMetrics.firstCriticalDate });
   } else if (isBelowSafetyBuffer) {
     severity = "WARNING";
     crisisType = "SAFETY_BUFFER_BREACH";
-    const bufferDateKey = firstBelowSafetyDate ? firstBelowSafetyDate.split("T")[0] : "current_balance";
-    crisisKey = `SAFETY_BUFFER_BREACH:${bufferDateKey}`;
+    crisisKey = buildCrisisKey({ type: crisisType, firstBelowSafetyDate });
   }
 
   // 5. Derive Top Root Causes

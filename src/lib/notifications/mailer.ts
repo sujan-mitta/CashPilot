@@ -11,6 +11,7 @@ import { logger } from "@/lib/observability";
 import { logDeliveryAudit, sanitizeErrorMessage } from "./deliveryAudit";
 import type { DeliveryAuditRecord, DeliveryStatus } from "./types";
 import crypto from "crypto";
+import nodemailer from "nodemailer";
 
 export interface SendMailOptions {
   alertId: string;
@@ -113,20 +114,8 @@ export async function sendNotificationEmail(options: SendMailOptions): Promise<M
   // 2. SMTP Provider
   if (provider === "SMTP") {
     try {
-      // Dynamic require to support optional nodemailer environment
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let nodemailer: any = null;
-      try {
-        nodemailer = (globalThis as any).require ? (globalThis as any).require("nodemailer") : null;
-      } catch {
-        nodemailer = null;
-      }
-      if (!nodemailer || !nodemailer.createTransport) {
-        throw new Error("nodemailer is not installed or available for SMTP transport.");
-      }
-
       const transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
+        host: process.env.SMTP_HOST || "smtp.gmail.com",
         port: Number(process.env.SMTP_PORT) || 587,
         secure: process.env.SMTP_SECURE === "true",
         auth: {

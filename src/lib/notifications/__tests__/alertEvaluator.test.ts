@@ -187,9 +187,10 @@ describe("Intelligent Email Alert & Notification System", () => {
             businessId: mockBusinessId,
             amount: 5000000, // ₹50,000 outflow
             type: "OUTFLOW",
-            status: "SUCCESS",
+            status: "PENDING",
             category: "OPERATING",
-            date: new Date("2026-09-01T12:00:00.000Z"),
+            date: new Date("2026-09-02T12:00:00.000Z"),
+            expectedDate: new Date("2026-09-02T12:00:00.000Z"),
             description: "Rent",
             createdAt: new Date(),
           },
@@ -237,9 +238,10 @@ describe("Intelligent Email Alert & Notification System", () => {
             businessId: mockBusinessId,
             amount: 5000000,
             type: "OUTFLOW",
-            status: "SUCCESS",
+            status: "PENDING",
             category: "OPERATING",
-            date: new Date("2026-09-01T12:00:00.000Z"),
+            date: new Date("2026-09-02T12:00:00.000Z"),
+            expectedDate: new Date("2026-09-02T12:00:00.000Z"),
             description: "Rent",
             createdAt: new Date(),
           },
@@ -287,9 +289,10 @@ describe("Intelligent Email Alert & Notification System", () => {
             businessId: mockBusinessId,
             amount: 5000000,
             type: "OUTFLOW",
-            status: "SUCCESS",
+            status: "PENDING",
             category: "OPERATING",
-            date: new Date("2026-09-01T12:00:00.000Z"),
+            date: new Date("2026-09-02T12:00:00.000Z"),
+            expectedDate: new Date("2026-09-02T12:00:00.000Z"),
             description: "Rent",
             createdAt: new Date(),
           },
@@ -358,9 +361,10 @@ describe("Intelligent Email Alert & Notification System", () => {
             businessId: mockBusinessId,
             amount: 5000000,
             type: "OUTFLOW",
-            status: "SUCCESS",
+            status: "PENDING",
             category: "OPERATING",
-            date: new Date("2026-09-01T12:00:00.000Z"),
+            date: new Date("2026-09-02T12:00:00.000Z"),
+            expectedDate: new Date("2026-09-02T12:00:00.000Z"),
             description: "Rent",
             createdAt: new Date(),
           },
@@ -414,9 +418,10 @@ describe("Intelligent Email Alert & Notification System", () => {
             businessId: mockBusinessId,
             amount: 5000000,
             type: "OUTFLOW",
-            status: "SUCCESS",
+            status: "PENDING",
             category: "OPERATING",
-            date: new Date("2026-09-01T12:00:00.000Z"),
+            date: new Date("2026-09-02T12:00:00.000Z"),
+            expectedDate: new Date("2026-09-02T12:00:00.000Z"),
             description: "Rent",
             createdAt: new Date(),
           },
@@ -438,6 +443,131 @@ describe("Intelligent Email Alert & Notification System", () => {
 
       expect(res.evaluatedRecipients[0].status).toBe("PREFERENCE_DISABLED");
       expect(res.emailsSent).toBe(0);
+    });
+  });
+
+  describe("5. Warning Severity & Inactivity Window", () => {
+    it("qualifies warning alert only when inactive > 24 hours", async () => {
+      // Mock safety buffer breach (cash > 0 but below safety buffer)
+      vi.mocked(prisma.business.findUnique).mockResolvedValue({
+        id: mockBusinessId,
+        name: "Acme Electronics",
+        currentCash: 40000000, // ₹4L
+        createdAt: new Date(),
+        users: [
+          {
+            id: mockUserId,
+            email: "cfo@acme.com",
+            name: "Jane CFO",
+            password: "hash",
+            createdAt: new Date(),
+          },
+        ],
+        transactions: [
+          {
+            id: "tx_out_warn",
+            businessId: mockBusinessId,
+            amount: 20000000, // ₹2L
+            type: "OUTFLOW",
+            status: "PENDING",
+            category: "OPERATING",
+            date: new Date("2026-09-10T00:00:00.000Z"),
+            expectedDate: new Date("2026-09-10T00:00:00.000Z"),
+            description: "Supplies",
+            createdAt: new Date(),
+          },
+        ],
+        invoices: [],
+        payouts: [],
+      } as any);
+
+      // Mock historical transactions so requiredBuffer > currentCash (₹4L)
+      vi.mocked(prisma.transaction.findMany).mockResolvedValue([
+        {
+          id: "hist_1",
+          businessId: mockBusinessId,
+          amount: 200000000, // ₹20L historical outflow
+          type: "OUTFLOW",
+          status: "SUCCESS",
+          date: new Date("2026-08-01"),
+        } as any,
+      ]);
+
+      // User inactive 26 hours (> 24h threshold)
+      const lastSeenTime = new Date(baseTime.getTime() - 26 * 3600 * 1000).toISOString();
+      await updateUserActivity(mockUserId, mockBusinessId, "cfo@acme.com", "Jane CFO", {
+        lastSeenAt: lastSeenTime,
+        lastDashboardViewAt: lastSeenTime,
+      });
+
+      const res = await evaluateAndDispatchAlerts({
+        businessId: mockBusinessId,
+        now: baseTime,
+        forceSendForTesting: true,
+      });
+
+      expect(res.evaluatedRecipients.length).toBe(1);
+    });
+  });
+
+  describe("6. Multi-User Recipient Gating", () => {
+    it("handles multiple users where CFO receives email and Owner is disabled", async () => {
+      vi.mocked(prisma.business.findUnique).mockResolvedValue({
+        id: mockBusinessId,
+        name: "Acme Electronics",
+        currentCash: 1000000, // Deficit
+        createdAt: new Date(),
+        users: [
+          {
+            id: "user_cfo",
+            email: "cfo@acme.com",
+            name: "Jane CFO",
+            password: "hash",
+            createdAt: new Date(),
+          },
+          {
+            id: "user_owner",
+            email: "owner@acme.com",
+            name: "John Owner",
+            password: "hash",
+            createdAt: new Date(),
+          },
+        ],
+        transactions: [
+          {
+            id: "tx_out",
+            businessId: mockBusinessId,
+            amount: 5000000,
+            type: "OUTFLOW",
+            status: "PENDING",
+            category: "OPERATING",
+            date: new Date("2026-09-02T12:00:00.000Z"),
+            expectedDate: new Date("2026-09-02T12:00:00.000Z"),
+            description: "Rent",
+            createdAt: new Date(),
+          },
+        ],
+        invoices: [],
+        payouts: [],
+      } as any);
+
+      // Both offline > 45m
+      const lastSeenTime = new Date(baseTime.getTime() - 45 * 60 * 1000).toISOString();
+      await updateUserActivity("user_cfo", mockBusinessId, "cfo@acme.com", "Jane CFO", {
+        lastSeenAt: lastSeenTime,
+      });
+      await updateUserActivity("user_owner", mockBusinessId, "owner@acme.com", "John Owner", {
+        lastSeenAt: lastSeenTime,
+      });
+
+      const res = await evaluateAndDispatchAlerts({
+        businessId: mockBusinessId,
+        now: baseTime,
+      });
+
+      expect(res.evaluatedRecipients.length).toBe(2);
+      expect(res.evaluatedRecipients.map((r) => r.email)).toContain("cfo@acme.com");
+      expect(res.evaluatedRecipients.map((r) => r.email)).toContain("owner@acme.com");
     });
   });
 });
