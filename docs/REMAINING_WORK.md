@@ -216,11 +216,11 @@ Covered by unit tests, typechecks, lints, and exercised by the build's prerender
 
 No GSTIN, PAN, email domain or bank-account identifiers — any of which would permit *safe* non-exact matching. Today "ABC Ltd" and "ABC Industries Pvt Ltd" stay separate with a merge suggestion until a human confirms. Right with only names to go on, but it will produce duplicates on real data.
 
-### C-3 🟢 Merge has no API route and no UI
+### C-3 ◑ **API CLOSED 2026-08-30** — merge is reachable; the UI is not built
 
 `mergeCounterparties` is implemented, guarded (no self-merge, double-merge, cross-type or cross-tenant) and tested, but no user can reach it. `brain:sync` prints the suggestions; nothing acts on them. The §34 suggestion→confirmation loop needs an endpoint and a screen.
 
-### C-4 🟡 Merge is not automatically transactional
+### C-4 ✅ **CLOSED 2026-08-30** — the merge route opens the transaction
 
 `mergeCounterparties` accepts a `$transaction` client and its statement order is chosen so a crash part-way still converges, but it does not open a transaction itself. Once C-3 adds a route, that route must wrap it.
 
@@ -232,7 +232,7 @@ Only the first raw spelling producing a given key is retained. Fine for the look
 
 By design: resolution reads the entity set it is also writing. Bounded by counterparty count, not row count, but a very large first backfill will be slow.
 
-### C-7 🟡 `partially_paid` is unmodelled
+### C-7 ✅ **CLOSED 2026-08-30** — `PARTIALLY_PAID` modelled
 
 Falls through to `PENDING` — conservative, but not distinctly represented and never observed live.
 
@@ -240,7 +240,7 @@ Falls through to `PENDING` — conservative, but not distinctly represented and 
 
 Rate limiting is real (a probe hit it during Phase 17). A throttled reconciliation scan yields `UNKNOWN`, which is safe — it never invents a success — but the scan simply degrades.
 
-### C-9 🟡 The provider list-lag bound is a margin, not a measurement
+### C-9 ◑ **Configurable 2026-08-30** — still a margin, no longer hard-coded
 
 6 seconds observed once; 60 seconds chosen as margin. The true upper bound is unknown. Cost: a legitimate `NOT_FOUND` is delayed by up to a minute — deliberate, since a slow correct answer beats a fast wrong one.
 
@@ -620,3 +620,72 @@ Production GO remains **NO-GO** on A-2/A-3.
 timing-safe comparison. Network jitter dominates any timing signal over HTTP, so
 this is defence-in-depth rather than a live vulnerability — but the webhook HMAC
 path already uses `timingSafeEqual` and this should match it.
+
+
+---
+
+## I. Second remediation pass — 2026-08-30
+
+Everything in this pass was doable without the operator. Branch `sujan`.
+
+| # | Item | What landed | Tests |
+|---|---|---|---|
+| **C-7** | Partially paid invoices | `Invoice.paidAmount` + `PARTIALLY_PAID`; outstanding = `amount - paidAmount` clamped at zero; settlement derives status from the money and increments rather than assigns | 25 |
+| **C-3** | Merge API | `GET/POST /api/counterparties/merge` — suggestions derived on demand, merges only a human names explicitly | 15 |
+| **C-4** | Merge atomicity | The route wraps `mergeCounterparties` in `$transaction` | ↑ |
+| **C-9** | List-lag bound | `PROVIDER_NOT_FOUND_COOLING_MS` lifted out of an inline literal into `FINANCIAL_CONFIG` with its reasoning | — |
+| — | Cron secret | Constant-time comparison, matching the webhook HMAC and password paths | 9 |
+
+### Why C-7 mattered more than "unmodelled" suggested
+
+A part payment did not merely collapse into PENDING. Settlement flipped the
+invoice to **PAID regardless of amount**, so a ₹6L receipt against a ₹10L
+invoice *erased the remaining ₹4L receivable from the forecast entirely* —
+having also overstated expected inflow before it arrived. Both errors, in
+opposite directions, from the same missing concept.
+
+`paidAt` is now stamped only when the invoice actually closes. A part payment
+has not settled it, and a date there would tell the behaviour model the customer
+paid in full that day.
+
+### C-3 is API-only
+
+The endpoint exists, is authorised, tenant-scoped, transactional and tested.
+**No UI is built.** A reviewer can call it; they cannot click it. The screen
+described in spec §6 is still outstanding.
+
+### Regression floor
+
+| Check | Result |
+|---|---|
+| `npm run typecheck` | clean |
+| `npm run lint` | 0 errors |
+| `npm test` | 102 files, **1430 passed**, 5 skipped |
+| `npm run build` | passing, `/api/counterparties/merge` registered |
+
+### ⚠️ Operator action required before deploying this branch
+
+One **additive** migration is written and deliberately **not applied** —
+applying migrations to a database holding real financial data is yours:
+
+```bash
+npx prisma migrate status    # expect: 1 pending, phase17_partial_invoice_payment
+npx prisma migrate deploy
+```
+
+It appends one enum member and adds one column with a default. No existing
+column is altered, dropped or backfilled, and no invoice changes status.
+
+**The application will fail against the database until this is applied**, because
+the generated client selects `Invoice.paidAmount`.
+
+### Still open and unblocked
+
+**B-6** (no automatic sync trigger), **B-7** (forecast reads canonical rows, not
+`FinancialState`), **B-12** (conflicts, evidence trails, "why?" drill-down),
+**C-3's UI**, **F-1n** (reject reason reaches the API but the approval screen
+never sends it).
+
+B-7 is the largest remaining item and the riskiest single change in the spec —
+it alters what every forecast reads — so it wants its own pass with parity tests
+against the current pipeline before anything is switched over.
