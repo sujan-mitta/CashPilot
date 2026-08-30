@@ -21,7 +21,6 @@ import { sendNotificationEmail } from "./mailer";
 import {
   claimAlertForDispatch,
   findLatestAlertForCrisis,
-  getBusinessUserActivities,
   getPreferences,
   getUserActivity,
   recordAlert,
@@ -114,10 +113,8 @@ export async function evaluateAndDispatchAlerts(
 
     // Default timestamps if activity has not been recorded yet
     const lastSeenAt = userActivity?.lastSeenAt ? new Date(userActivity.lastSeenAt) : new Date(0);
-    const lastDashboardViewAt = userActivity?.lastDashboardViewAt ? new Date(userActivity.lastDashboardViewAt) : new Date(0);
 
     const minutesSinceSeen = (now.getTime() - lastSeenAt.getTime()) / (1000 * 60);
-    const hoursSinceSeen = minutesSinceSeen / 60;
 
     let evaluationStatus: AlertEvaluationStatus = "QUALIFIED";
     let suppressionReason: string | undefined = undefined;

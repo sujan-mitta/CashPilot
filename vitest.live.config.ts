@@ -27,5 +27,9 @@ export default defineConfig({
   },
   test: {
     globals: true,
+    // Parity with vitest.config.ts. Without this the live run fell back to
+    // vitest's 5s default, and a test that passes normally failed at exactly
+    // 5000ms — on the timeout, not on the assertion.
+    testTimeout: 15000,
   },
 });

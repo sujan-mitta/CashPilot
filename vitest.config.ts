@@ -19,5 +19,9 @@ export default defineConfig({
   test: {
     globals: true,
     testTimeout: 15000,
+    // The live tier is a separate file, excluded here rather than skipped
+    // inside the suite. `npm test` therefore reports zero skipped tests, and
+    // still cannot reach Razorpay. `npm run test:live` includes it.
+    exclude: ["**/node_modules/**", "**/dist/**", "**/.next/**", "**/*.live.test.ts"],
   },
 });

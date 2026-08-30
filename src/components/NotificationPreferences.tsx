@@ -5,12 +5,11 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { useToast } from "@/components/ui/Toast";
-import { Mail, Bell, Shield, Eye, Check, RefreshCw } from "lucide-react";
+import { Mail, Shield, Eye, Check, RefreshCw } from "lucide-react";
 import type { NotificationPreferences as PrefsType } from "@/lib/notifications/types";
 
 export function NotificationPreferences() {
   const { toast } = useToast();
-  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [prefs, setPrefs] = useState<PrefsType>({
     criticalAlertsEnabled: true,
@@ -27,23 +26,33 @@ export function NotificationPreferences() {
   const [previewLoading, setPreviewLoading] = useState(false);
 
   useEffect(() => {
-    fetchPrefs();
-  }, []);
+    // Declared inside the effect. As a component-scope `const` referenced from
+    // above its own declaration it read as a use-before-declare — harmless at
+    // runtime, since the effect body runs after render by which point the
+    // binding is assigned, but it is the kind of thing that stops being
+    // harmless the moment someone calls it during render.
+    //
+    // `cancelled` also stops a slow response writing into an unmounted
+    // component, and no setState here runs synchronously in the effect body.
+    let cancelled = false;
 
-  const fetchPrefs = async () => {
-    try {
-      setLoading(true);
-      const res = await fetch("/api/notifications");
-      if (res.ok) {
+    const fetchPrefs = async () => {
+      try {
+        const res = await fetch("/api/notifications");
+        if (!res.ok) return;
         const data = await res.json();
-        if (data.preferences) setPrefs(data.preferences);
+        if (!cancelled && data.preferences) setPrefs(data.preferences);
+      } catch {
+        // Non-fatal: the defaults above stay on screen rather than the form
+        // rendering empty.
       }
-    } catch {
-      // Ignore
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+
+    fetchPrefs();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleSave = async () => {
     try {

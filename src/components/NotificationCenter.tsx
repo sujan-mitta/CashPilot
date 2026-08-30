@@ -9,32 +9,56 @@ import { formatPaise } from "@/lib/format";
 
 export function NotificationCenter() {
   const [isOpen, setIsOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [alerts, setAlerts] = useState<AlertRecord[]>([]);
   const [health, setHealth] = useState<HealthAssessment | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const fetchNotifications = async () => {
-    try {
-      setLoading(true);
-      const res = await fetch("/api/notifications");
-      if (res.ok) {
-        const data = await res.json();
-        setAlerts(data.recentAlerts || []);
-        setHealth(data.currentHealth || null);
-      }
-    } catch {
-      // Non-fatal on background fetch
-    } finally {
-      setLoading(false);
-    }
-  };
+  /**
+   * Bumped to refetch.
+   *
+   * The fetch lives inside the effect so none of its setState calls run
+   * synchronously in an effect body; this is how the bell and the refresh
+   * button ask for a new one without pulling the function back out.
+   */
+  const [reloadKey, setReloadKey] = useState(0);
+  const refresh = () => setReloadKey((k) => k + 1);
 
   useEffect(() => {
+    // Declared inside the effect and guarded by `cancelled`.
+    //
+    // As a component-scope function it was called synchronously from the effect
+    // and its first statement was `setLoading(true)` — a setState inside an
+    // effect body, which schedules an immediate second render before the first
+    // has painted. It also left a live interval able to setState after unmount.
+    //
+    // Every setState below now happens after an await, and none of them runs
+    // once the component is gone.
+    let cancelled = false;
+
+    const fetchNotifications = async () => {
+      try {
+        const res = await fetch("/api/notifications");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+        setAlerts(data.recentAlerts || []);
+        setHealth(data.currentHealth || null);
+      } catch {
+        // Non-fatal: this is a background poll, and a failed refresh should
+        // leave the last good list on screen rather than clearing it.
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
     fetchNotifications();
     const interval = setInterval(fetchNotifications, 60000); // refresh every minute
-    return () => clearInterval(interval);
-  }, []);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [reloadKey]);
 
   // Close on outside click
   useEffect(() => {
@@ -59,7 +83,7 @@ export function NotificationCenter() {
       <button
         onClick={() => {
           setIsOpen(!isOpen);
-          if (!isOpen) fetchNotifications();
+          if (!isOpen) refresh();
         }}
         className={clsx(
           "relative p-2 rounded-lg transition-colors border",
@@ -97,7 +121,7 @@ export function NotificationCenter() {
             </div>
             <div className="flex items-center gap-1">
               <button
-                onClick={fetchNotifications}
+                onClick={refresh}
                 disabled={loading}
                 className="p-1 text-ink-400 hover:text-ink-200 rounded transition-colors"
                 title="Refresh"
