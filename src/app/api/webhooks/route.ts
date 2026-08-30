@@ -15,6 +15,9 @@ import {
   markDuplicate,
   markIgnored,
   recordRejectedDelivery,
+  markUnmatched,
+  countDeliveriesForEvent,
+  UNMATCHED_RETRY_ATTEMPTS,
 } from "@/lib/razorpay/webhookDelivery";
 
 /**
@@ -244,9 +247,47 @@ export const POST = withCorrelationId(async (req: Request) => {
       }
 
       if (!businessId) {
-        await releaseEventClaim();
-        await markFailed(deliveryId, "PROCESSING_ERROR", "Linked business not found for this payment link", { externalRef: paymentLinkId });
-        return NextResponse.json({ error: "Linked business not found for this payment link" }, { status: 404 });
+        // A webhook for a link CashPilot does not manage.
+        //
+        // This used to answer 404 and release the claim, which is a request to
+        // retry — and no amount of retrying produces a business that does not
+        // exist. Razorpay therefore retried with backoff indefinitely. That is
+        // not hypothetical: it was observed in production against a real
+        // payment, four deliveries in 45 seconds, and it is the most likely
+        // explanation for the Phase 18 webhook going silent after 13 failures.
+        // Providers disable endpoints that keep failing.
+        //
+        // The race is real too, so we do not give up immediately: the provider
+        // can deliver before our own row is committed. A bounded number of
+        // retries covers that; beyond it, the link is genuinely not ours.
+        const attempts = await countDeliveriesForEvent(eventId);
+
+        if (attempts <= UNMATCHED_RETRY_ATTEMPTS) {
+          await releaseEventClaim();
+          await markFailed(
+            deliveryId,
+            "PROCESSING_ERROR",
+            `No linked business yet for ${paymentLinkId} (attempt ${attempts}); allowing retry.`,
+            { externalRef: paymentLinkId }
+          );
+          return NextResponse.json(
+            { error: "Linked business not found yet; retry expected" },
+            { status: 503 }
+          );
+        }
+
+        // Terminal, and ACKNOWLEDGED. The claim is deliberately NOT released:
+        // this event has been definitively handled, and the honest answer is
+        // "nothing to do", not "try again".
+        await markUnmatched(deliveryId, paymentLinkId);
+        logger.warn("Acknowledged a webhook for an unmatched payment link", {
+          paymentLinkId,
+          attempts,
+        });
+        return NextResponse.json(
+          { ok: true, outcome: "UNMATCHED_PAYMENT_LINK", paymentLinkId },
+          { status: 200 }
+        );
       }
 
       const businessExists = await (prisma.business.findUnique || prisma.business.findFirst)({

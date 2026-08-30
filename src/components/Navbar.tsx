@@ -7,7 +7,7 @@ import { useCashPilot } from "@/context/CashPilotContext";
 import { PilotIcon } from "./PilotIcon";
 import { ThemeToggle } from "./ThemeToggle";
 import { NotificationCenter } from "./NotificationCenter";
-import { Check, ChevronDown, LogOut } from "lucide-react";
+import { Check, ChevronDown, LogOut, Scale, Users } from "lucide-react";
 import { initialsOf } from "@/lib/format";
 import { errorMessage } from "@/lib/errors";
 import { useToast } from "./ui/Toast";
@@ -217,6 +217,28 @@ export function Navbar({ activeStep }: { activeStep: number }) {
 
           {/* ── Operator ─────────────────────────────────────────────── */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            {/* Review queues.
+                Both of these existed as routes nobody could reach — the merge
+                screen and the conflict screen had to be typed as URLs. A review
+                queue nobody can find is a review queue nobody works through,
+                and both hold decisions only a human is allowed to make. */}
+            <button
+              onClick={() => router.push("/conflicts")}
+              title="Source disagreements needing your decision"
+              aria-label="Source disagreements needing your decision"
+              className="hidden sm:flex p-2 rounded-md text-ink-400 hover:text-ink-100 hover:bg-ground-200 transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-brand-500"
+            >
+              <Scale className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => router.push("/counterparties")}
+              title="Possible duplicate counterparties"
+              aria-label="Possible duplicate counterparties"
+              className="hidden sm:flex p-2 rounded-md text-ink-400 hover:text-ink-100 hover:bg-ground-200 transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-brand-500"
+            >
+              <Users className="w-4 h-4" />
+            </button>
+
             <NotificationCenter />
             <ThemeToggle />
 
