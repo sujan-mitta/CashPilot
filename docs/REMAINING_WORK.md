@@ -768,11 +768,28 @@ agreement is the one failure this whole mechanism exists to prevent.
 
 The honest state of everything not closed, so nothing is silently assumed done.
 
+### Closed after the merge
+
+**B-12a — cross-source conflict centre (§7).** `brain:sync` could say "N source
+conflicts need a human decision" and nothing more; that N is now inspectable.
+`GET /api/conflicts` derives open disagreements on demand (a stored conflict
+goes stale the moment a new observation arrives), and `/conflicts` shows each
+one with what every source actually said.
+
+There is deliberately **no resolve action**. Resolving means declaring one
+source authoritative over another about real money, which §14 and §41 both put
+with a human — and there is nowhere yet to record who decided, when, and why. A
+button that silently picked a side would be worse than no button, so the screen
+sends the operator to correct the underlying record instead.
+
+Verified on a fixture harness: 3 conflict states render, 63 text nodes, **0
+contrast failures**, lowest ratio 4.84:1, empty and error states both correct,
+and no resolve control exists. Tests: `openConflicts.test.ts` (10).
+
 ### Left, and I can do it
 
 | # | Item | Size |
 |---|---|---|
-| **B-12a** | Cross-source conflict centre (§7) — the reconciler finds conflicts; no screen shows them | medium |
 | **B-12b** | Evidence trail UI (§24) — "why does CashPilot believe this number?" | medium |
 | **B-12c** | "Why this decision?" drill-down (§23) | medium |
 | **B-12d** | Decision freshness/expiry surfaced *before* it refuses (§25, C-16) | small |
