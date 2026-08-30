@@ -58,7 +58,23 @@ export async function GET(
       };
     });
 
-    return NextResponse.json({ ...strategy, actions });
+    // The decision this plan belongs to carries when it stops being executable.
+    // Sent so the approval screen can warn BEFORE it refuses, rather than
+    // letting the operator read the whole plan, decide, and only then be told
+    // it expired (spec §25).
+    //
+    // Tenant-scoped like everything else here: an id alone is not authorisation.
+    const decision = await prisma.decision.findFirst({
+      where: { strategyId: strategy.id, businessId: business.id },
+      select: { expiresAt: true, status: true, financialStateVersion: true },
+    });
+
+    return NextResponse.json({
+      ...strategy,
+      actions,
+      decisionExpiresAt: decision?.expiresAt?.toISOString() ?? null,
+      decisionStatus: decision?.status ?? null,
+    });
   } catch (error) {
     logger.error("API error in get strategy", { error: errorMessage(error) });
     return NextResponse.json({ error: "Could not load that plan." }, { status: 500 });

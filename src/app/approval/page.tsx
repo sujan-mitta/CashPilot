@@ -19,6 +19,7 @@ import clsx from "clsx";
 import { errorMessage } from "@/lib/errors";
 import { useToast } from "@/components/ui/Toast";
 import { buildRejectionRequest } from "./rejectionRequest";
+import { describeFreshness } from "@/lib/engine/decisionFreshnessDisplay";
 
 const actionCategory = (type: string) =>
   type === "RECOVER_FAILED_PAYMENTS"
@@ -92,6 +93,15 @@ function ApprovalContent() {
   const [rejectReason, setRejectReason] = useState("");
   const [rejecting, setRejecting] = useState(false);
 
+  /**
+   * When this recommendation stops being executable.
+   *
+   * Fetched on its own rather than read off the strategy, because a cache hit
+   * skips the detail request entirely — and whether the operator sees an expiry
+   * warning must not depend on which path happened to load the plan.
+   */
+  const [expiresAt, setExpiresAt] = useState<string | null>(null);
+
   // The "if you do nothing" figure lives only in the in-memory cache, so a
   // refresh or a shared link rendered the most important comparison on this
   // screen as "Unavailable". It is recoverable: /api/forecast IS the do-nothing
@@ -111,6 +121,23 @@ function ApprovalContent() {
       cancelled = true;
     };
   }, [cachedForecast]);
+
+  useEffect(() => {
+    if (!strategyId) return;
+    let cancelled = false;
+    fetch(`/api/strategies/${strategyId}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data?.decisionExpiresAt) setExpiresAt(data.decisionExpiresAt);
+      })
+      .catch(() => {
+        // Expiry is advisory here. The gate at approval remains authoritative,
+        // so failing to show a warning must never block the screen.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [strategyId]);
 
   useEffect(() => {
     // Only fetch when there is a selection with no cached copy. A cache hit is
@@ -291,7 +318,31 @@ function ApprovalContent() {
         >
           ← Back to the plans
         </button>
-        <Badge tone="warning">Waiting for you to approve</Badge>
+        <div className="flex items-center gap-2">
+          {/* Expiry, surfaced BEFORE it refuses (spec §25). Until now this
+              reached the operator exactly once — as a refusal, after they had
+              read the plan and decided. */}
+          {(() => {
+            const f = describeFreshness(expiresAt);
+            if (f.band === "UNKNOWN") return null;
+            return (
+              <span title={f.detail}>
+                <Badge
+                  tone={
+                    f.band === "EXPIRED"
+                      ? "danger"
+                      : f.band === "EXPIRING_SOON"
+                      ? "warning"
+                      : "neutral"
+                  }
+                >
+                  {f.label}
+                </Badge>
+              </span>
+            );
+          })()}
+          <Badge tone="warning">Waiting for you to approve</Badge>
+        </div>
       </Reveal>
 
       <Stagger className="space-y-8" stagger={0.08}>

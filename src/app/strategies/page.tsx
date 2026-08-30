@@ -62,8 +62,22 @@ export default function Strategies() {
     setCachedForecast,
   } = useCashPilot();
 
-  const [loading, setLoading] = useState(!cachedStrategies);
   const [error, setError] = useState<string | null>(null);
+
+  /**
+   * Derived, not stored.
+   *
+   * This was `useState(!cachedStrategies)`, and it could stick on `true`
+   * permanently: the effect below depends on the caches it writes, so setting
+   * them re-ran it, and the final re-run took the early-return path — which
+   * never reached the `setLoading(false)` in its `finally`, because the run
+   * that would have executed it had already been cancelled by the re-render.
+   * The page then showed skeletons forever while the API kept answering 200.
+   *
+   * As a derived value there is no flag to strand: the page is loading exactly
+   * while it lacks what it needs to render, and not one render longer.
+   */
+  const loading = !error && (!cachedStrategies || !cachedForecast);
   const [drawerStrategyId, setDrawerStrategyId] = useState<string | null>(null);
 
   const [reloadKey, setReloadKey] = useState(0);
@@ -129,8 +143,6 @@ export default function Strategies() {
         }
       } catch (err) {
         if (!cancelled) setError(errorMessage(err));
-      } finally {
-        if (!cancelled) setLoading(false);
       }
     }
 
@@ -138,20 +150,25 @@ export default function Strategies() {
     return () => {
       cancelled = true;
     };
-  }, [
-    cachedStrategies,
-    cachedForecast,
-    reloadKey,
-    setCachedStrategies,
-    setCachedRecommendationNarration,
-    setCachedForecast,
-    setSelectedStrategyId,
-  ]);
+    // Deliberately keyed on `reloadKey` alone.
+    //
+    // Depending on `cachedStrategies` / `cachedForecast` here was the bug: the
+    // effect writes both, `setCachedStrategies` hands back a NEW array each
+    // time, so every successful fetch changed the dependency and re-ran the
+    // effect, which fetched again. Five POSTs per visit, each ~16s, and the
+    // page never settled.
+    //
+    // The guard at the top still reads them, from the closure of whichever run
+    // is current, which is all it needs: it only has to answer "did we already
+    // have this before the page mounted?".
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reloadKey]);
 
   /** Retry from the error state. An event handler, so setting state here is fine. */
   const retrySimulation = () => {
+    // Clearing the error is what puts the page back into its loading state,
+    // now that `loading` is derived from having neither cache nor error.
     setError(null);
-    setLoading(true);
     setReloadKey((k) => k + 1);
   };
 
