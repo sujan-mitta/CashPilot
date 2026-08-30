@@ -91,6 +91,11 @@ vi.mock("@/lib/prisma", () => {
       transaction: { findMany: vi.fn(async () => world.transactions) },
       invoice: { findMany: vi.fn(async () => world.invoices) },
       payout: { findMany: vi.fn(async () => world.payouts) },
+      // The route stamps each decision with the materialised state version it
+      // was computed against. No state has been materialised in this fixture,
+      // so the honest answer is null — which the freshness gate reads as
+      // NOT_TRACKED, exactly as before the column was populated.
+      financialState: { findFirst: vi.fn(async () => null) },
       ...tx,
       $transaction: vi.fn(async (cb: any) => cb(tx)),
     },

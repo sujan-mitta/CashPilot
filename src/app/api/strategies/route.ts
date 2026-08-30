@@ -20,6 +20,7 @@ import { errorMessage } from "@/lib/errors";
 import { logger } from "@/lib/observability";
 import { rateLimit } from "@/lib/auth/rateLimit";
 import type { Prisma } from "../../../../generated/prisma/client";
+import { getLatestFinancialState } from "@/lib/state/store";
 
 /** The per-strategy object returned to the client and fed to the AI narrator. */
 interface ResponseStrategy {
@@ -211,6 +212,21 @@ export async function POST() {
     const responseStrategies: ResponseStrategy[] = [];
     let recommendedStrategyId = "";
 
+    // B-8: the materialised financial state these recommendations were computed
+    // against, so the freshness gate can later tell whether the ground has
+    // moved underneath them.
+    //
+    // Null when no state has ever been materialised, which is the current
+    // reality for every tenant until brain:sync runs. The gate reads a null
+    // version as NOT_TRACKED and does not block, so recording it is strictly
+    // additive: it can only ever turn an unverifiable decision into a
+    // verifiable one, never the reverse.
+    //
+    // Read outside the transaction on purpose. This one already had a 5s
+    // timeout problem from work done inside it.
+    const financialStateVersion =
+      (await getLatestFinancialState(prisma, business.id))?.stateVersion ?? null;
+
     await prisma.$transaction(
       async (tx) => {
       // Discard the previous UNACTED simulation for this business.
@@ -340,6 +356,7 @@ export async function POST() {
               // would reveal.
               forecastVersion: currentForecastVersion(),
               expiresAt: decisionExpiryFrom(today),
+              financialStateVersion,
               contextFingerprint: fingerprint.fingerprint,
               fingerprintDetail: fingerprint as unknown as Prisma.InputJsonValue,
               obligationSnapshot: buildObligationSnapshot(
