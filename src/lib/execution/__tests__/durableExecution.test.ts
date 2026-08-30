@@ -233,6 +233,10 @@ describe("PART 4/7 - EXECUTION_UNKNOWN recovery", () => {
     await resolveIntentUnknown(client, intent.id, "timeout");
 
     const res = await reconcileUnknownIntent(client, intent.id, {
+      // Injected for the same reason `lookup` is. Without it this test
+      // performed a REAL settlement against whatever database the environment
+      // pointed at — which under the live config is production.
+      settle: async () => undefined,
       lookup: async () => ({
         status: "CONFIRMED_SUCCESS",
         providerReference: "plink_found",

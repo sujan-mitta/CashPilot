@@ -294,6 +294,28 @@ export async function reconcileUnknownIntent(
       now?: Date,
       operationRecordedAt?: Date
     ) => Promise<ReconciliationResult>;
+    /**
+     * Injectable settlement, for tests.
+     *
+     * Settlement was the one thing this function reached for globally while
+     * accepting an injected client for everything else — so a test that
+     * supplied a complete fake client still performed a REAL settlement
+     * against whatever database the environment happened to point at. That is
+     * how `npm run test:live` ended up connecting a unit test to production.
+     *
+     * NOTE ON TRANSACTIONS. `settlePayment` opens its own transaction on the
+     * module-level client and takes no client of its own, so if this function
+     * were ever passed a transaction client the settlement would still commit
+     * outside it. No caller does that today — all three pass the base client —
+     * and this comment exists so that stays a deliberate choice rather than a
+     * discovery.
+     */
+    settle?: (
+      providerReference: string,
+      businessId: string,
+      amount: number,
+      idempotencyKey: string
+    ) => Promise<unknown>;
     now?: Date;
   } = {}
 ): Promise<IntentReconciliation> {
@@ -414,8 +436,23 @@ export async function reconcileUnknownIntent(
 
     if (intent.operation === ExecutionOperation.CREATE_PAYMENT_LINK && result.providerReference) {
       try {
-        const { settlePayment } = await import("../razorpay/settlement");
-        await settlePayment(result.providerReference, intent.businessId, intent.amount, intent.idempotencyKey, "RECONCILIATION");
+        if (overrides.settle) {
+          await overrides.settle(
+            result.providerReference,
+            intent.businessId,
+            intent.amount,
+            intent.idempotencyKey
+          );
+        } else {
+          const { settlePayment } = await import("../razorpay/settlement");
+          await settlePayment(
+            result.providerReference,
+            intent.businessId,
+            intent.amount,
+            intent.idempotencyKey,
+            "RECONCILIATION"
+          );
+        }
       } catch (settleErr) {
         console.error("Failed to execute settlePayment during reconciliation:", settleErr);
       }

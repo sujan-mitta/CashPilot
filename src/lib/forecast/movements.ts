@@ -4,6 +4,7 @@ import { errorMessage } from "@/lib/errors";
 import { loadPaymentBehavior, type BehaviorClient } from "@/lib/behavior/behaviorStore";
 import type { PaymentBehavior } from "@/lib/behavior/paymentBehavior";
 import type { TransactionRecord } from "@/lib/db/records";
+import { reconcileOverdueMovements } from "../engine/overdueMovements";
 import {
   buildMovements,
   forecastEventsToMovements,
@@ -115,7 +116,10 @@ export async function buildForecastContextForBusiness(
 
   if (!useEvents) {
     return {
-      movements: buildMovements(transactions, { useEventPipeline: false }),
+      movements: withOverdueReconciled(
+        buildMovements(transactions, { useEventPipeline: false }),
+        options.now
+      ),
       events: transactionsToForecastEvents(transactions),
     };
   }
@@ -132,5 +136,27 @@ export async function buildForecastContextForBusiness(
   }
 
   const events = transactionsToForecastEvents(transactions, byCounterparty);
-  return { movements: forecastEventsToMovements(events), events };
+  return {
+    movements: withOverdueReconciled(forecastEventsToMovements(events), options.now),
+    events,
+  };
+}
+
+/**
+ * Applied to BOTH pipelines, so the two cannot disagree about an overdue item.
+ *
+ * `buildForecast` walks days 1..N from today and matches movements by exact
+ * date, so anything dated earlier matched no day and was silently dropped. On a
+ * real ledger that meant an overdue payroll and an overdue vendor payout simply
+ * vanished from the projection.
+ *
+ * The treatment is asymmetric, and deliberately so: overdue OUTFLOWS carry
+ * forward because the money is still owed, while overdue INFLOWS do not,
+ * because banking a late receivable overstates cash on exactly the invoices
+ * least likely to pay. It can therefore only ever make a forecast MORE
+ * conservative — it can add outflows, never inflows — so it can turn healthy
+ * into at-risk but never the reverse.
+ */
+function withOverdueReconciled(movements: DailyMovement[], now?: Date): DailyMovement[] {
+  return reconcileOverdueMovements(movements, now ?? new Date()).movements;
 }
