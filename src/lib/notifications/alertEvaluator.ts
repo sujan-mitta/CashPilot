@@ -103,6 +103,13 @@ export async function evaluateAndDispatchAlerts(
 
   for (const user of users) {
     const alertId = `alert_${crypto.randomUUID()}`;
+
+    // One recipient's failure must not abort the batch, and must never be
+    // mistaken for a decision to stay silent. The dispatch gates now throw when
+    // the database cannot answer — deliberately, so that "I cannot tell" never
+    // becomes "go ahead" — and that has to be contained here or a single
+    // unhealthy lookup would end the whole scheduled pass for every business.
+    try {
     const userActivity = await getUserActivity(user.id, options.businessId);
 
     // Default timestamps if activity has not been recorded yet
@@ -245,6 +252,25 @@ export async function evaluateAndDispatchAlerts(
       alertId,
       deliveryStatus: finalDeliveryStatus,
     });
+    } catch (err) {
+      // Suppressed, not sent, and recorded as such. The next scheduled
+      // evaluation retries; nothing here is lost, and no email is duplicated.
+      emailsSuppressed++;
+      logger.error("Recipient evaluation failed; suppressing this recipient", {
+        businessId: options.businessId,
+        userId: user.id,
+        crisisKey: assessment.crisisKey,
+        error: String(err),
+      });
+      evaluatedRecipients.push({
+        userId: user.id,
+        email: user.email,
+        status: "SEND_FAILED",
+        suppressionReason: `Evaluation failed: ${String(err)}`,
+        alertId,
+        deliveryStatus: "FAILED",
+      });
+    }
   }
 
   const overallStatus: AlertEvaluationStatus = emailsSent > 0

@@ -424,10 +424,22 @@ export async function claimAlertForDispatch(alertId: string, workerId?: string):
 
     return result.count > 0;
   } catch (err) {
-    logger.warn("Falling back to in-memory claim check", { error: String(err) });
-    if (testStore.claimedAlertIds[alertId]) return false;
-    testStore.claimedAlertIds[alertId] = now.toISOString();
-    return true;
+    // FAIL CLOSED. The in-memory fallback that used to live here granted the
+    // claim, which is the one answer this function must never invent.
+    //
+    // The store is per-process, and on serverless every concurrent invocation
+    // is a different process with an empty one. So a transient database fault
+    // made every worker believe it held the exclusive claim, and N workers sent
+    // N copies of the same email — exactly when the database is unhealthy and
+    // retries are most likely.
+    //
+    // A refused claim costs one delayed alert, recovered on the next scheduled
+    // evaluation. A duplicate email cannot be recalled.
+    logger.error("Dispatch claim unavailable; refusing to claim", {
+      alertId,
+      error: String(err),
+    });
+    return false;
   }
 }
 
@@ -534,14 +546,19 @@ export async function findLatestAlertForCrisis(
       renderedSubject: record.renderedSubject ?? undefined,
     };
   } catch (err) {
-    logger.warn("Falling back to in-memory crisis alert search", { error: String(err) });
-    const match = testStore.alerts.find(
-      (a) =>
-        a.businessId === businessId &&
-        a.crisisKey === crisisKey &&
-        (a.deliveryStatus === "SENT" || a.deliveryStatus === "ACCEPTED" || a.deliveryStatus === "SIMULATED")
-    );
-    return match ?? null;
+    // FAIL CLOSED. This is the "have we already emailed about this crisis?"
+    // gate, and `null` here means "no, send it".
+    //
+    // Falling back to an empty per-process store answered `null` for every
+    // crisis, so a database fault silently disabled deduplication altogether.
+    // Throwing instead lets the caller suppress this evaluation and retry on
+    // the next tick, which is the recoverable failure of the two.
+    logger.error("Crisis dedup lookup unavailable; refusing to assume unsent", {
+      businessId,
+      crisisKey,
+      error: String(err),
+    });
+    throw err;
   }
 }
 
