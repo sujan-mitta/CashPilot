@@ -7,6 +7,7 @@ import {
   providerUnavailable,
 } from "../execution/providerReconciliation";
 import { logger } from "../observability";
+import { withProviderReadRetry } from "./retry";
 
 const keyId = process.env.RAZORPAY_KEY_ID;
 const keySecret = process.env.RAZORPAY_KEY_SECRET;
@@ -324,7 +325,20 @@ export async function reconcilePaymentLink(
     },
     async ({ from, to, count, skip }) => {
       const allMethod = razorpay!.paymentLink.all as unknown as (opts: { from: number; to: number; count: number; skip: number }) => Promise<RazorpayPaymentLinkListResponse>;
-      const response = await allMethod({ from, to, count, skip });
+
+      // Retried with bounded backoff because this is a READ. Rate limiting on
+      // this endpoint is real - a probe hit it during Phase 17 - and a
+      // throttled page previously aborted the scan, which correctly degrades to
+      // UNKNOWN but leaves an operator with an unresolved intent that a short
+      // pause would have settled. Only indeterminate failures are retried; a
+      // definite rejection still propagates immediately.
+      //
+      // This must never be applied to link CREATION: an indeterminate write may
+      // already have landed, and retrying it is how one invoice acquires two
+      // live payment links.
+      const response = await withProviderReadRetry(() => allMethod({ from, to, count, skip }), {
+        operation: "paymentLink.all",
+      });
       return (response?.payment_links ?? response?.items ?? []) as PaymentLinkLike[];
     }
   );
