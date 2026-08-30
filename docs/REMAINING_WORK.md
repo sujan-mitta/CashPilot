@@ -134,13 +134,13 @@ The append-only spine is idempotent and tested, but no source produces events in
 
 `Invoice.customerName` / `Payout.vendor` remain authoritative for display and every engine path. The link is written by `brain:sync` and read only by payment behaviour.
 
-### B-6 ◑ No automatic trigger for state materialisation or reconciliation
+### B-6 CLOSED 2026-08-30 - the daily cron syncs before it assesses
 
 `npm run brain:sync` runs both. What does not exist is any **cron, post-write hook or scheduled job** — state advances only when someone runs the script.
 
 Deliberate for a first release, and the reason **B-8** stays open.
 
-### B-7 🟡 Nothing reads `FinancialState` for forecasting (Phase 6)
+### B-7 SUPERSEDED 2026-08-30 - not implementable as written, see section J
 
 `buildForecast` still reads canonical rows directly. The freshness gate reads state, but only for decisions recording a version — which is none (B-8).
 
@@ -360,7 +360,7 @@ Rate limiting is real (a probe hit it during Phase 17). A throttled reconciliati
 
 **Fix:** Added `console.error` logging inside the catch block.
 
-#### F-1n 🟡 Reject reason state discarded
+#### F-1n CLOSED 2026-08-30 - and it was worse than this title
 **File:** `src/app/approval/page.tsx` L81, L186–193
 
 `rejectReason` is captured via textarea but `confirmReject()` never submits it. The user's typed reason is silently lost.
@@ -689,3 +689,122 @@ never sends it).
 B-7 is the largest remaining item and the riskiest single change in the spec —
 it alters what every forecast reads — so it wants its own pass with parity tests
 against the current pipeline before anything is switched over.
+
+
+---
+
+## J. Third remediation pass — 2026-08-30
+
+Everything doable without the operator. Branch `sujan`.
+
+| # | Item | Status | Tests |
+|---|---|---|---|
+| **F-1n** | Rejection reaches the server | ✅ CLOSED | 6 |
+| **C-3 UI** | Duplicate review screen | ✅ CLOSED | build-prerendered |
+| **B-6** | Automatic brain sync | ✅ CLOSED | 7 |
+| **B-7** | Forecast ↔ state boundary | ⛔ superseded, see below | 11 |
+
+### F-1n was misfiled as an audit gap
+
+The title said "reject reason state discarded". In fact `confirmReject` issued
+**no request at all** — a toast reading "Plan declined", then a redirect.
+Server-side nothing happened: the decision stayed `PRESENTED`, its actions
+stayed `PENDING`, and the plan remained **approvable and executable** by the
+next screen that loaded it.
+
+The lost reason was the minor half. The major half was a plan the operator
+believed they had killed, still sitting there ready to move money. It now calls
+the route — which had always done the real work — and stays on the panel if the
+call fails, because redirecting after a failed decline would leave the operator
+believing they had declined something they had not.
+
+### B-7 cannot be implemented as written, and should not be
+
+> *"forecasting still reads canonical records directly… introduce the correct
+> state-consumption boundary"*
+
+`FinancialState` is **aggregate-only**: cash position, receivables, payables,
+inflow/outflow totals, a commitment count. `buildForecast` builds a day-by-day
+runway, which needs each invoice's due date and each payout's scheduled date —
+per-record detail the state does not carry and was never designed to.
+
+Making it carry that detail would turn it into a second copy of the ledger,
+which the spec explicitly forbids: *"Do not make `FinancialState` a second
+conflicting source of truth."* The canonical rows **are** the truth; a
+materialised aggregate cannot outrank them. C-10 already noted the same
+structural limit from the other side — the state is aggregate-level and cannot
+see one ₹5L invoice substituted for another.
+
+**What was built instead** (`src/lib/state/forecastConsistency.ts`): the
+forecast keeps reading canonical rows, and the state gets a *vote* on whether to
+trust the result. Two independent paths compute overlapping totals; when they
+disagree, something is wrong that neither can see alone — a stale sync, an
+unreconciled conflict, or a record that changed between the two computations.
+
+The verdict is `AGREES` / `DIVERGED` / `NOT_COMPARABLE`. Divergence is **named,
+never resolved**: one side may be stale, and silently preferring either would be
+inventing an answer (§7). Absent state is `NOT_COMPARABLE`, not a disagreement —
+otherwise every tenant that has never synced would cry wolf.
+
+**Still to do:** the checker is written and tested but **not yet called** by the
+forecast route, so no user sees its verdict. That is the remaining half of B-7,
+and it is small.
+
+### Regression floor
+
+| Check | Result |
+|---|---|
+| `npm run typecheck` | clean |
+| `npm run lint` | 0 errors |
+| `npm test` | 105 files, **1454 passed**, 5 skipped |
+| `npm run build` | passing |
+
+---
+
+## K. What is left — the complete list
+
+The honest state of everything not closed, so nothing is silently assumed done.
+
+### Left, and I can do it
+
+| # | Item | Size |
+|---|---|---|
+| **B-7b** | Call `checkForecastConsistency` from the forecast route and surface the verdict | small |
+| **B-12a** | Cross-source conflict centre (§7) — the reconciler finds conflicts; no screen shows them | medium |
+| **B-12b** | Evidence trail UI (§24) — "why does CashPilot believe this number?" | medium |
+| **B-12c** | "Why this decision?" drill-down (§23) | medium |
+| **B-12d** | Decision freshness/expiry surfaced *before* it refuses (§25, C-16) | small |
+| **P14** | Per-decision outcome measurement completion (§26) | medium |
+| **§30–32** | `FinancialSourceAdapter` abstraction; bank and ERP connectors | large |
+| **§28** | Deterministic calibration framework | large |
+
+### Left, and it is yours
+
+| # | Item | Why |
+|---|---|---|
+| **MIGRATION** | `npx prisma migrate deploy` — one pending, `phase17_partial_invoice_payment` | Applying migrations to a database holding real financial data is your call. **The app fails against the database until this runs**, because the client now selects `Invoice.paidAmount`. |
+| **A-2** | One real Razorpay test-mode payment | Needs a human to complete a payment |
+| **A-3** | One real webhook delivery | Needs a reachable URL and a real provider event |
+| **A-4** | `RAZORPAY_WEBHOOK_SECRET` | It is a secret; I must not handle it |
+| **A-5** | `npm run test:live` | Needs test-mode credentials in `.env` |
+| **C-15** | Look at the authenticated screens with real data | Behind a login I do not enter |
+
+### Partially done — do not read these as closed
+
+| # | Item | Done | Not done |
+|---|---|---|---|
+| **C-3** | Merge review | API + screen, tested | Never seen rendered with real data (behind auth) |
+| **C-9** | List-lag bound | Configurable, reasoned | Still a margin, not a measurement — no observed-latency collection |
+| **B-7** | State boundary | Consistency checker built and tested | Not wired into the forecast route |
+| **C-1** | Predictive confidence | Formula complete | Still capped until settled history accumulates |
+| **C-12** | Model constants | Reasoned, documented | None fitted to real data — there is none yet |
+| **C-14** | `FORECAST_EVENT_PIPELINE` | Preconditions 1, 2 and 4 now hold | Still `false`; needs 5+ settled payments per customer (3) and a manual-skew review (5) |
+
+### Deliberately not done
+
+**C-2** (identity beyond names — GSTIN, PAN, bank identifier) needs a decision
+about collecting those identifiers at all; §5 says not to store sensitive
+identifiers unnecessarily. **C-5**, **C-6** and **C-13** remain accurate as
+written.
+
+Production GO remains **NO-GO** on A-2 and A-3.
