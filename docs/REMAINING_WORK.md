@@ -92,15 +92,15 @@ Full table in **WHAT NEEDS YOU §1**. Nothing that reads the new tables can do a
 
 **Rollback:** drop the five new tables and the six nullable columns. Almost nothing reads them (B-1, B-3, B-7), so rollback is isolated.
 
-### A-2 🔴 No real Razorpay settlement has ever been observed (Phase 18 blocker B1)
+### A-2 CLOSED 2026-08-30 - a real test-mode payment was completed
 
 Carried from `PHASE_18_PRODUCTION_CLOSURE.md` §18. The `paid` mapping is built from recorded response shapes, not a completed payment.
 
-### A-3 🔴 No real webhook has ever been delivered by Razorpay (Phase 18 blocker B2)
+### A-3 CLOSED 2026-08-30 - real provider webhooks were delivered and verified
 
 In production, settlement arrives by webhook. That path has never been exercised by the provider itself — only by synthesised requests in tests.
 
-### A-4 🔴 `RAZORPAY_WEBHOOK_SECRET` is not configured anywhere (Phase 18 blocker B3)
+### A-4 CLOSED 2026-08-30 - configured in Vercel and proven by a verified signature
 
 Fails closed in production without it, which is correct, but means webhooks cannot work until it is set.
 
@@ -827,3 +827,74 @@ identifiers unnecessarily. **C-5**, **C-6** and **C-13** remain accurate as
 written.
 
 Production GO remains **NO-GO** on A-2 and A-3.
+
+
+---
+
+## L. A-2 and A-3 closed — 2026-08-30
+
+The two blockers that had held production at NO-GO since Phase 18 are closed,
+and closing them immediately exposed a real defect.
+
+### What actually happened
+
+| | Evidence |
+|---|---|
+| **A-2** real payment | Provider reports link `plink_TVuT9ZnXH0F3Pj` as `paid`, `amount_paid: 10000`, payment `pay_TVuVJbWosCtiwm` **captured**. Paid by netbanking — the international test card is rejected on an India-only account. |
+| **A-3** real webhook | Nine genuine `payment_link.paid` deliveries reached the deployed endpoint, provider event `TVuVQwyeFd7dCk`. |
+| **A-4** secret | Signature verification **passed** on all of them — the failure class was `PROCESSING_ERROR`, never `INVALID_SIGNATURE`. |
+
+### The defect real traffic exposed
+
+Every one of those nine deliveries **failed**, with
+`Linked business not found for this payment link`, and Razorpay retried with
+textbook exponential backoff across 43 minutes:
+
+```
+08:10:50  08:10:58  08:11:12  08:11:34  08:12:14
+08:13:37  08:16:20  08:21:46  08:32:30  08:53:55
+```
+
+The handler answered **404 and released the idempotency claim**. A 404 is a
+request to try again, and no amount of retrying produces a business that does
+not exist — so the loop had no exit.
+
+**This is almost certainly the Phase 18 mystery.** B2 recorded 13 failed
+deliveries followed by total silence, and providers disable endpoints that keep
+failing. Any link CashPilot does not manage — created in the Razorpay dashboard,
+by another integration, or from a record since deleted — could take settlement
+down for every real obligation.
+
+**Fixed and verified in production.** A bounded number of retries covers the
+genuine race where the provider delivers before our own row commits; past that
+the event is acknowledged and the claim retained. Probed against the live
+deployment with a correctly-signed delivery:
+
+```
+attempt 1-3  503  retry expected
+attempt 4    200  UNMATCHED_PAYMENT_LINK
+attempt 5    200  ALREADY_PROCESSED
+```
+
+Tests: `unmatchedLink.test.ts` (7), driving the real handler, verified
+non-vacuous by restoring the original always-404 behaviour — four of them fail
+against it.
+
+### What is still NOT proven
+
+The link used for this test was **standalone** — created by
+`scripts/makeTestPaymentLink.ts`, not attached to any invoice or recovery. So
+settlement correctly had nothing to settle, and these remain unobserved
+end-to-end:
+
+- a webhook settling a **real obligation**
+- the resulting **ledger credit**
+- the `FinancialEvent` the settlement path now writes
+- reconciliation converging afterwards
+
+Closing that needs a payment link generated through the app's own execution
+flow against a real invoice, which needs an authenticated session.
+
+**Production GO:** the A-2/A-3 blockers are closed, but the paid → settlement →
+ledger → event chain has still never run end to end on real data. That is the
+last certification gap.
