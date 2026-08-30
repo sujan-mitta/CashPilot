@@ -28,7 +28,9 @@ Everything I can do without you is done. These are yours, in order of what unblo
 npx prisma migrate status
 ```
 
-Seven additive migrations are written and verified byte-for-byte against Prisma's own generated DDL, and **none has been applied**:
+> **Superseded 2026-08-30.** All seven are applied — see A-1. The table below is retained as the record of what they added.
+
+Seven additive migrations, verified byte-for-byte against Prisma's own generated DDL:
 
 | Migration | Adds |
 |---|---|
@@ -77,7 +79,14 @@ See **C-14**. The config-version trap that used to sit here is now handled autom
 
 ## A. Blocked — these need you
 
-### A-1 🔴 Seven migrations have never been applied
+### A-1 ✅ **CLOSED 2026-08-30** — the seven migrations are applied
+
+`npx prisma migrate status` against the configured database reports **12
+migrations found, "Database schema is up to date!"**, on Neon
+(`ep-still-base-axwyd206…`). Every item below that was gated on A-1 is
+therefore unblocked. The original text is kept for the record:
+
+> ~~Seven migrations have never been applied~~
 
 Full table in **WHAT NEEDS YOU §1**. Nothing that reads the new tables can do anything until these run.
 
@@ -117,7 +126,7 @@ Phases 1–6, 8, 9 and 10 added no observable production behaviour. P7 and P11 t
 
 Phases 1–11 were built additively — libraries with full test coverage and no callers — then wired deliberately. These are the connections that still do not exist.
 
-### B-1 🟡 Nothing writes `FinancialEvent` (Phase 1)
+### B-1 ✅ **CLOSED 2026-08-30** — settlement writes `FinancialEvent`
 
 The append-only spine is idempotent and tested, but no source produces events into it. **Owned by:** the connector phases (P17).
 
@@ -135,7 +144,7 @@ Deliberate for a first release, and the reason **B-8** stays open.
 
 `buildForecast` still reads canonical rows directly. The freshness gate reads state, but only for decisions recording a version — which is none (B-8).
 
-### B-8 🟡 Nothing writes `Decision.financialStateVersion` (Phase 7)
+### B-8 ✅ **CLOSED 2026-08-30** — decisions record the state version
 
 Deliberate ordering, not an oversight: arming a gate against states that nothing keeps current (B-6) would block real work. P11 populates its own two columns because neither depends on a background job; this one does.
 
@@ -227,7 +236,7 @@ By design: resolution reads the entity set it is also writing. Bounded by counte
 
 Falls through to `PENDING` — conservative, but not distinctly represented and never observed live.
 
-### C-8 🟡 No backoff on provider HTTP 429
+### C-8 ✅ **CLOSED 2026-08-30** — bounded backoff on indeterminate reads
 
 Rate limiting is real (a probe hit it during Phase 17). A throttled reconciliation scan yields `UNKNOWN`, which is safe — it never invents a success — but the scan simply degrades.
 
@@ -517,3 +526,97 @@ Any change must keep this green.
 | `npm run build` | OK — 24 routes + middleware |
 
 The 5 skipped are **A-5**.
+
+
+---
+
+## H. Post-audit remediation — 2026-08-30
+
+A fresh audit of everything committed after `15e91ef`, against the code rather
+than against this document. Branch `sujan`.
+
+### The document was wrong about its own master blocker
+
+**A-1 was closed and nobody updated it.** All 12 migrations are applied, against
+a Neon database — `.env` points at production, not the local dev server this
+file assumed. Everything gated on A-1 was therefore not actually blocked.
+
+### Two defects found in post-`15e91ef` code
+
+#### H-1 ✅ Liquidity buffer understated by 40% — `liquiditySafety.ts`
+
+`Math.max(sumTransactions, sumPayouts)`, added as F-1i's fix and commented as
+"a conservative deduplication heuristic". It is not conservative. It is correct
+only when one set contains the other; when a scheduled payout and an unrelated
+pending charge are **disjoint** — the ordinary case — it discards the smaller
+set entirely.
+
+Direction is what makes it serious: understating projected outflow understates
+the run-rate, understates the required buffer, and makes a business look safer
+than it is. F-1i's original double-counting bug erred the *safe* way. Measured
+on the new fixtures: **6,428,571 where the deduplicated sum gives 10,714,286**.
+
+Now reuses `extractObligations`, which already deduplicates by source id and by
+(amount, due-date) proximity, and sums the survivors.
+**Tests:** `src/lib/engine/__tests__/projectedOutflowDedup.test.ts` (5).
+
+This also exposed a second confusion the heuristic was hiding: a test mocked
+`transaction.findMany` with a blanket value, so the **settled** history row was
+answering the **pending** projected query and past spend was counted as future
+outflow.
+
+#### H-2 ✅ Notification dispatch failed OPEN on database errors — `alertStore.ts`
+
+Both gates between "a crisis exists" and "an email is sent" caught database
+errors and fell back to a per-process in-memory store. On serverless every
+concurrent invocation is a different process with an empty one, so a transient
+fault made the dedup lookup report "never emailed about this crisis" and the
+claim report an exclusive claim. N workers → N duplicate emails, precisely when
+the database is unhealthy and retries are likeliest.
+
+Verified before the fix: the claim returned `true` on a thrown query;
+`[true, false, false]` across three concurrent callers in one process.
+
+Both now fail closed. A suppressed alert is recovered on the next scheduled
+evaluation; a duplicate email cannot be recalled. The per-recipient loop gained
+a guard, without which one unhealthy lookup would have ended the scheduled pass
+for every business.
+**Tests:** `src/lib/notifications/__tests__/dispatchFailsClosed.test.ts` (5).
+
+### Closed in this pass
+
+| # | Item | How | Tests |
+|---|---|---|---|
+| **A-1** | Migrations applied | Verified against Neon | `prisma migrate status` |
+| **B-1** | `FinancialEvent` has a writer | Settlement appends `INVOICE_PAID` / `PAYMENT_RECEIVED` on the same transaction client as the ledger movement; identity is `paymentLinkId:targetKind:targetId` | `settlementEvents.test.ts` (8) |
+| **B-8** | `Decision.financialStateVersion` populated | Read outside the transaction; null until a state exists, which the gate reads as NOT_TRACKED | `decisionStateVersion.test.ts` (5) |
+| **C-8** | Provider 429 backoff | Exponential + full jitter, 3 attempts, **reads only** | `retry.test.ts` (14) |
+
+`B-1` also records `settlementTrigger` and `timestampMeaning`
+(`PROVIDER_REPORTED` vs `OBSERVED`) on each event, which puts **C-13** into the
+data instead of leaving it in a comment.
+
+### Regression floor after this pass
+
+| Check | Result |
+|---|---|
+| `npm run typecheck` | clean |
+| `npm run lint` | 0 errors |
+| `npm test` | 99 files, **1381 passed**, 5 skipped |
+| `npm run build` | passing |
+
+### Still open, unchanged
+
+**B-6** (no automatic trigger for sync/materialisation), **B-7** (forecast still
+reads canonical rows, not `FinancialState`), **C-3** (merge has no API or UI),
+**C-7** (`partially_paid` unmodelled), **C-9** (list-lag margin still hard-coded),
+**B-12** (conflicts, evidence trails, "why?" drill-down unsurfaced).
+
+**Human-only, unchanged:** A-2 (real test-mode payment), A-3 (real webhook
+delivery), A-4 (`RAZORPAY_WEBHOOK_SECRET`), A-5 (live provider-contract tier).
+Production GO remains **NO-GO** on A-2/A-3.
+
+**Minor, not fixed:** the cron secret is compared with `===` rather than a
+timing-safe comparison. Network jitter dominates any timing signal over HTTP, so
+this is defence-in-depth rather than a live vulnerability — but the webhook HMAC
+path already uses `timingSafeEqual` and this should match it.
