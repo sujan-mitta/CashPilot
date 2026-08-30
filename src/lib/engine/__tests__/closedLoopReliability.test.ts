@@ -225,6 +225,13 @@ vi.mock("@/lib/prisma", async () => {
           return data;
         }),
       },
+      financialEvent: {
+        create: vi.fn(async (args: any) => ({
+          id: `fe_${Math.random().toString(36).slice(2, 10)}`,
+          ...args.data,
+        })),
+        findUnique: vi.fn(async () => null),
+      },
       $transaction: vi.fn(async (cb) => {
         return cb(prisma);
       }),

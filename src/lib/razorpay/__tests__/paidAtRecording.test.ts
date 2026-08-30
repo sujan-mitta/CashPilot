@@ -86,6 +86,13 @@ vi.mock("@/lib/prisma", () => {
       },
       decision: { findFirst: vi.fn(async () => null) },
       decisionEvent: { create: vi.fn(async () => ({})) },
+      financialEvent: {
+        create: vi.fn(async (args: any) => ({
+          id: `fe_${Math.random().toString(36).slice(2, 10)}`,
+          ...args.data,
+        })),
+        findUnique: vi.fn(async () => null),
+      },
       $transaction: vi.fn(async (fn: any) => {
         const mod = await import("@/lib/prisma");
         return typeof fn === "function" ? fn(mod.prisma) : fn;

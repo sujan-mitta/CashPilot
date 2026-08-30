@@ -1,4 +1,5 @@
 import { logger } from "@/lib/observability";
+import { recordFinancialEvent } from "@/lib/events/financialEvent";
 import { prisma } from "@/lib/prisma";
 
 const PAISE_PER_LAKH = 10_000_000;
@@ -402,6 +403,61 @@ async function applySettlementUpdates(
  * Settles a payment recovery or overdue collections link by executing the ledger balance updates.
  * Returns the final resolved status of the link ("paid" or "created").
  */
+/**
+ * Append the canonical financial event for a settled obligation.
+ *
+ * Written on the SAME transaction client as the ledger movement it describes,
+ * following the rule the decision log already follows: if the event insert
+ * fails, the settlement rolls back with it, and the append-only spine can never
+ * disagree with the balance. An audit log that is allowed to miss entries when
+ * things go wrong is an audit log for the cases nobody needed it for.
+ *
+ * Identity is `paymentLinkId:targetKind:targetId`, not the link alone. One link
+ * can settle several invoices, so the link by itself is not unique per
+ * financial fact; including the target makes the key exactly as granular as the
+ * money movement. Re-settling the same obligation therefore reproduces the same
+ * key and is absorbed idempotently rather than appended twice.
+ *
+ * `normalizedData` carries no signature, header or credential — only ids and
+ * amounts already present in our own tables.
+ */
+async function emitSettlementEvent(
+  tx: Parameters<typeof recordFinancialEvent>[0],
+  params: {
+    eventType: "PAYMENT_RECEIVED" | "INVOICE_PAID";
+    businessId: string;
+    paymentLinkId: string;
+    targetKind: "INVOICE" | "PAYMENT_RECOVERY";
+    targetId: string;
+    expectedAmount: number;
+    settledAmount: number;
+    occurredAt: Date;
+    trigger: SettlementTrigger;
+  }
+): Promise<void> {
+  await recordFinancialEvent(tx, params.businessId, {
+    eventType: params.eventType,
+    sourceType: "RAZORPAY",
+    sourceRecordId: `${params.paymentLinkId}:${params.targetKind}:${params.targetId}`,
+    occurredAt: params.occurredAt,
+    amount: params.settledAmount,
+    status: "SETTLED",
+    rawReference: params.targetId,
+    normalizedData: {
+      paymentLinkId: params.paymentLinkId,
+      targetKind: params.targetKind,
+      targetId: params.targetId,
+      expectedAmount: params.expectedAmount,
+      settledAmount: params.settledAmount,
+      // How the settlement reached us, and therefore how far the timestamp can
+      // be trusted. WEBHOOK is provider-driven; MANUAL is an operator
+      // observation that may be days after the money actually moved (C-13).
+      settlementTrigger: params.trigger,
+      timestampMeaning: params.trigger === "MANUAL" ? "OBSERVED" : "PROVIDER_REPORTED",
+    },
+  });
+}
+
 export async function settlePayment(
   paymentLinkId: string,
   businessId: string,
@@ -592,6 +648,18 @@ export async function settlePayment(
           },
         });
 
+        await emitSettlementEvent(tx, {
+          eventType: "PAYMENT_RECEIVED",
+          businessId: targetBusinessId,
+          paymentLinkId,
+          targetKind: "PAYMENT_RECOVERY",
+          targetId: freshRecovery.id,
+          expectedAmount: freshRecovery.amount,
+          settledAmount: finalSettleAmount,
+          occurredAt: paidAt,
+          trigger,
+        });
+
         if (action) {
           await applySettlementUpdates(tx, {
             actionId: action.id,
@@ -742,6 +810,18 @@ export async function settlePayment(
               data: {
                 currentCash: { increment: finalSettleAmount },
               },
+            });
+
+            await emitSettlementEvent(tx, {
+              eventType: "INVOICE_PAID",
+              businessId: freshInvoice.businessId,
+              paymentLinkId,
+              targetKind: "INVOICE",
+              targetId: freshInvoice.id,
+              expectedAmount: freshInvoice.amount,
+              settledAmount: finalSettleAmount,
+              occurredAt: paidAt,
+              trigger,
             });
 
             let allPaid = true;
