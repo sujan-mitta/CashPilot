@@ -198,9 +198,23 @@ export async function POST() {
     // simulation ("Simulation failed" in the UI, every time). It is read-only
     // work with no reason to hold a write transaction open, so it is hoisted
     // out; the transaction now does nothing but writes.
+    // Every candidate strategy fingerprints the SAME ledger — nothing below is
+    // filtered per strategy — so the rows are loaded once and shared. This used
+    // to re-read business, transactions and payouts inside the loop, turning
+    // three queries into twelve; against a database on another continent that
+    // is twelve full round trips, and it dominated the endpoint's 20-30s
+    // response time.
+    //
+    // The reads are already in hand from the work above, so this adds no query
+    // at all.
+    const preloaded = { business, transactions, payouts };
+
+    // Built in parallel now they no longer contend for the same reads. The
+    // fingerprint is a pure function of the rows plus the strategy's own
+    // actions, so order cannot affect the result.
     const fingerprintByStrategy = new Map<string, Awaited<ReturnType<typeof buildDecisionContext>>>();
-    for (const s of scored) {
-      fingerprintByStrategy.set(
+    const builtContexts = await Promise.all(
+      scored.map(async (s) => [
         s.name,
         await buildDecisionContext(prisma, business.id, {
           strategyType: s.name,
@@ -212,9 +226,11 @@ export async function POST() {
           })),
           today,
           requiredBuffer,
-        })
-      );
-    }
+          preloaded,
+        }),
+      ] as const)
+    );
+    for (const [name, ctx] of builtContexts) fingerprintByStrategy.set(name, ctx);
 
     // 4. Clear old strategies and persist new ones in the database atomically inside a transaction
     const responseStrategies: ResponseStrategy[] = [];
@@ -538,6 +554,14 @@ export async function POST() {
         riskLevel: baselineRisk,
         forecast: formattedBaselineForecast,
       },
+      // When these recommendations stop being executable.
+      //
+      // Recorded on every Decision since P11, but never sent to the client — so
+      // expiry reached the operator exactly once, as a refusal at the moment
+      // they tried to approve. That is the worst possible time to learn it:
+      // they have read the plan, decided, and committed to acting. Sending it
+      // lets the screen say so while the decision is still usable.
+      decisionExpiresAt: decisionExpiryFrom(today).toISOString(),
       strategies: responseStrategies,
       // Real recoverable money that this recommendation does NOT act on, so the
       // UI can say so instead of implying the shortfall is fully addressed.

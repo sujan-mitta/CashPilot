@@ -8,7 +8,7 @@ import {
   ContextMovement,
   FingerprintDetail,
 } from "./strategyFreshness";
-import { DecisionContextReader, PayoutRecord, TransactionRecord } from "../db/records";
+import { BusinessRecord, DecisionContextReader, PayoutRecord, TransactionRecord } from "../db/records";
 
 export interface ContextActionInput {
   type: string;
@@ -34,27 +34,52 @@ export async function buildDecisionContext(
     today?: Date;
     /** Reuse an already-computed buffer instead of recomputing it. */
     requiredBuffer?: number;
+    /**
+     * Ledger rows already in hand.
+     *
+     * The caller builds one context per candidate strategy, and every one of
+     * them reads the SAME business, transactions and payouts — nothing here is
+     * filtered per strategy. Re-fetching them once per strategy turned three
+     * queries into twelve, each paying a full round trip to a database that may
+     * be on another continent. Passing them in makes the fingerprint a pure
+     * function of rows the caller already loaded.
+     *
+     * Omit them and it loads its own, exactly as before.
+     */
+    preloaded?: {
+      business: BusinessRecord | null;
+      transactions: TransactionRecord[];
+      payouts: PayoutRecord[];
+    };
   }
 ): Promise<FingerprintDetail> {
   const today = options.today ?? new Date();
   let incomplete = false;
 
-  const business = await client.business.findUnique({ where: { id: businessId } });
-  if (!business) {
-    incomplete = true;
-  }
-
+  let business: BusinessRecord | null;
   let transactions: TransactionRecord[] = [];
   let payouts: PayoutRecord[] = [];
-  try {
-    transactions = (await client.transaction?.findMany({ where: { businessId } })) ?? [];
-  } catch {
-    incomplete = true;
-  }
-  try {
-    payouts = (await client.payout?.findMany({ where: { businessId } })) ?? [];
-  } catch {
-    incomplete = true;
+
+  if (options.preloaded) {
+    business = options.preloaded.business;
+    transactions = options.preloaded.transactions;
+    payouts = options.preloaded.payouts;
+    if (!business) incomplete = true;
+  } else {
+    business = await client.business.findUnique({ where: { id: businessId } });
+    if (!business) {
+      incomplete = true;
+    }
+    try {
+      transactions = (await client.transaction?.findMany({ where: { businessId } })) ?? [];
+    } catch {
+      incomplete = true;
+    }
+    try {
+      payouts = (await client.payout?.findMany({ where: { businessId } })) ?? [];
+    } catch {
+      incomplete = true;
+    }
   }
 
   let requiredBuffer = options.requiredBuffer;
