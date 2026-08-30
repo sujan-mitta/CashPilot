@@ -5,6 +5,7 @@ import { evaluateAndDispatchAlerts } from "@/lib/notifications/alertEvaluator";
 import { parseJsonBody } from "@/lib/errors";
 import { logger } from "@/lib/observability";
 import { secretsMatch } from "@/lib/auth/constantTime";
+import { syncFinancialBrain } from "@/lib/brain/sync";
 
 interface CheckAndDispatchOptions {
   req: Request;
@@ -25,6 +26,11 @@ async function handleCheckAndDispatch({ req, method }: CheckAndDispatchOptions) 
     const isCronAuthorized =
       secretsMatch(cronHeader, cronSecret) ||
       secretsMatch(authHeader, cronSecret ? `Bearer ${cronSecret}` : null);
+
+    // Escape hatch: `?skipSync=1` runs alerts without the brain sync. If sync
+    // ever becomes the reason the cron times out, the operator must still be
+    // able to get crisis alerts out.
+    const skipSync = new URL(req.url).searchParams.get("skipSync") === "1";
 
     let targetBusinessId: string | null = null;
 
@@ -75,7 +81,43 @@ async function handleCheckAndDispatch({ req, method }: CheckAndDispatchOptions) 
     let totalFailed = 0;
 
     const results = [];
+    let totalSynced = 0;
+    let totalSyncFailed = 0;
+
     for (const bizId of businessesToEvaluate) {
+      // ── B-6: bring the brain up to date BEFORE assessing health ────────
+      //
+      // Until now state advanced only when a human ran `npm run brain:sync`,
+      // so entity links, claims, reconciliation and the materialised state
+      // were as old as the last time someone remembered. This is the
+      // automatic trigger, and it runs first because the order in spec §10 is
+      // causal: an assessment made before the sync is an assessment of
+      // yesterday's understanding.
+      //
+      // Contained SEPARATELY from the notification evaluation on purpose. Sync
+      // is derived bookkeeping; a crisis alert is the thing the operator
+      // actually needs. If sync fails, the assessment still runs — it reads
+      // canonical rows, so it is not blocked by stale derived state — and the
+      // failure is reported rather than silently skipping the alert.
+      //
+      // Not wrapped in a transaction, deliberately. Every stage is idempotent,
+      // a full-tenant sync can be long, and holding a write transaction across
+      // it would block the money path (spec §10).
+      let syncError: string | null = null;
+      if (!skipSync) {
+        try {
+          await syncFinancialBrain(prisma, bizId);
+          totalSynced++;
+        } catch (err) {
+          totalSyncFailed++;
+          syncError = String(err);
+          logger.error("Brain sync failed for business; continuing to alerts", {
+            businessId: bizId,
+            error: syncError,
+          });
+        }
+      }
+
       try {
         const res = await evaluateAndDispatchAlerts({ businessId: bizId });
         totalEmailsSent += res.emailsSent;
@@ -83,6 +125,8 @@ async function handleCheckAndDispatch({ req, method }: CheckAndDispatchOptions) 
 
         results.push({
           businessId: bizId,
+          synced: !skipSync && !syncError,
+          syncError,
           status: res.evaluationStatus,
           severity: res.healthAssessment?.severity ?? "UNKNOWN",
           crisisKey: res.crisisKey,
@@ -97,6 +141,8 @@ async function handleCheckAndDispatch({ req, method }: CheckAndDispatchOptions) 
         });
         results.push({
           businessId: bizId,
+          synced: !skipSync && !syncError,
+          syncError,
           status: "FAILED",
           error: String(bizErr),
         });
@@ -106,6 +152,8 @@ async function handleCheckAndDispatch({ req, method }: CheckAndDispatchOptions) 
     const durationMs = Date.now() - startTime;
     logger.info("Notification check-and-dispatch cycle completed", {
       evaluatedCount: businessesToEvaluate.length,
+      brainSynced: totalSynced,
+      brainSyncFailed: totalSyncFailed,
       totalEmailsSent,
       totalEmailsSuppressed,
       totalFailed,
