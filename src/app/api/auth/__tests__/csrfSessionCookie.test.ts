@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync, readdirSync } from "node:fs";
+import { join, relative, sep } from "node:path";
 
 /**
  * TRANCHE 23 — CSRF / session-cookie configuration guard.
@@ -23,9 +23,16 @@ const API = join(process.cwd(), "src", "app", "api");
 const read = (p: string) => readFileSync(join(API, p), "utf8");
 
 // Every route that sets the authenticated session cookie.
+//
+// Signup is deliberately NOT here any more: it creates the account but issues
+// no session, because nobody has yet shown they can read the address on it.
+// The session for a new account is set by auth/verify/confirm, once a code
+// mailed to that address is returned. A hand-maintained list like this goes
+// stale silently, so "the list is complete" is asserted below rather than
+// assumed.
 const SESSION_COOKIE_ROUTES = [
   "auth/login/route.ts",
-  "auth/signup/route.ts",
+  "auth/verify/confirm/route.ts",
   "auth/switch/route.ts",
   "auth/google/callback/route.ts",
 ];
@@ -63,4 +70,34 @@ describe("no state-changing route mutates on GET", () => {
       expect(src, `${route} exports a GET handler`).not.toMatch(/export\s+(async\s+function|const)\s+GET\b/);
     });
   }
+});
+
+describe("the list of session-setting routes is complete", () => {
+  it("finds no route that sets a session cookie without being listed", () => {
+    // The guard above is only as good as its list. A new route that sets a
+    // session and is not listed would be entirely unchecked, which is exactly
+    // the kind of gap that appears when an auth flow is restructured — as it
+    // was when signup stopped issuing one.
+    const found: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (entry.name === "route.ts") {
+          const src = readFileSync(full, "utf8");
+          // "Issues a session" means it writes a SIGNED token into the cookie.
+          // Matching the cookie name alone catches logout, which writes an
+          // empty value to clear it; matching one call form alone misses the
+          // Google callback, which sets it on the response rather than through
+          // the cookie store.
+          if (src.includes("cashpilot_session") && /signSession\s*\(/.test(src)) {
+            found.push(relative(API, full).split(sep).join("/"));
+          }
+        }
+      }
+    };
+    walk(API);
+
+    expect(found.sort()).toEqual([...SESSION_COOKIE_ROUTES].sort());
+  });
 });

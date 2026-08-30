@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { signSession } from "@/lib/auth";
 import { verifyPassword, isPlaceholderHash } from "@/lib/auth/password";
+import { issueVerificationCode } from "@/lib/auth/issueVerificationCode";
 import { rateLimit, clientKey } from "@/lib/auth/rateLimit";
 import { cookies } from "next/headers";
 import { logger } from "@/lib/observability";
@@ -71,6 +72,38 @@ export async function POST(req: Request) {
     if (!ok) {
       logger.warn("Failed login attempt", { emailDomain: String(email).split("@")[1] ?? "unknown" });
       return reject();
+    }
+
+    // Correct password, unproven address.
+    //
+    // Without this, the verification step at signup is decorative: create an
+    // account, skip the code, sign in instead. It is checked AFTER the password
+    // so an attacker cannot learn which addresses are unverified by probing.
+    //
+    // A code is issued here rather than only refusing, so the user is never
+    // stuck — they land on the verification step with mail already on its way.
+    // Accounts that predate verification are unverified too, and take this same
+    // one-time detour.
+    if (!user.emailVerified) {
+      const issued = await issueVerificationCode({
+        id: user.id,
+        name: user.name,
+        email: user.email,
+      });
+      logger.info("Login deferred pending email verification", {
+        userId: user.id,
+        codeSent: issued.ok,
+      });
+      return NextResponse.json(
+        {
+          requiresVerification: true,
+          email: user.email,
+          error: issued.ok
+            ? "Confirm your email address to continue. We just sent you a 6-digit code."
+            : "Confirm your email address to continue. We could not send a code just now — request a new one.",
+        },
+        { status: 403 }
+      );
     }
 
     const sessionPayload = {

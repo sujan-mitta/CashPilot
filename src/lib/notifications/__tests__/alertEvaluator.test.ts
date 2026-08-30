@@ -174,6 +174,10 @@ describe("Intelligent Email Alert & Notification System", () => {
             email: "cfo@acme.com",
             name: "Jane CFO",
             password: "hash",
+            // Alerts are only sent to an address someone has proven can receive
+            // mail. Without this the dispatcher suppresses instead of sending,
+            // which is the point of the gate, not a quirk of the fixture.
+            emailVerified: new Date("2026-01-01T00:00:00.000Z"),
             createdAt: new Date(),
           },
         ],
@@ -213,6 +217,71 @@ describe("Intelligent Email Alert & Notification System", () => {
       expect(res.emailsSent).toBe(1);
     });
 
+    it("does not email an unverified address, even forced", async () => {
+      // THE BUG: the dispatcher sent to user.email unconditionally. An address
+      // that does not exist bounces, and the bounce is delivered to the SENDER
+      // — so the operator's own inbox filled with "recipient does not exist"
+      // from their own product, once per alert cycle, while the alert was read
+      // by nobody. Retrying only produces more bounces.
+      vi.mocked(prisma.business.findUnique).mockResolvedValue({
+        id: mockBusinessId,
+        name: "Acme Electronics",
+        currentCash: 1000000,
+        createdAt: new Date(),
+        users: [
+          {
+            id: mockUserId,
+            // Well formed, and undeliverable. Shape validation cannot tell the
+            // difference, which is why verification exists.
+            email: "cfo@acmee-typo.com",
+            name: "Jane CFO",
+            password: "hash",
+            emailVerified: null,
+            createdAt: new Date(),
+          },
+        ],
+        transactions: [
+          {
+            id: "tx_out",
+            businessId: mockBusinessId,
+            amount: 5000000,
+            type: "OUTFLOW",
+            status: "PENDING",
+            category: "OPERATING",
+            date: new Date("2026-09-02T12:00:00.000Z"),
+            expectedDate: new Date("2026-09-02T12:00:00.000Z"),
+            description: "Rent",
+            createdAt: new Date(),
+          },
+        ],
+        invoices: [],
+        payouts: [],
+      } as any);
+
+      const lastSeenTime = new Date(baseTime.getTime() - 45 * 60 * 1000).toISOString();
+      await updateUserActivity(mockUserId, mockBusinessId, "cfo@acmee-typo.com", "Jane CFO", {
+        lastSeenAt: lastSeenTime,
+        lastDashboardViewAt: lastSeenTime,
+      });
+
+      const res = await evaluateAndDispatchAlerts({
+        businessId: mockBusinessId,
+        now: baseTime,
+        // Forced. Every other suppression rule is a judgement about whether the
+        // user needs this alert, and forcing past those while testing is
+        // reasonable. This one is about whether the mail can be delivered at
+        // all, and forcing past it just produces a bounce.
+        forceSendForTesting: true,
+      });
+
+      // The crisis is still assessed and still recorded — only the futile send
+      // is skipped. Suppressing the email must not read as hiding the problem.
+      expect(res.healthAssessment.severity).toBe("CRITICAL");
+      expect(res.evaluatedRecipients.length).toBe(1);
+      expect(res.evaluatedRecipients[0].status).toBe("SUPPRESSED");
+      expect(res.emailsSent).toBe(0);
+    });
+
     it("suppresses email when user is active online (<30m inactive)", async () => {
       vi.mocked(prisma.business.findUnique).mockResolvedValue({
         id: mockBusinessId,
@@ -225,6 +294,10 @@ describe("Intelligent Email Alert & Notification System", () => {
             email: "cfo@acme.com",
             name: "Jane CFO",
             password: "hash",
+            // Alerts are only sent to an address someone has proven can receive
+            // mail. Without this the dispatcher suppresses instead of sending,
+            // which is the point of the gate, not a quirk of the fixture.
+            emailVerified: new Date("2026-01-01T00:00:00.000Z"),
             createdAt: new Date(),
           },
         ],
@@ -276,6 +349,10 @@ describe("Intelligent Email Alert & Notification System", () => {
             email: "cfo@acme.com",
             name: "Jane CFO",
             password: "hash",
+            // Alerts are only sent to an address someone has proven can receive
+            // mail. Without this the dispatcher suppresses instead of sending,
+            // which is the point of the gate, not a quirk of the fixture.
+            emailVerified: new Date("2026-01-01T00:00:00.000Z"),
             createdAt: new Date(),
           },
         ],
@@ -348,6 +425,10 @@ describe("Intelligent Email Alert & Notification System", () => {
             email: "cfo@acme.com",
             name: "Jane CFO",
             password: "hash",
+            // Alerts are only sent to an address someone has proven can receive
+            // mail. Without this the dispatcher suppresses instead of sending,
+            // which is the point of the gate, not a quirk of the fixture.
+            emailVerified: new Date("2026-01-01T00:00:00.000Z"),
             createdAt: new Date(),
           },
         ],
@@ -405,6 +486,10 @@ describe("Intelligent Email Alert & Notification System", () => {
             email: "cfo@acme.com",
             name: "Jane CFO",
             password: "hash",
+            // Alerts are only sent to an address someone has proven can receive
+            // mail. Without this the dispatcher suppresses instead of sending,
+            // which is the point of the gate, not a quirk of the fixture.
+            emailVerified: new Date("2026-01-01T00:00:00.000Z"),
             createdAt: new Date(),
           },
         ],
@@ -456,6 +541,10 @@ describe("Intelligent Email Alert & Notification System", () => {
             email: "cfo@acme.com",
             name: "Jane CFO",
             password: "hash",
+            // Alerts are only sent to an address someone has proven can receive
+            // mail. Without this the dispatcher suppresses instead of sending,
+            // which is the point of the gate, not a quirk of the fixture.
+            emailVerified: new Date("2026-01-01T00:00:00.000Z"),
             createdAt: new Date(),
           },
         ],
@@ -544,6 +633,10 @@ describe("Intelligent Email Alert & Notification System", () => {
             email: "cfo@acme.com",
             name: "Jane CFO",
             password: "hash",
+            // Alerts are only sent to an address someone has proven can receive
+            // mail. Without this the dispatcher suppresses instead of sending,
+            // which is the point of the gate, not a quirk of the fixture.
+            emailVerified: new Date("2026-01-01T00:00:00.000Z"),
             createdAt: new Date(),
           },
           {
@@ -551,6 +644,7 @@ describe("Intelligent Email Alert & Notification System", () => {
             email: "owner@acme.com",
             name: "John Owner",
             password: "hash",
+            emailVerified: new Date("2026-01-01T00:00:00.000Z"),
             createdAt: new Date(),
           },
         ],

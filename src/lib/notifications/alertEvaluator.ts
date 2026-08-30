@@ -34,6 +34,7 @@ import type {
   HealthAssessment,
 } from "./types";
 import crypto from "crypto";
+import { evaluateRecipient } from "./recipientEligibility";
 
 export interface EvaluateAlertsOptions {
   businessId: string;
@@ -165,6 +166,26 @@ export async function evaluateAndDispatchAlerts(
           evaluationStatus = "COOLDOWN";
           suppressionReason = `Cooldown active for crisis ${assessment.crisisKey} (${hoursSinceLastAlert.toFixed(1)}h < ${cooldownHours}h)`;
         }
+      }
+    }
+
+    // Check E: Can this address actually receive mail?
+    //
+    // An address that does not exist bounces, and the bounce comes back to US —
+    // so an unverified recipient turns every alert cycle into another "recipient
+    // does not exist" in the operator's own inbox, while the alert itself is
+    // read by nobody.
+    //
+    // Deliberately NOT gated on forceSendForTesting. Every other check above is
+    // a judgement about whether the user needs this alert, and forcing past
+    // those is a reasonable thing to do while testing. This one is a statement
+    // about whether the mail can be delivered at all, and forcing past it just
+    // produces a bounce.
+    if (evaluationStatus === "QUALIFIED") {
+      const eligibility = evaluateRecipient(user);
+      if (!eligibility.sendable) {
+        evaluationStatus = "SUPPRESSED";
+        suppressionReason = eligibility.reason ?? "Recipient address is not sendable";
       }
     }
 

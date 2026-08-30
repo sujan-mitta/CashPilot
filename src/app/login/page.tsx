@@ -12,6 +12,7 @@ import { Stagger, StaggerItem } from "@/components/ui/Reveal";
 import { EASE_GLIDE, DUR } from "@/components/ui/motion";
 import clsx from "clsx";
 import { errorMessage } from "@/lib/errors";
+import { VerifyStep } from "./VerifyStep";
 
 const highlights = [
   "Deterministic runway models — no model guesses at your money",
@@ -72,6 +73,13 @@ function LoginForm() {
   const shownError = error ?? oauthError;
   const [isLoading, setIsLoading] = useState(false);
 
+  // Set when the server says this address still has to be proven. Both signup
+  // and login can land here: signup always does, and login does for an account
+  // that has never been verified — otherwise the code step would be skippable
+  // by signing in instead of finishing it.
+  const [pendingEmail, setPendingEmail] = useState<string | null>(null);
+  const [pendingNotice, setPendingNotice] = useState<string | null>(null);
+
   // Redirect if already authenticated.
   useEffect(() => {
     if (user) {
@@ -115,6 +123,18 @@ function LoginForm() {
       });
 
       const data = await res.json();
+
+      // Checked before res.ok, because the two entry points report this
+      // differently: signup answers 2xx (the account was created), login
+      // answers 403 (no session for you yet). Both mean the same thing here.
+      if (data.requiresVerification) {
+        setPendingEmail(String(data.email || email));
+        setPendingNotice(typeof data.error === "string" ? data.error : null);
+        setError(null);
+        setIsLoading(false);
+        return;
+      }
+
       if (!res.ok) {
         setError(data.error || "Authentication failed.");
         setIsLoading(false);
@@ -209,215 +229,234 @@ function LoginForm() {
         <div
           className="max-w-[26rem] w-full bg-ground-100 border border-line-soft rounded-md p-7 space-y-5"
         >
-          <div className="text-center">
-            <div className="lg:hidden flex items-center justify-center gap-2.5 mb-5">
-              <div className="w-9 h-9 rounded-md bg-ground-200 flex items-center justify-center">
-                <PilotIcon className="w-5 h-5 text-white" />
+          {/* Once the server says the address is unproven, this card becomes the
+              code step. It replaces the form rather than sitting beside it:
+              there is nothing else to do at that point, and the session is
+              issued by the verification route, not by signup. */}
+          {pendingEmail ? (
+            <VerifyStep
+              email={pendingEmail}
+              notice={pendingNotice}
+              onVerified={login}
+              onBack={() => {
+                setPendingEmail(null);
+                setPendingNotice(null);
+                setError(null);
+              }}
+            />
+          ) : (
+            <>
+            <div className="text-center">
+              <div className="lg:hidden flex items-center justify-center gap-2.5 mb-5">
+                <div className="w-9 h-9 rounded-md bg-ground-200 flex items-center justify-center">
+                  <PilotIcon className="w-5 h-5 text-white" />
+                </div>
+                <span className="font-semibold text-[1.15rem] tracking-[-0.03em] text-ink-100">
+                  CashPilot
+                </span>
               </div>
-              <span className="font-semibold text-[1.15rem] tracking-[-0.03em] text-ink-100">
-                CashPilot
-              </span>
-            </div>
 
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={mode}
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
-                transition={{ duration: DUR.base, ease: EASE_GLIDE }}
-              >
-                <h2 className="text-[1.35rem] font-semibold text-ink-100 tracking-[-0.03em]">
-                  {mode === "SIGN_IN" ? "Sign in to your deck" : "Create your account"}
-                </h2>
-                <p className="text-ink-400 text-[12.5px] mt-1.5 leading-relaxed">
-                  {mode === "SIGN_IN"
-                    ? "Access the cash diagnostics and execution controls."
-                    : "Register your business to seed the runway simulator."}
-                </p>
-              </motion.div>
-            </AnimatePresence>
-          </div>
-
-          <button
-            type="button"
-            onClick={handleGoogleSignIn}
-            className="w-full py-3 rounded-md text-[13px] font-semibold focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 focus-visible:ring-offset-ground-050 flex items-center justify-center gap-2.5 bg-ground-200 border border-line-soft text-ink-200 hover:bg-ground-300 hover:border-line-firm transition-colors duration-200"
-          >
-            <svg className="w-4 h-4" viewBox="0 0 24 24" aria-hidden>
-              {/* The blue stroke's path data was corrupt ("...6.69c-.29 1.5-.1.14-.1.14v2.54h1.03...")
-                  and rendered as a stray wedge across the mark. This is the
-                  canonical Google "G" geometry. */}
-              <path
-                fill="#4285F4"
-                d="M23.49 12.27c0-.79-.07-1.54-.2-2.27H12v4.51h6.44a5.5 5.5 0 0 1-2.39 3.62v3h3.86c2.26-2.09 3.58-5.17 3.58-8.86z"
-              />
-              <path
-                fill="#34A853"
-                d="M12 24c3.24 0 5.97-1.08 7.96-2.91l-3.45-2.68c-.96.64-2.2 1.02-3.51 1.02-2.7 0-5-1.82-5.81-4.28H1.63v2.77C3.62 21.94 7.55 24 12 24z"
-              />
-              <path
-                fill="#FBBC05"
-                d="M6.19 15.15A7.18 7.18 0 0 1 5.75 12c0-1.1.2-2.15.56-3.15V6.08H1.63A11.96 11.96 0 0 0 0 12c0 2.22.6 4.3 1.63 6.08l4.56-3.08z"
-              />
-              <path
-                fill="#EA4335"
-                d="M12 4.75c1.77 0 3.35.6 4.6 1.8l3.43-3.43C17.95 1.19 15.22 0 12 0 7.55 0 3.62 2.06 1.63 6.08l4.56 3.07C7 6.57 9.3 4.75 12 4.75z"
-              />
-            </svg>
-            Continue with Google
-          </button>
-
-          <div className="flex items-center gap-4 text-ink-500">
-            <span className="h-px bg-line-soft grow" />
-            <span className="label">Or use email</span>
-            <span className="h-px bg-line-soft grow" />
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <AnimatePresence>
-              {shownError && (
+              <AnimatePresence mode="wait">
                 <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  exit={{ opacity: 0, height: 0 }}
+                  key={mode}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
                   transition={{ duration: DUR.base, ease: EASE_GLIDE }}
-                  role="alert"
-                  className="overflow-hidden"
                 >
-                  <div className="p-3.5 rounded-md bg-risk-500/10 border border-risk-500/25 text-[12.5px] font-medium text-risk-400">
-                    {shownError}
-                  </div>
+                  <h2 className="text-[1.35rem] font-semibold text-ink-100 tracking-[-0.03em]">
+                    {mode === "SIGN_IN" ? "Sign in to your deck" : "Create your account"}
+                  </h2>
+                  <p className="text-ink-400 text-[12.5px] mt-1.5 leading-relaxed">
+                    {mode === "SIGN_IN"
+                      ? "Access the cash diagnostics and execution controls."
+                      : "Register your business to seed the runway simulator."}
+                  </p>
                 </motion.div>
-              )}
-            </AnimatePresence>
-
-            <AnimatePresence initial={false}>
-              {mode === "SIGN_UP" && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  exit={{ opacity: 0, height: 0 }}
-                  transition={{ duration: DUR.base, ease: EASE_GLIDE }}
-                  className="overflow-hidden"
-                >
-                  <div className="pb-0.5">
-                    <label htmlFor="cp-name" className={labelClass}>
-                      Full name
-                    </label>
-                    <div className="relative">
-                      <User className="absolute left-3.5 top-3.5 w-4 h-4 text-ink-500" aria-hidden />
-                      <input
-                        id="cp-name"
-                        type="text"
-                        required
-                        autoComplete="name"
-                        placeholder="Enter your name"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        className={fieldClass}
-                      />
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            <div>
-              <label htmlFor="cp-email" className={labelClass}>
-                Email address
-              </label>
-              <div className="relative">
-                <Mail className="absolute left-3.5 top-3.5 w-4 h-4 text-ink-500" aria-hidden />
-                <input
-                  id="cp-email"
-                  type="email"
-                  required
-                  autoComplete="email"
-                  placeholder="name@company.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className={fieldClass}
-                />
-              </div>
+              </AnimatePresence>
             </div>
 
-            <div>
-              <label htmlFor="cp-business" className={labelClass}>
-                Business name
-              </label>
-              <div className="relative">
-                <Briefcase className="absolute left-3.5 top-3.5 w-4 h-4 text-ink-500" aria-hidden />
-                <input
-                  id="cp-business"
-                  type="text"
-                  required
-                  autoComplete="organization"
-                  placeholder="e.g. ABC Electronics Ltd"
-                  value={businessName}
-                  onChange={(e) => setBusinessName(e.target.value)}
-                  className={fieldClass}
-                />
-              </div>
-            </div>
-
-            <div>
-              <label htmlFor="cp-password" className={labelClass}>
-                Password
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-3.5 top-3.5 w-4 h-4 text-ink-500" aria-hidden />
-                <input
-                  id="cp-password"
-                  type={showPassword ? "text" : "password"}
-                  required
-                  autoComplete={mode === "SIGN_IN" ? "current-password" : "new-password"}
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className={clsx(fieldClass, "pr-10")}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((p) => !p)}
-                  aria-label={showPassword ? "Hide password" : "Show password"}
-                  className="absolute right-3.5 top-3.5 text-ink-500 hover:text-ink-200 transition-colors focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 focus-visible:ring-offset-ground-050"
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-
-            <Button type="submit" variant="primary" size="lg" loading={isLoading} className="mt-1 w-full">
-              {!isLoading && (
-                <>
-                  {mode === "SIGN_IN" ? "Access dashboard" : "Register & seed demo"}
-                  <ArrowRight className="w-4 h-4" />
-                </>
-              )}
-            </Button>
-          </form>
-
-          {/* An account with no password set is told to "reset your password"
-              by /api/auth/login, and there is no reset route to send them to.
-              Saying so plainly is better than a link that goes nowhere. */}
-          {mode === "SIGN_IN" && (
-            <p className="text-center text-[11.5px] text-ink-500 leading-relaxed">
-              Forgotten your password? Password reset is not available yet — ask
-              whoever set up your CashPilot account.
-            </p>
-          )}
-
-          <div className="text-center pt-1">
             <button
-              onClick={toggleMode}
-              className="text-[12.5px] text-brand-300 font-medium hover:text-brand-400 transition-colors focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 focus-visible:ring-offset-ground-050 rounded"
+              type="button"
+              onClick={handleGoogleSignIn}
+              className="w-full py-3 rounded-md text-[13px] font-semibold focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 focus-visible:ring-offset-ground-050 flex items-center justify-center gap-2.5 bg-ground-200 border border-line-soft text-ink-200 hover:bg-ground-300 hover:border-line-firm transition-colors duration-200"
             >
-              {mode === "SIGN_IN"
-                ? "Don't have an account? Sign up"
-                : "Already have an account? Sign in"}
+              <svg className="w-4 h-4" viewBox="0 0 24 24" aria-hidden>
+                {/* The blue stroke's path data was corrupt ("...6.69c-.29 1.5-.1.14-.1.14v2.54h1.03...")
+                    and rendered as a stray wedge across the mark. This is the
+                    canonical Google "G" geometry. */}
+                <path
+                  fill="#4285F4"
+                  d="M23.49 12.27c0-.79-.07-1.54-.2-2.27H12v4.51h6.44a5.5 5.5 0 0 1-2.39 3.62v3h3.86c2.26-2.09 3.58-5.17 3.58-8.86z"
+                />
+                <path
+                  fill="#34A853"
+                  d="M12 24c3.24 0 5.97-1.08 7.96-2.91l-3.45-2.68c-.96.64-2.2 1.02-3.51 1.02-2.7 0-5-1.82-5.81-4.28H1.63v2.77C3.62 21.94 7.55 24 12 24z"
+                />
+                <path
+                  fill="#FBBC05"
+                  d="M6.19 15.15A7.18 7.18 0 0 1 5.75 12c0-1.1.2-2.15.56-3.15V6.08H1.63A11.96 11.96 0 0 0 0 12c0 2.22.6 4.3 1.63 6.08l4.56-3.08z"
+                />
+                <path
+                  fill="#EA4335"
+                  d="M12 4.75c1.77 0 3.35.6 4.6 1.8l3.43-3.43C17.95 1.19 15.22 0 12 0 7.55 0 3.62 2.06 1.63 6.08l4.56 3.07C7 6.57 9.3 4.75 12 4.75z"
+                />
+              </svg>
+              Continue with Google
             </button>
-          </div>
+
+            <div className="flex items-center gap-4 text-ink-500">
+              <span className="h-px bg-line-soft grow" />
+              <span className="label">Or use email</span>
+              <span className="h-px bg-line-soft grow" />
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <AnimatePresence>
+                {shownError && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: DUR.base, ease: EASE_GLIDE }}
+                    role="alert"
+                    className="overflow-hidden"
+                  >
+                    <div className="p-3.5 rounded-md bg-risk-500/10 border border-risk-500/25 text-[12.5px] font-medium text-risk-400">
+                      {shownError}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <AnimatePresence initial={false}>
+                {mode === "SIGN_UP" && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: DUR.base, ease: EASE_GLIDE }}
+                    className="overflow-hidden"
+                  >
+                    <div className="pb-0.5">
+                      <label htmlFor="cp-name" className={labelClass}>
+                        Full name
+                      </label>
+                      <div className="relative">
+                        <User className="absolute left-3.5 top-3.5 w-4 h-4 text-ink-500" aria-hidden />
+                        <input
+                          id="cp-name"
+                          type="text"
+                          required
+                          autoComplete="name"
+                          placeholder="Enter your name"
+                          value={name}
+                          onChange={(e) => setName(e.target.value)}
+                          className={fieldClass}
+                        />
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <div>
+                <label htmlFor="cp-email" className={labelClass}>
+                  Email address
+                </label>
+                <div className="relative">
+                  <Mail className="absolute left-3.5 top-3.5 w-4 h-4 text-ink-500" aria-hidden />
+                  <input
+                    id="cp-email"
+                    type="email"
+                    required
+                    autoComplete="email"
+                    placeholder="name@company.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className={fieldClass}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="cp-business" className={labelClass}>
+                  Business name
+                </label>
+                <div className="relative">
+                  <Briefcase className="absolute left-3.5 top-3.5 w-4 h-4 text-ink-500" aria-hidden />
+                  <input
+                    id="cp-business"
+                    type="text"
+                    required
+                    autoComplete="organization"
+                    placeholder="e.g. ABC Electronics Ltd"
+                    value={businessName}
+                    onChange={(e) => setBusinessName(e.target.value)}
+                    className={fieldClass}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="cp-password" className={labelClass}>
+                  Password
+                </label>
+                <div className="relative">
+                  <Lock className="absolute left-3.5 top-3.5 w-4 h-4 text-ink-500" aria-hidden />
+                  <input
+                    id="cp-password"
+                    type={showPassword ? "text" : "password"}
+                    required
+                    autoComplete={mode === "SIGN_IN" ? "current-password" : "new-password"}
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className={clsx(fieldClass, "pr-10")}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((p) => !p)}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    className="absolute right-3.5 top-3.5 text-ink-500 hover:text-ink-200 transition-colors focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 focus-visible:ring-offset-ground-050"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <Button type="submit" variant="primary" size="lg" loading={isLoading} className="mt-1 w-full">
+                {!isLoading && (
+                  <>
+                    {mode === "SIGN_IN" ? "Access dashboard" : "Register & seed demo"}
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
+              </Button>
+            </form>
+
+            {/* An account with no password set is told to "reset your password"
+                by /api/auth/login, and there is no reset route to send them to.
+                Saying so plainly is better than a link that goes nowhere. */}
+            {mode === "SIGN_IN" && (
+              <p className="text-center text-[11.5px] text-ink-500 leading-relaxed">
+                Forgotten your password? Password reset is not available yet — ask
+                whoever set up your CashPilot account.
+              </p>
+            )}
+
+            <div className="text-center pt-1">
+              <button
+                onClick={toggleMode}
+                className="text-[12.5px] text-brand-300 font-medium hover:text-brand-400 transition-colors focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 focus-visible:ring-offset-ground-050 rounded"
+              >
+                {mode === "SIGN_IN"
+                  ? "Don't have an account? Sign up"
+                  : "Already have an account? Sign in"}
+              </button>
+            </div>
+            </>
+          )}
         </div>
       </div>
     </div>

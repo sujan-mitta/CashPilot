@@ -333,8 +333,46 @@ model User {
   email      String     @unique
   name       String
   password   String     @default("mock-password-hash")
+
+  /// When this address was proven reachable by entering a code sent to it.
+  ///
+  /// Null means unproven, NOT invalid — every account that existed before
+  /// verification was added reads null, and they are not retroactively locked
+  /// out. It gates outbound alerts only: mail is never sent to an address
+  /// nobody has confirmed can receive it, because the bounce goes to us and
+  /// tells the operator their own product is broken.
+  emailVerified DateTime?
+
   createdAt  DateTime   @default(now())
   businesses Business[]
+  verificationCodes EmailVerificationCode[]
+}
+
+/// A one-time code proving someone can read mail at an address.
+model EmailVerificationCode {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+
+  /// The address the code was sent to. Kept alongside the user because a
+  /// pending change of address must be verified against the NEW one.
+  email     String
+
+  /// SHA-256 of the code. The code itself is never stored: a leaked database
+  /// must not hand over live verification codes.
+  codeHash  String
+
+  expiresAt DateTime
+  /// Set once the code is accepted. A used code is never accepted again.
+  usedAt    DateTime?
+  /// Wrong guesses so far. Bounded, so the code cannot be brute-forced.
+  attempts  Int      @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([email])
+  @@index([expiresAt])
 }
 
 model ProcessedEvent {
