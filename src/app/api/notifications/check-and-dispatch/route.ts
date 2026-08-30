@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth";
 import { evaluateAndDispatchAlerts } from "@/lib/notifications/alertEvaluator";
 import { parseJsonBody } from "@/lib/errors";
 import { logger } from "@/lib/observability";
+import { secretsMatch } from "@/lib/auth/constantTime";
 
 interface CheckAndDispatchOptions {
   req: Request;
@@ -17,10 +18,13 @@ async function handleCheckAndDispatch({ req, method }: CheckAndDispatchOptions) 
     const cronHeader = req.headers.get("x-cron-secret") || "";
     const cronSecret = process.env.CRON_SECRET;
 
-    const isCronAuthorized = Boolean(
-      cronSecret &&
-        (cronHeader === cronSecret || authHeader === `Bearer ${cronSecret}`)
-    );
+    // Constant-time, to match the webhook HMAC and password paths. `===`
+    // short-circuits at the first differing byte; the signal is buried under
+    // network jitter over HTTP, but a secret check that is not constant-time is
+    // the odd one out in this codebase.
+    const isCronAuthorized =
+      secretsMatch(cronHeader, cronSecret) ||
+      secretsMatch(authHeader, cronSecret ? `Bearer ${cronSecret}` : null);
 
     let targetBusinessId: string | null = null;
 

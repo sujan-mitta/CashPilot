@@ -15,6 +15,7 @@ import {
   type SettledAmountRejection,
 } from "./amounts";
 import { validateActionTransition, validateRecoveryTransition } from "../engine/stateTransitions";
+import { statusAfterPayment } from "@/lib/engine/invoiceOutstanding";
 import {
   transitionDecision,
   InvalidDecisionTransitionError,
@@ -756,12 +757,39 @@ export async function settlePayment(
             // of its previous status writes a date, so a concurrent or repeat
             // settlement can never overwrite the original arrival time with a
             // later one.
+            // The status is DERIVED from the money, not asserted. A settlement
+            // that does not close the balance leaves the invoice
+            // PARTIALLY_PAID; only one that reaches the full amount marks it
+            // PAID. Previously any settlement flipped it to PAID regardless of
+            // amount, so a ₹6L receipt against a ₹10L invoice removed the
+            // remaining ₹4L from the forecast entirely.
+            //
+            // `paidAmount` is incremented rather than assigned, so successive
+            // part payments accumulate instead of overwriting each other. It
+            // moves inside the same compare-and-swap that gates `paidAt`, so it
+            // cannot drift from the credit applied to the ledger.
+            // Resolved BEFORE the status write: the status is a consequence of
+            // the amount, so it cannot be decided before the amount is known.
+            const finalSettleAmount = resolveSettlementAmount(
+              actualAmount,
+              freshInvoice.amount,
+              { paymentLinkId, businessId, targetKind: "INVOICE", targetId: freshInvoice.id }
+            );
+
+            const nextStatus = statusAfterPayment(freshInvoice, finalSettleAmount);
+
             const invoiceUpdate = await tx.invoice.updateMany({
               where: {
                 id: freshInvoice.id,
                 status: freshInvoice.status,
               },
-              data: { status: "PAID", paidAt },
+              data: {
+                status: nextStatus,
+                paidAmount: { increment: finalSettleAmount },
+                // Write-once: only the settler that closes the invoice records
+                // when it was closed. A part payment has not closed anything.
+                ...(nextStatus === "PAID" ? { paidAt } : {}),
+              },
             });
 
             if (invoiceUpdate && invoiceUpdate.count === 0) {
@@ -797,12 +825,6 @@ export async function settlePayment(
                 },
               });
             }
-
-            const finalSettleAmount = resolveSettlementAmount(
-              actualAmount,
-              freshInvoice.amount,
-              { paymentLinkId, businessId, targetKind: "INVOICE", targetId: freshInvoice.id }
-            );
 
             // Increment cash of the exact same business derived from the database model
             await tx.business.update({

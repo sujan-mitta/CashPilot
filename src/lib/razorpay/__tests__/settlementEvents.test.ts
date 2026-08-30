@@ -28,6 +28,7 @@ const { world, financialEvent } = vi.hoisted(() => {
     action: Record<string, unknown> | null;
     cashIncrements: number[];
     events: { data: Record<string, unknown> }[];
+    invoiceUpdates: Record<string, unknown>[];
     transactionShouldThrow: Error | null;
   } = {
     invoice: null,
@@ -36,6 +37,7 @@ const { world, financialEvent } = vi.hoisted(() => {
     action: null,
     cashIncrements: [],
     events: [],
+    invoiceUpdates: [],
     transactionShouldThrow: null,
   };
 
@@ -75,7 +77,10 @@ vi.mock("@/lib/prisma", () => {
     financialEvent,
     invoice: delegate({
       findFirst: vi.fn(async () => world.invoice),
-      updateMany: vi.fn(async () => ({ count: world.invoiceUpdateCount })),
+      updateMany: vi.fn(async (a: { data: Record<string, unknown> }) => {
+        world.invoiceUpdates.push(a.data);
+        return { count: world.invoiceUpdateCount };
+      }),
     }),
     paymentRecovery: delegate({
       findUnique: vi.fn(async () => world.recovery),
@@ -132,6 +137,7 @@ const linksJson = (invoiceId: string) =>
 beforeEach(() => {
   vi.clearAllMocks();
   world.events = [];
+  world.invoiceUpdates = [];
   world.cashIncrements = [];
   world.transactionShouldThrow = null;
   world.invoiceUpdateCount = 1;
@@ -260,5 +266,64 @@ describe("Settlement writes the financial-event spine", () => {
     expect(paymentEvents).toHaveLength(1);
     expect(paymentEvents[0].data.sourceRecordId).toBe(`${LINK}:PAYMENT_RECOVERY:rec-1`);
     expect(paymentEvents[0].data.amount).toBe(440000);
+  });
+});
+
+describe("Partially paid invoices", () => {
+  it("marks the invoice PARTIALLY_PAID when the receipt does not close it", async () => {
+    // ₹5,00,000 invoice, ₹3,00,000 received. Previously ANY settlement flipped
+    // the invoice to PAID, which removed the remaining ₹2,00,000 from the
+    // forecast entirely.
+    await settlePayment(LINK, "biz-1", 300000, undefined, "WEBHOOK");
+
+    expect(world.invoiceUpdates).toHaveLength(1);
+    expect(world.invoiceUpdates[0].status).toBe("PARTIALLY_PAID");
+  });
+
+  it("marks it PAID when the receipt closes it exactly", async () => {
+    await settlePayment(LINK, "biz-1", 500000, undefined, "WEBHOOK");
+    expect(world.invoiceUpdates[0].status).toBe("PAID");
+  });
+
+  it("marks it PAID on an overpayment — the invoice is satisfied", async () => {
+    await settlePayment(LINK, "biz-1", 650000, undefined, "WEBHOOK");
+    expect(world.invoiceUpdates[0].status).toBe("PAID");
+  });
+
+  it("increments paidAmount rather than assigning it, so parts accumulate", async () => {
+    await settlePayment(LINK, "biz-1", 300000, undefined, "WEBHOOK");
+
+    // An assignment would make a second ₹2,00,000 receipt read as ₹2,00,000
+    // total received instead of ₹5,00,000, leaving the invoice permanently
+    // short of closing.
+    expect(world.invoiceUpdates[0].paidAmount).toEqual({ increment: 300000 });
+  });
+
+  it("credits the ledger with the amount received, not the invoice face value", async () => {
+    await settlePayment(LINK, "biz-1", 300000, undefined, "WEBHOOK");
+    expect(world.cashIncrements).toEqual([300000]);
+  });
+
+  it("does not stamp paidAt on a part payment", async () => {
+    // paidAt means "when this invoice was settled". A part payment has not
+    // settled it, and writing a date would tell the behaviour model the
+    // customer paid in full on that day.
+    await settlePayment(LINK, "biz-1", 300000, undefined, "WEBHOOK");
+    expect(world.invoiceUpdates[0].paidAt).toBeUndefined();
+  });
+
+  it("stamps paidAt only when the invoice actually closes", async () => {
+    await settlePayment(LINK, "biz-1", 500000, undefined, "WEBHOOK");
+    expect(world.invoiceUpdates[0].paidAt).toBeInstanceOf(Date);
+  });
+
+  it("closes an already part-paid invoice with the remainder", async () => {
+    // ₹5,00,000 invoice with ₹2,00,000 already confirmed; ₹3,00,000 arrives.
+    world.invoice = { ...(world.invoice as object), paidAmount: 200000 } as Record<string, unknown>;
+
+    await settlePayment(LINK, "biz-1", 300000, undefined, "WEBHOOK");
+
+    expect(world.invoiceUpdates[0].status).toBe("PAID");
+    expect(world.invoiceUpdates[0].paidAmount).toEqual({ increment: 300000 });
   });
 });

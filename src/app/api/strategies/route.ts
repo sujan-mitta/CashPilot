@@ -21,6 +21,7 @@ import { logger } from "@/lib/observability";
 import { rateLimit } from "@/lib/auth/rateLimit";
 import type { Prisma } from "../../../../generated/prisma/client";
 import { getLatestFinancialState } from "@/lib/state/store";
+import { totalOutstanding } from "@/lib/engine/invoiceOutstanding";
 
 /** The per-strategy object returned to the client and fed to the AI narrator. */
 interface ResponseStrategy {
@@ -121,9 +122,16 @@ export async function POST() {
       description: t.description,
     }));
 
-    const overdueAmount = invoices
-      .filter((i) => i.status === "OVERDUE")
-      .reduce((sum, i) => sum + i.amount, 0);
+    // Recoverable receivables are what is STILL OUTSTANDING, not the face value
+    // of the invoices. A customer who has already paid ₹6L of a ₹10L invoice
+    // will only ever deliver the remaining ₹4L, and simulating a collection of
+    // the full ₹10L overstates the inflow the strategy can actually produce.
+    //
+    // PARTIALLY_PAID is included alongside OVERDUE: a part-paid invoice past its
+    // due date is exactly the case this figure exists to describe.
+    const overdueAmount = totalOutstanding(
+      invoices.filter((i) => i.status === "OVERDUE" || i.status === "PARTIALLY_PAID")
+    );
 
     const packagingPayout = payouts.find((p) => p.vendor === "Packaging Co");
     const rescheduleAmount = packagingPayout ? packagingPayout.amount : 0;
