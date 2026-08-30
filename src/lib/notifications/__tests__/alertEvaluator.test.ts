@@ -4,17 +4,13 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { evaluateAndDispatchAlerts } from "../alertEvaluator";
-import { assessBusinessHealth } from "../healthAssessment";
-import { renderAlertEmail, escapeHtml } from "../emailTemplates";
-import { sendNotificationEmail } from "../mailer";
+import { renderAlertEmail } from "../emailTemplates";
 import {
   __resetStoreForTesting,
-  getPreferences,
   updatePreferences,
   updateUserActivity,
   getUserActivity,
   recordAlert,
-  findLatestAlertForCrisis,
   claimAlertForDispatch,
 } from "../alertStore";
 import { prisma } from "@/lib/prisma";

@@ -13,7 +13,6 @@ import {
   claimAlertForDispatch,
   updateAlertDelivery,
   findLatestAlertForCrisis,
-  getRecentAlerts,
   recordDeliveryAudit,
   getRecentDeliveryAudits,
   __resetStoreForTesting,
