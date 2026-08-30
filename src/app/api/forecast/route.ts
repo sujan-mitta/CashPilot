@@ -9,6 +9,11 @@ import { calculateLiquiditySafetyRequirement, extractObligations, calculateTempo
 import { errorMessage } from "@/lib/errors";
 import { logger } from "@/lib/observability";
 import { FINANCIAL_CONFIG } from "@/lib/engine/financialConfig";
+import { getLatestFinancialState, toSnapshot } from "@/lib/state/store";
+import {
+  checkForecastConsistency,
+  type ForecastConsistencyResult,
+} from "@/lib/state/forecastConsistency";
 
 /** The few numbers a scenario is worth showing; the full day series is not. */
 function summarise(s: {
@@ -110,6 +115,43 @@ export async function GET() {
       ? days[runwayMetrics.crisisDay - 1].date.toISOString()
       : null;
 
+    // B-7b: cross-check this forecast against the materialised financial state.
+    //
+    // The forecast is computed from canonical rows and the state from the
+    // reconciled brain. When two independent paths disagree, something is wrong
+    // that neither can see alone. Read AFTER the forecast so a slow state query
+    // cannot delay the figure the operator came for, and failure-tolerant
+    // because an unavailable state must degrade the CHECK, never the forecast.
+    let consistency: ForecastConsistencyResult;
+    try {
+      const latestState = await getLatestFinancialState(prisma, business.id);
+      consistency = checkForecastConsistency(
+        {
+          cashPosition: business.currentCash,
+          expectedInflows: days.reduce((sum, d) => sum + d.expectedInflows, 0),
+          expectedOutflows: days.reduce((sum, d) => sum + d.expectedOutflows, 0),
+          projectedMinimumBalance: runwayMetrics.minimumBalance,
+        },
+        latestState ? toSnapshot(latestState) : null,
+        latestState?.stateVersion ?? null
+      );
+    } catch (err) {
+      // Not comparable, and honest about why. Silently reporting AGREES here
+      // would be the one thing this check exists to prevent.
+      logger.warn("Forecast consistency check unavailable", {
+        businessId: business.id,
+        error: errorMessage(err),
+      });
+      consistency = {
+        verdict: "NOT_COMPARABLE",
+        stateVersion: null,
+        findings: [],
+        summary:
+          "The materialised financial state could not be read, so this forecast has " +
+          "not been cross-checked against one.",
+      };
+    }
+
     return NextResponse.json({
       status: "SUCCESS",
       business: {
@@ -117,6 +159,7 @@ export async function GET() {
         name: business.name,
         currentCash: business.currentCash,
       },
+      consistency,
       forecast: {
         horizonDays: FINANCIAL_CONFIG.FORECAST_HORIZON_DAYS,
         safetyThreshold: requiredBuffer,

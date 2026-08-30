@@ -746,9 +746,12 @@ never resolved**: one side may be stale, and silently preferring either would be
 inventing an answer (§7). Absent state is `NOT_COMPARABLE`, not a disagreement —
 otherwise every tenant that has never synced would cry wolf.
 
-**Still to do:** the checker is written and tested but **not yet called** by the
-forecast route, so no user sees its verdict. That is the remaining half of B-7,
-and it is small.
+**B-7b done (same pass):** `/api/forecast` now returns a `consistency` block on
+every successful response. The state is read AFTER the forecast, so a slow state
+query cannot delay the figure the operator came for, and a failure to read it
+degrades the CHECK to `NOT_COMPARABLE` — never the forecast, and never a false
+`AGREES`. A test asserts exactly that, because swallowing the error and claiming
+agreement is the one failure this whole mechanism exists to prevent.
 
 ### Regression floor
 
@@ -756,7 +759,7 @@ and it is small.
 |---|---|
 | `npm run typecheck` | clean |
 | `npm run lint` | 0 errors |
-| `npm test` | 105 files, **1454 passed**, 5 skipped |
+| `npm test` | 106 files, **1460 passed**, 5 skipped |
 | `npm run build` | passing |
 
 ---
@@ -769,7 +772,6 @@ The honest state of everything not closed, so nothing is silently assumed done.
 
 | # | Item | Size |
 |---|---|---|
-| **B-7b** | Call `checkForecastConsistency` from the forecast route and surface the verdict | small |
 | **B-12a** | Cross-source conflict centre (§7) — the reconciler finds conflicts; no screen shows them | medium |
 | **B-12b** | Evidence trail UI (§24) — "why does CashPilot believe this number?" | medium |
 | **B-12c** | "Why this decision?" drill-down (§23) | medium |
@@ -795,7 +797,7 @@ The honest state of everything not closed, so nothing is silently assumed done.
 |---|---|---|---|
 | **C-3** | Merge review | API + screen, tested | Never seen rendered with real data (behind auth) |
 | **C-9** | List-lag bound | Configurable, reasoned | Still a margin, not a measurement — no observed-latency collection |
-| **B-7** | State boundary | Consistency checker built and tested | Not wired into the forecast route |
+| **B-7** | State boundary | Checker built, wired, verdict on every forecast response | No UI renders the verdict yet |
 | **C-1** | Predictive confidence | Formula complete | Still capped until settled history accumulates |
 | **C-12** | Model constants | Reasoned, documented | None fitted to real data — there is none yet |
 | **C-14** | `FORECAST_EVENT_PIPELINE` | Preconditions 1, 2 and 4 now hold | Still `false`; needs 5+ settled payments per customer (3) and a manual-skew review (5) |
