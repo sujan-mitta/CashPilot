@@ -44,7 +44,7 @@ describe("Phase 33: Production Scheduler & Dispatch Authorization", () => {
 
       const cronEntry = content.crons[0];
       expect(cronEntry.path).toBe("/api/notifications/check-and-dispatch");
-      expect(cronEntry.schedule).toBe("*/10 * * * *");
+      expect(cronEntry.schedule).toBe("0 4 * * *");
     });
   });
 

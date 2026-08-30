@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/notifications/check-and-dispatch",
-      "schedule": "*/10 * * * *"
+      "schedule": "0 4 * * *"
     }
   ]
 }
