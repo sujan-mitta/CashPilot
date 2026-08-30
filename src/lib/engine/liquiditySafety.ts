@@ -101,12 +101,24 @@ export async function calculateLiquiditySafetyRequirement(
     dataWarnings.push("Payout database client not available.");
   }
 
-  const sumTransactions = projectedTransactions.reduce((sum: number, t: TransactionRecord) => sum + t.amount, 0);
-  const sumPayouts = projectedPayouts.reduce((sum: number, p: PayoutRecord) => sum + p.amount, 0);
-  
-  // Known limitation: Payouts and pending transactions may overlap.
-  // We use Math.max as a conservative deduplication heuristic to avoid double-counting.
-  const totalProjectedOutflow = Math.max(sumTransactions, sumPayouts);
+  // Payouts and pending transactions can describe the SAME obligation, so they
+  // cannot simply be added. They are also frequently disjoint — a vendor payout
+  // and an unrelated pending SaaS charge — so they cannot be collapsed either.
+  //
+  // `Math.max` was used here as a "conservative deduplication heuristic". It is
+  // not conservative: it is correct only when one set contains the other, and in
+  // the ordinary disjoint case it discards the smaller set entirely. That
+  // understates projected outflow, which understates the run-rate, which
+  // understates the required buffer — the direction that makes a business look
+  // safer than it is. The double-counting bug it replaced erred the other way
+  // and merely over-reserved.
+  //
+  // extractObligations already resolves this per-record: it drops a transaction
+  // that shares a payout's source id, or that matches one on amount within an
+  // hour, and keeps everything else. Deduplicating by identity and summing what
+  // survives is the honest answer, and it reuses logic that is already tested.
+  const projectedObligations = extractObligations(projectedPayouts, projectedTransactions, today);
+  const totalProjectedOutflow = projectedObligations.reduce((sum, o) => sum + o.amount, 0);
   const projectedDailyOutflow = totalProjectedOutflow / FINANCIAL_CONFIG.FORECAST_HORIZON_DAYS;
 
   // 3. Compute weighted daily run-rate

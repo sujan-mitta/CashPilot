@@ -18,6 +18,7 @@ import { ShieldCheck, ShieldAlert, ArrowRight, CheckCircle2, XCircle, Lock } fro
 import clsx from "clsx";
 import { errorMessage } from "@/lib/errors";
 import { useToast } from "@/components/ui/Toast";
+import { buildRejectionRequest } from "./rejectionRequest";
 
 const actionCategory = (type: string) =>
   type === "RECOVER_FAILED_PAYMENTS"
@@ -89,6 +90,7 @@ function ApprovalContent() {
   const [showRejectPanel, setShowRejectPanel] = useState(false);
   const [fetchedBaseline, setFetchedBaseline] = useState<number | null>(null);
   const [rejectReason, setRejectReason] = useState("");
+  const [rejecting, setRejecting] = useState(false);
 
   // The "if you do nothing" figure lives only in the in-memory cache, so a
   // refresh or a shared link rendered the most important comparison on this
@@ -184,14 +186,47 @@ function ApprovalContent() {
 
   const handleReject = () => setShowRejectPanel(true);
 
-  const confirmReject = () => {
-    setShowRejectPanel(false);
-    toast({
-      tone: "info",
-      title: "Plan declined",
-      description: "Nothing was authorized and no money moved.",
-    });
-    router.push("/strategies");
+  const confirmReject = async () => {
+    if (!strategyId || rejecting) return;
+
+    // This used to be a toast and a redirect with no request at all. The
+    // operator saw "Plan declined", and server-side nothing happened: the
+    // decision stayed PRESENTED, the actions stayed PENDING, and the plan
+    // remained approvable and executable. The typed reason was discarded with
+    // it. A refusal that leaves the thing refusable is not a refusal.
+    setRejecting(true);
+
+    try {
+      const res = await fetch("/api/approve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildRejectionRequest(strategyId, rejectReason)),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(data.message || data.error || "We could not record your decision.");
+      }
+
+      setShowRejectPanel(false);
+      setRejecting(false);
+      toast({
+        tone: "info",
+        title: "Plan declined",
+        description: "Recorded. Nothing was authorized and no money moved.",
+      });
+      router.push("/strategies");
+    } catch (err) {
+      // Stay on the panel. Navigating away after a failed decline would leave
+      // the operator believing they had declined something they had not.
+      setRejecting(false);
+      toast({
+        tone: "danger",
+        title: "Your decision was not recorded",
+        description: `${errorMessage(err)} The plan is still awaiting your decision.`,
+      });
+    }
   };
 
   if (loading) {
@@ -441,10 +476,21 @@ function ApprovalContent() {
                   </div>
 
                   <div className="flex flex-wrap gap-2.5">
-                    <Button variant="danger" size="md" onClick={confirmReject}>
-                      Decline and go back
+                    <Button
+                      variant="danger"
+                      size="md"
+                      onClick={confirmReject}
+                      loading={rejecting}
+                      disabled={rejecting}
+                    >
+                      {rejecting ? "Recording" : "Decline and go back"}
                     </Button>
-                    <Button variant="secondary" size="md" onClick={() => setShowRejectPanel(false)}>
+                    <Button
+                      variant="secondary"
+                      size="md"
+                      onClick={() => setShowRejectPanel(false)}
+                      disabled={rejecting}
+                    >
                       Keep reviewing
                     </Button>
                   </div>

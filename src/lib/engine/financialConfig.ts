@@ -24,6 +24,7 @@ export interface FinancialConfig {
   FRESHNESS_DUE_DATE_TOLERANCE_DAYS: number;
   INTENT_DISPATCH_TIMEOUT_MS: number;
   PROVIDER_LIST_SETTLING_MS: number;
+  PROVIDER_NOT_FOUND_COOLING_MS: number;
   SCORING_CONFIG_VERSION: string;
   LIQUIDITY_CONFIG_VERSION: string;
   OUTCOME_RULES_VERSION: string;
@@ -153,6 +154,29 @@ export const FINANCIAL_CONFIG: FinancialConfig = {
    * dispatch timeout, so it costs nothing in the normal path.
    */
   PROVIDER_LIST_SETTLING_MS: 60000,
+
+  /**
+   * How long after an operation was recorded a NOT_FOUND may be concluded at
+   * all, once the settling period above has passed.
+   *
+   * Was hard-coded inline at 24h with no stated reasoning (C-9). Lifted here so
+   * the two timing bounds are read together and can be tuned from evidence
+   * rather than edited in the middle of a branch.
+   *
+   * The two are doing different jobs. PROVIDER_LIST_SETTLING_MS covers the
+   * MEASURED eventual-consistency lag of the list endpoint (~6s observed, 60s
+   * chosen as margin). This one is not a measurement at all: it is how long we
+   * decline to convert "we cannot see it" into "it never happened" for an
+   * operation whose provider outcome was never confirmed. Twenty-four hours is
+   * deliberately far beyond any plausible provider lag, because the cost is
+   * asymmetric — a delayed NOT_FOUND holds up one retry, while a premature one
+   * unlocks a second payment link for a debt the customer may already have paid.
+   *
+   * Do not reduce this without evidence about the provider's real behaviour.
+   * The 60s above is backed by a live measurement; this is not, and shortening
+   * it trades a bounded delay for an unbounded double-charge risk.
+   */
+  PROVIDER_NOT_FOUND_COOLING_MS: 24 * 60 * 60 * 1000,
 
   /**
    * Minimum number of MEASURED decisions before a per-strategy performance

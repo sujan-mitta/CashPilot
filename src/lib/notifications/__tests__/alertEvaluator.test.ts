@@ -481,17 +481,42 @@ describe("Intelligent Email Alert & Notification System", () => {
         payouts: [],
       } as any);
 
-      // Mock historical transactions so requiredBuffer > currentCash (₹4L)
-      vi.mocked(prisma.transaction.findMany).mockResolvedValue([
-        {
-          id: "hist_1",
-          businessId: mockBusinessId,
-          amount: 200000000, // ₹20L historical outflow
-          type: "OUTFLOW",
-          status: "SUCCESS",
-          date: new Date("2026-08-01"),
-        } as any,
-      ]);
+      // requiredBuffer > currentCash (₹4L) needs both halves of the run-rate:
+      // 70% historical and 30% projected.
+      //
+      // This mock answers by status, because the two queries differ by status
+      // and the engine now re-validates what it is handed. A blanket
+      // mockResolvedValue returned the SETTLED history row to the PENDING
+      // projected query as well, so a past outflow was counted as a future one —
+      // which is exactly the confusion the Math.max heuristic was hiding.
+      vi.mocked(prisma.transaction.findMany).mockImplementation((async (args: {
+        where?: { status?: string };
+      }) => {
+        if (args?.where?.status === "PENDING") {
+          return [
+            {
+              id: "proj_1",
+              businessId: mockBusinessId,
+              amount: 500000000, // ₹50L scheduled outflow inside the horizon
+              type: "OUTFLOW",
+              status: "PENDING",
+              date: new Date("2026-09-05"),
+              expectedDate: new Date("2026-09-05"),
+            },
+          ];
+        }
+        return [
+          {
+            id: "hist_1",
+            businessId: mockBusinessId,
+            amount: 200000000, // ₹20L historical outflow
+            type: "OUTFLOW",
+            status: "SUCCESS",
+            date: new Date("2026-08-01"),
+            expectedDate: new Date("2026-08-01"),
+          },
+        ];
+      }) as never);
 
       // User inactive 26 hours (> 24h threshold)
       const lastSeenTime = new Date(baseTime.getTime() - 26 * 3600 * 1000).toISOString();

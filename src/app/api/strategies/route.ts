@@ -20,6 +20,8 @@ import { errorMessage } from "@/lib/errors";
 import { logger } from "@/lib/observability";
 import { rateLimit } from "@/lib/auth/rateLimit";
 import type { Prisma } from "../../../../generated/prisma/client";
+import { getLatestFinancialState } from "@/lib/state/store";
+import { totalOutstanding } from "@/lib/engine/invoiceOutstanding";
 
 /** The per-strategy object returned to the client and fed to the AI narrator. */
 interface ResponseStrategy {
@@ -120,9 +122,16 @@ export async function POST() {
       description: t.description,
     }));
 
-    const overdueAmount = invoices
-      .filter((i) => i.status === "OVERDUE")
-      .reduce((sum, i) => sum + i.amount, 0);
+    // Recoverable receivables are what is STILL OUTSTANDING, not the face value
+    // of the invoices. A customer who has already paid ₹6L of a ₹10L invoice
+    // will only ever deliver the remaining ₹4L, and simulating a collection of
+    // the full ₹10L overstates the inflow the strategy can actually produce.
+    //
+    // PARTIALLY_PAID is included alongside OVERDUE: a part-paid invoice past its
+    // due date is exactly the case this figure exists to describe.
+    const overdueAmount = totalOutstanding(
+      invoices.filter((i) => i.status === "OVERDUE" || i.status === "PARTIALLY_PAID")
+    );
 
     const packagingPayout = payouts.find((p) => p.vendor === "Packaging Co");
     const rescheduleAmount = packagingPayout ? packagingPayout.amount : 0;
@@ -210,6 +219,21 @@ export async function POST() {
     // 4. Clear old strategies and persist new ones in the database atomically inside a transaction
     const responseStrategies: ResponseStrategy[] = [];
     let recommendedStrategyId = "";
+
+    // B-8: the materialised financial state these recommendations were computed
+    // against, so the freshness gate can later tell whether the ground has
+    // moved underneath them.
+    //
+    // Null when no state has ever been materialised, which is the current
+    // reality for every tenant until brain:sync runs. The gate reads a null
+    // version as NOT_TRACKED and does not block, so recording it is strictly
+    // additive: it can only ever turn an unverifiable decision into a
+    // verifiable one, never the reverse.
+    //
+    // Read outside the transaction on purpose. This one already had a 5s
+    // timeout problem from work done inside it.
+    const financialStateVersion =
+      (await getLatestFinancialState(prisma, business.id))?.stateVersion ?? null;
 
     await prisma.$transaction(
       async (tx) => {
@@ -340,6 +364,7 @@ export async function POST() {
               // would reveal.
               forecastVersion: currentForecastVersion(),
               expiresAt: decisionExpiryFrom(today),
+              financialStateVersion,
               contextFingerprint: fingerprint.fingerprint,
               fingerprintDetail: fingerprint as unknown as Prisma.InputJsonValue,
               obligationSnapshot: buildObligationSnapshot(

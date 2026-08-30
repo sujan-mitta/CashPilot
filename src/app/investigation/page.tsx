@@ -85,6 +85,34 @@ export default function Investigation() {
     setExpandedCauseId((prev) => (prev === id ? null : id));
   };
 
+  // Hoisted ABOVE the early returns below, and reading through the optional
+  // chain rather than the destructured `causes`, which does not exist yet at
+  // this point.
+  //
+  // This hook used to sit after `if (loading) return …`. On the first render
+  // the early return fired and the hook was never called; once data arrived the
+  // render got past it and the hook WAS called, so React saw one more hook than
+  // the render before and threw "Rendered more hooks than during the previous
+  // render". A conditional hook is not a style preference — it crashes the page
+  // at exactly the moment the data it needs turns up.
+  const causeEvidenceTotals = useMemo(() => {
+    const totals: Record<string, { inflows: number; outflows: number; timingGap: number }> = {};
+    const causeList = cachedInvestigation?.causes;
+    if (!causeList) return totals;
+    for (const cause of causeList) {
+      if (cause.type === "TIMING_MISMATCH") {
+        let inflows = 0;
+        let outflows = 0;
+        for (const e of cause.evidence?.events ?? []) {
+          if (e.amount > 0) inflows += e.amount;
+          else outflows += e.amount;
+        }
+        totals[cause.id] = { inflows, outflows, timingGap: inflows + outflows };
+      }
+    }
+    return totals;
+  }, [cachedInvestigation]);
+
   if (loading) {
     return (
       <main className="flex-1 max-w-4xl mx-auto px-6 py-10 w-full space-y-8">
@@ -140,22 +168,6 @@ export default function Investigation() {
 
   const money = (v: number | null) => (v === null ? "Unavailable" : formatINR(v));
 
-  const causeEvidenceTotals = useMemo(() => {
-    const totals: Record<string, { inflows: number; outflows: number; timingGap: number }> = {};
-    if (!causes) return totals;
-    for (const cause of causes) {
-      if (cause.type === "TIMING_MISMATCH") {
-        let inflows = 0;
-        let outflows = 0;
-        for (const e of cause.evidence?.events ?? []) {
-          if (e.amount > 0) inflows += e.amount;
-          else outflows += e.amount;
-        }
-        totals[cause.id] = { inflows, outflows, timingGap: inflows + outflows };
-      }
-    }
-    return totals;
-  }, [causes]);
 
   const causalMap = [
     { label: "Cash you start with", value: money(startingCash), tone: "bg-ground-200 border-line-soft text-ink-200" },

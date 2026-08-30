@@ -52,6 +52,7 @@
 import { FINANCIAL_CONFIG } from "../engine/financialConfig";
 
 const PROVIDER_LIST_SETTLING_MS = FINANCIAL_CONFIG.PROVIDER_LIST_SETTLING_MS;
+const PROVIDER_NOT_FOUND_COOLING_MS = FINANCIAL_CONFIG.PROVIDER_NOT_FOUND_COOLING_MS;
 
 export type ReconciliationStatus =
   /** The operation exists at the provider and is settled. */
@@ -255,7 +256,6 @@ export function interpretScan(
       };
     }
 
-    const PROVIDER_NOT_FOUND_COOLING_MS = 24 * 60 * 60 * 1000; // 24 hours
     if (ageMs < PROVIDER_NOT_FOUND_COOLING_MS) {
       return {
         ...base,

@@ -49,6 +49,14 @@ model Transaction {
 
 enum InvoiceStatus {
   PAID
+  /// Some, but not all, of the invoice has been confirmed received.
+  ///
+  /// Previously a part payment collapsed into PENDING, so the forecast treated
+  /// the FULL amount as still outstanding. Conservative in direction, but wrong:
+  /// it overstates expected inflow for an invoice that will only ever deliver
+  /// the remainder, and it hides from the operator that the customer has
+  /// already paid something.
+  PARTIALLY_PAID
   OVERDUE
   PENDING
 }
@@ -84,6 +92,18 @@ model Invoice {
   /// payment date, and inventing one from `updatedAt` would fabricate the exact
   /// history the model is supposed to measure.
   paidAt         DateTime?
+
+  /// Confirmed received against this invoice, in paise.
+  ///
+  /// Outstanding is `amount - paidAmount`, and that is what the forecast must
+  /// treat as still expected. Defaults to 0 rather than being nullable: every
+  /// existing row has genuinely had zero CONFIRMED against it in this field,
+  /// so 0 is the true value and not a placeholder. A fully paid invoice reaches
+  /// `paidAmount == amount` through the same path a partial one does.
+  ///
+  /// Only ever incremented by settlement, inside the transaction that credits
+  /// the ledger, so it cannot drift from the money that actually moved.
+  paidAmount     Int           @default(0)
 
   @@index([businessId])
   @@index([businessId, counterpartyId])

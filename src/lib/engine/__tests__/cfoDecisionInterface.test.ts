@@ -20,6 +20,11 @@ vi.mock("@/lib/prisma", () => {
       invoice: {
         findMany: vi.fn(),
       },
+      // Decisions record the materialised state version they were computed
+      // against. None is materialised here, so null — read as NOT_TRACKED.
+      financialState: {
+        findFirst: vi.fn(async () => null),
+      },
       strategy: {
         deleteMany: vi.fn(),
         create: vi.fn(),

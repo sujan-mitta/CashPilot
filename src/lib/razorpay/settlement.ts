@@ -1,4 +1,5 @@
 import { logger } from "@/lib/observability";
+import { recordFinancialEvent } from "@/lib/events/financialEvent";
 import { prisma } from "@/lib/prisma";
 
 const PAISE_PER_LAKH = 10_000_000;
@@ -14,6 +15,7 @@ import {
   type SettledAmountRejection,
 } from "./amounts";
 import { validateActionTransition, validateRecoveryTransition } from "../engine/stateTransitions";
+import { statusAfterPayment } from "@/lib/engine/invoiceOutstanding";
 import {
   transitionDecision,
   InvalidDecisionTransitionError,
@@ -402,6 +404,61 @@ async function applySettlementUpdates(
  * Settles a payment recovery or overdue collections link by executing the ledger balance updates.
  * Returns the final resolved status of the link ("paid" or "created").
  */
+/**
+ * Append the canonical financial event for a settled obligation.
+ *
+ * Written on the SAME transaction client as the ledger movement it describes,
+ * following the rule the decision log already follows: if the event insert
+ * fails, the settlement rolls back with it, and the append-only spine can never
+ * disagree with the balance. An audit log that is allowed to miss entries when
+ * things go wrong is an audit log for the cases nobody needed it for.
+ *
+ * Identity is `paymentLinkId:targetKind:targetId`, not the link alone. One link
+ * can settle several invoices, so the link by itself is not unique per
+ * financial fact; including the target makes the key exactly as granular as the
+ * money movement. Re-settling the same obligation therefore reproduces the same
+ * key and is absorbed idempotently rather than appended twice.
+ *
+ * `normalizedData` carries no signature, header or credential — only ids and
+ * amounts already present in our own tables.
+ */
+async function emitSettlementEvent(
+  tx: Parameters<typeof recordFinancialEvent>[0],
+  params: {
+    eventType: "PAYMENT_RECEIVED" | "INVOICE_PAID";
+    businessId: string;
+    paymentLinkId: string;
+    targetKind: "INVOICE" | "PAYMENT_RECOVERY";
+    targetId: string;
+    expectedAmount: number;
+    settledAmount: number;
+    occurredAt: Date;
+    trigger: SettlementTrigger;
+  }
+): Promise<void> {
+  await recordFinancialEvent(tx, params.businessId, {
+    eventType: params.eventType,
+    sourceType: "RAZORPAY",
+    sourceRecordId: `${params.paymentLinkId}:${params.targetKind}:${params.targetId}`,
+    occurredAt: params.occurredAt,
+    amount: params.settledAmount,
+    status: "SETTLED",
+    rawReference: params.targetId,
+    normalizedData: {
+      paymentLinkId: params.paymentLinkId,
+      targetKind: params.targetKind,
+      targetId: params.targetId,
+      expectedAmount: params.expectedAmount,
+      settledAmount: params.settledAmount,
+      // How the settlement reached us, and therefore how far the timestamp can
+      // be trusted. WEBHOOK is provider-driven; MANUAL is an operator
+      // observation that may be days after the money actually moved (C-13).
+      settlementTrigger: params.trigger,
+      timestampMeaning: params.trigger === "MANUAL" ? "OBSERVED" : "PROVIDER_REPORTED",
+    },
+  });
+}
+
 export async function settlePayment(
   paymentLinkId: string,
   businessId: string,
@@ -592,6 +649,18 @@ export async function settlePayment(
           },
         });
 
+        await emitSettlementEvent(tx, {
+          eventType: "PAYMENT_RECEIVED",
+          businessId: targetBusinessId,
+          paymentLinkId,
+          targetKind: "PAYMENT_RECOVERY",
+          targetId: freshRecovery.id,
+          expectedAmount: freshRecovery.amount,
+          settledAmount: finalSettleAmount,
+          occurredAt: paidAt,
+          trigger,
+        });
+
         if (action) {
           await applySettlementUpdates(tx, {
             actionId: action.id,
@@ -688,12 +757,39 @@ export async function settlePayment(
             // of its previous status writes a date, so a concurrent or repeat
             // settlement can never overwrite the original arrival time with a
             // later one.
+            // The status is DERIVED from the money, not asserted. A settlement
+            // that does not close the balance leaves the invoice
+            // PARTIALLY_PAID; only one that reaches the full amount marks it
+            // PAID. Previously any settlement flipped it to PAID regardless of
+            // amount, so a ₹6L receipt against a ₹10L invoice removed the
+            // remaining ₹4L from the forecast entirely.
+            //
+            // `paidAmount` is incremented rather than assigned, so successive
+            // part payments accumulate instead of overwriting each other. It
+            // moves inside the same compare-and-swap that gates `paidAt`, so it
+            // cannot drift from the credit applied to the ledger.
+            // Resolved BEFORE the status write: the status is a consequence of
+            // the amount, so it cannot be decided before the amount is known.
+            const finalSettleAmount = resolveSettlementAmount(
+              actualAmount,
+              freshInvoice.amount,
+              { paymentLinkId, businessId, targetKind: "INVOICE", targetId: freshInvoice.id }
+            );
+
+            const nextStatus = statusAfterPayment(freshInvoice, finalSettleAmount);
+
             const invoiceUpdate = await tx.invoice.updateMany({
               where: {
                 id: freshInvoice.id,
                 status: freshInvoice.status,
               },
-              data: { status: "PAID", paidAt },
+              data: {
+                status: nextStatus,
+                paidAmount: { increment: finalSettleAmount },
+                // Write-once: only the settler that closes the invoice records
+                // when it was closed. A part payment has not closed anything.
+                ...(nextStatus === "PAID" ? { paidAt } : {}),
+              },
             });
 
             if (invoiceUpdate && invoiceUpdate.count === 0) {
@@ -730,18 +826,24 @@ export async function settlePayment(
               });
             }
 
-            const finalSettleAmount = resolveSettlementAmount(
-              actualAmount,
-              freshInvoice.amount,
-              { paymentLinkId, businessId, targetKind: "INVOICE", targetId: freshInvoice.id }
-            );
-
             // Increment cash of the exact same business derived from the database model
             await tx.business.update({
               where: { id: freshInvoice.businessId },
               data: {
                 currentCash: { increment: finalSettleAmount },
               },
+            });
+
+            await emitSettlementEvent(tx, {
+              eventType: "INVOICE_PAID",
+              businessId: freshInvoice.businessId,
+              paymentLinkId,
+              targetKind: "INVOICE",
+              targetId: freshInvoice.id,
+              expectedAmount: freshInvoice.amount,
+              settledAmount: finalSettleAmount,
+              occurredAt: paidAt,
+              trigger,
             });
 
             let allPaid = true;

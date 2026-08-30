@@ -30,6 +30,13 @@ vi.mock("@/lib/prisma", () => {
         findUnique: vi.fn(),
         update: vi.fn(),
       },
+      financialEvent: {
+        create: vi.fn(async (args: any) => ({
+          id: `fe_${Math.random().toString(36).slice(2, 10)}`,
+          ...args.data,
+        })),
+        findUnique: vi.fn(async () => null),
+      },
       $transaction: vi.fn(),
     },
   };
@@ -97,6 +104,11 @@ describe("Payment Status Verification Route", () => {
     let txContext: any;
     vi.mocked(prisma.$transaction).mockImplementationOnce(async (cb) => {
       txContext = {
+        // Settlement appends to the canonical event spine on this same client.
+        financialEvent: {
+          create: vi.fn(async (a: any) => ({ id: "fe_1", ...a.data })),
+          findUnique: vi.fn(async () => null),
+        },
         paymentRecovery: {
           findUnique: vi.fn().mockResolvedValue(mockRecovery as any),
           updateMany: vi.fn().mockResolvedValue({ count: 1 }),

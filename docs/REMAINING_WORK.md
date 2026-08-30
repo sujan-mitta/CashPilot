@@ -28,7 +28,9 @@ Everything I can do without you is done. These are yours, in order of what unblo
 npx prisma migrate status
 ```
 
-Seven additive migrations are written and verified byte-for-byte against Prisma's own generated DDL, and **none has been applied**:
+> **Superseded 2026-08-30.** All seven are applied — see A-1. The table below is retained as the record of what they added.
+
+Seven additive migrations, verified byte-for-byte against Prisma's own generated DDL:
 
 | Migration | Adds |
 |---|---|
@@ -77,7 +79,14 @@ See **C-14**. The config-version trap that used to sit here is now handled autom
 
 ## A. Blocked — these need you
 
-### A-1 🔴 Seven migrations have never been applied
+### A-1 ✅ **CLOSED 2026-08-30** — the seven migrations are applied
+
+`npx prisma migrate status` against the configured database reports **12
+migrations found, "Database schema is up to date!"**, on Neon
+(`ep-still-base-axwyd206…`). Every item below that was gated on A-1 is
+therefore unblocked. The original text is kept for the record:
+
+> ~~Seven migrations have never been applied~~
 
 Full table in **WHAT NEEDS YOU §1**. Nothing that reads the new tables can do anything until these run.
 
@@ -117,7 +126,7 @@ Phases 1–6, 8, 9 and 10 added no observable production behaviour. P7 and P11 t
 
 Phases 1–11 were built additively — libraries with full test coverage and no callers — then wired deliberately. These are the connections that still do not exist.
 
-### B-1 🟡 Nothing writes `FinancialEvent` (Phase 1)
+### B-1 ✅ **CLOSED 2026-08-30** — settlement writes `FinancialEvent`
 
 The append-only spine is idempotent and tested, but no source produces events into it. **Owned by:** the connector phases (P17).
 
@@ -125,17 +134,17 @@ The append-only spine is idempotent and tested, but no source produces events in
 
 `Invoice.customerName` / `Payout.vendor` remain authoritative for display and every engine path. The link is written by `brain:sync` and read only by payment behaviour.
 
-### B-6 ◑ No automatic trigger for state materialisation or reconciliation
+### B-6 CLOSED 2026-08-30 - the daily cron syncs before it assesses
 
 `npm run brain:sync` runs both. What does not exist is any **cron, post-write hook or scheduled job** — state advances only when someone runs the script.
 
 Deliberate for a first release, and the reason **B-8** stays open.
 
-### B-7 🟡 Nothing reads `FinancialState` for forecasting (Phase 6)
+### B-7 SUPERSEDED 2026-08-30 - not implementable as written, see section J
 
 `buildForecast` still reads canonical rows directly. The freshness gate reads state, but only for decisions recording a version — which is none (B-8).
 
-### B-8 🟡 Nothing writes `Decision.financialStateVersion` (Phase 7)
+### B-8 ✅ **CLOSED 2026-08-30** — decisions record the state version
 
 Deliberate ordering, not an oversight: arming a gate against states that nothing keeps current (B-6) would block real work. P11 populates its own two columns because neither depends on a background job; this one does.
 
@@ -207,11 +216,11 @@ Covered by unit tests, typechecks, lints, and exercised by the build's prerender
 
 No GSTIN, PAN, email domain or bank-account identifiers — any of which would permit *safe* non-exact matching. Today "ABC Ltd" and "ABC Industries Pvt Ltd" stay separate with a merge suggestion until a human confirms. Right with only names to go on, but it will produce duplicates on real data.
 
-### C-3 🟢 Merge has no API route and no UI
+### C-3 ◑ **API CLOSED 2026-08-30** — merge is reachable; the UI is not built
 
 `mergeCounterparties` is implemented, guarded (no self-merge, double-merge, cross-type or cross-tenant) and tested, but no user can reach it. `brain:sync` prints the suggestions; nothing acts on them. The §34 suggestion→confirmation loop needs an endpoint and a screen.
 
-### C-4 🟡 Merge is not automatically transactional
+### C-4 ✅ **CLOSED 2026-08-30** — the merge route opens the transaction
 
 `mergeCounterparties` accepts a `$transaction` client and its statement order is chosen so a crash part-way still converges, but it does not open a transaction itself. Once C-3 adds a route, that route must wrap it.
 
@@ -223,15 +232,15 @@ Only the first raw spelling producing a given key is retained. Fine for the look
 
 By design: resolution reads the entity set it is also writing. Bounded by counterparty count, not row count, but a very large first backfill will be slow.
 
-### C-7 🟡 `partially_paid` is unmodelled
+### C-7 ✅ **CLOSED 2026-08-30** — `PARTIALLY_PAID` modelled
 
 Falls through to `PENDING` — conservative, but not distinctly represented and never observed live.
 
-### C-8 🟡 No backoff on provider HTTP 429
+### C-8 ✅ **CLOSED 2026-08-30** — bounded backoff on indeterminate reads
 
 Rate limiting is real (a probe hit it during Phase 17). A throttled reconciliation scan yields `UNKNOWN`, which is safe — it never invents a success — but the scan simply degrades.
 
-### C-9 🟡 The provider list-lag bound is a margin, not a measurement
+### C-9 ◑ **Configurable 2026-08-30** — still a margin, no longer hard-coded
 
 6 seconds observed once; 60 seconds chosen as margin. The true upper bound is unknown. Cost: a legitimate `NOT_FOUND` is delayed by up to a minute — deliberate, since a slow correct answer beats a fast wrong one.
 
@@ -351,7 +360,7 @@ Rate limiting is real (a probe hit it during Phase 17). A throttled reconciliati
 
 **Fix:** Added `console.error` logging inside the catch block.
 
-#### F-1n 🟡 Reject reason state discarded
+#### F-1n CLOSED 2026-08-30 - and it was worse than this title
 **File:** `src/app/approval/page.tsx` L81, L186–193
 
 `rejectReason` is captured via textarea but `confirmReject()` never submits it. The user's typed reason is silently lost.
@@ -517,3 +526,287 @@ Any change must keep this green.
 | `npm run build` | OK — 24 routes + middleware |
 
 The 5 skipped are **A-5**.
+
+
+---
+
+## H. Post-audit remediation — 2026-08-30
+
+A fresh audit of everything committed after `15e91ef`, against the code rather
+than against this document. Branch `sujan`.
+
+### The document was wrong about its own master blocker
+
+**A-1 was closed and nobody updated it.** All 12 migrations are applied, against
+a Neon database — `.env` points at production, not the local dev server this
+file assumed. Everything gated on A-1 was therefore not actually blocked.
+
+### Two defects found in post-`15e91ef` code
+
+#### H-1 ✅ Liquidity buffer understated by 40% — `liquiditySafety.ts`
+
+`Math.max(sumTransactions, sumPayouts)`, added as F-1i's fix and commented as
+"a conservative deduplication heuristic". It is not conservative. It is correct
+only when one set contains the other; when a scheduled payout and an unrelated
+pending charge are **disjoint** — the ordinary case — it discards the smaller
+set entirely.
+
+Direction is what makes it serious: understating projected outflow understates
+the run-rate, understates the required buffer, and makes a business look safer
+than it is. F-1i's original double-counting bug erred the *safe* way. Measured
+on the new fixtures: **6,428,571 where the deduplicated sum gives 10,714,286**.
+
+Now reuses `extractObligations`, which already deduplicates by source id and by
+(amount, due-date) proximity, and sums the survivors.
+**Tests:** `src/lib/engine/__tests__/projectedOutflowDedup.test.ts` (5).
+
+This also exposed a second confusion the heuristic was hiding: a test mocked
+`transaction.findMany` with a blanket value, so the **settled** history row was
+answering the **pending** projected query and past spend was counted as future
+outflow.
+
+#### H-2 ✅ Notification dispatch failed OPEN on database errors — `alertStore.ts`
+
+Both gates between "a crisis exists" and "an email is sent" caught database
+errors and fell back to a per-process in-memory store. On serverless every
+concurrent invocation is a different process with an empty one, so a transient
+fault made the dedup lookup report "never emailed about this crisis" and the
+claim report an exclusive claim. N workers → N duplicate emails, precisely when
+the database is unhealthy and retries are likeliest.
+
+Verified before the fix: the claim returned `true` on a thrown query;
+`[true, false, false]` across three concurrent callers in one process.
+
+Both now fail closed. A suppressed alert is recovered on the next scheduled
+evaluation; a duplicate email cannot be recalled. The per-recipient loop gained
+a guard, without which one unhealthy lookup would have ended the scheduled pass
+for every business.
+**Tests:** `src/lib/notifications/__tests__/dispatchFailsClosed.test.ts` (5).
+
+### Closed in this pass
+
+| # | Item | How | Tests |
+|---|---|---|---|
+| **A-1** | Migrations applied | Verified against Neon | `prisma migrate status` |
+| **B-1** | `FinancialEvent` has a writer | Settlement appends `INVOICE_PAID` / `PAYMENT_RECEIVED` on the same transaction client as the ledger movement; identity is `paymentLinkId:targetKind:targetId` | `settlementEvents.test.ts` (8) |
+| **B-8** | `Decision.financialStateVersion` populated | Read outside the transaction; null until a state exists, which the gate reads as NOT_TRACKED | `decisionStateVersion.test.ts` (5) |
+| **C-8** | Provider 429 backoff | Exponential + full jitter, 3 attempts, **reads only** | `retry.test.ts` (14) |
+
+`B-1` also records `settlementTrigger` and `timestampMeaning`
+(`PROVIDER_REPORTED` vs `OBSERVED`) on each event, which puts **C-13** into the
+data instead of leaving it in a comment.
+
+### Regression floor after this pass
+
+| Check | Result |
+|---|---|
+| `npm run typecheck` | clean |
+| `npm run lint` | 0 errors |
+| `npm test` | 99 files, **1381 passed**, 5 skipped |
+| `npm run build` | passing |
+
+### Still open, unchanged
+
+**B-6** (no automatic trigger for sync/materialisation), **B-7** (forecast still
+reads canonical rows, not `FinancialState`), **C-3** (merge has no API or UI),
+**C-7** (`partially_paid` unmodelled), **C-9** (list-lag margin still hard-coded),
+**B-12** (conflicts, evidence trails, "why?" drill-down unsurfaced).
+
+**Human-only, unchanged:** A-2 (real test-mode payment), A-3 (real webhook
+delivery), A-4 (`RAZORPAY_WEBHOOK_SECRET`), A-5 (live provider-contract tier).
+Production GO remains **NO-GO** on A-2/A-3.
+
+**Minor, not fixed:** the cron secret is compared with `===` rather than a
+timing-safe comparison. Network jitter dominates any timing signal over HTTP, so
+this is defence-in-depth rather than a live vulnerability — but the webhook HMAC
+path already uses `timingSafeEqual` and this should match it.
+
+
+---
+
+## I. Second remediation pass — 2026-08-30
+
+Everything in this pass was doable without the operator. Branch `sujan`.
+
+| # | Item | What landed | Tests |
+|---|---|---|---|
+| **C-7** | Partially paid invoices | `Invoice.paidAmount` + `PARTIALLY_PAID`; outstanding = `amount - paidAmount` clamped at zero; settlement derives status from the money and increments rather than assigns | 25 |
+| **C-3** | Merge API | `GET/POST /api/counterparties/merge` — suggestions derived on demand, merges only a human names explicitly | 15 |
+| **C-4** | Merge atomicity | The route wraps `mergeCounterparties` in `$transaction` | ↑ |
+| **C-9** | List-lag bound | `PROVIDER_NOT_FOUND_COOLING_MS` lifted out of an inline literal into `FINANCIAL_CONFIG` with its reasoning | — |
+| — | Cron secret | Constant-time comparison, matching the webhook HMAC and password paths | 9 |
+
+### Why C-7 mattered more than "unmodelled" suggested
+
+A part payment did not merely collapse into PENDING. Settlement flipped the
+invoice to **PAID regardless of amount**, so a ₹6L receipt against a ₹10L
+invoice *erased the remaining ₹4L receivable from the forecast entirely* —
+having also overstated expected inflow before it arrived. Both errors, in
+opposite directions, from the same missing concept.
+
+`paidAt` is now stamped only when the invoice actually closes. A part payment
+has not settled it, and a date there would tell the behaviour model the customer
+paid in full that day.
+
+### C-3 is API-only
+
+The endpoint exists, is authorised, tenant-scoped, transactional and tested.
+**No UI is built.** A reviewer can call it; they cannot click it. The screen
+described in spec §6 is still outstanding.
+
+### Regression floor
+
+| Check | Result |
+|---|---|
+| `npm run typecheck` | clean |
+| `npm run lint` | 0 errors |
+| `npm test` | 102 files, **1430 passed**, 5 skipped |
+| `npm run build` | passing, `/api/counterparties/merge` registered |
+
+### ⚠️ Operator action required before deploying this branch
+
+One **additive** migration is written and deliberately **not applied** —
+applying migrations to a database holding real financial data is yours:
+
+```bash
+npx prisma migrate status    # expect: 1 pending, phase17_partial_invoice_payment
+npx prisma migrate deploy
+```
+
+It appends one enum member and adds one column with a default. No existing
+column is altered, dropped or backfilled, and no invoice changes status.
+
+**The application will fail against the database until this is applied**, because
+the generated client selects `Invoice.paidAmount`.
+
+### Still open and unblocked
+
+**B-6** (no automatic sync trigger), **B-7** (forecast reads canonical rows, not
+`FinancialState`), **B-12** (conflicts, evidence trails, "why?" drill-down),
+**C-3's UI**, **F-1n** (reject reason reaches the API but the approval screen
+never sends it).
+
+B-7 is the largest remaining item and the riskiest single change in the spec —
+it alters what every forecast reads — so it wants its own pass with parity tests
+against the current pipeline before anything is switched over.
+
+
+---
+
+## J. Third remediation pass — 2026-08-30
+
+Everything doable without the operator. Branch `sujan`.
+
+| # | Item | Status | Tests |
+|---|---|---|---|
+| **F-1n** | Rejection reaches the server | ✅ CLOSED | 6 |
+| **C-3 UI** | Duplicate review screen | ✅ CLOSED | build-prerendered |
+| **B-6** | Automatic brain sync | ✅ CLOSED | 7 |
+| **B-7** | Forecast ↔ state boundary | ⛔ superseded, see below | 11 |
+
+### F-1n was misfiled as an audit gap
+
+The title said "reject reason state discarded". In fact `confirmReject` issued
+**no request at all** — a toast reading "Plan declined", then a redirect.
+Server-side nothing happened: the decision stayed `PRESENTED`, its actions
+stayed `PENDING`, and the plan remained **approvable and executable** by the
+next screen that loaded it.
+
+The lost reason was the minor half. The major half was a plan the operator
+believed they had killed, still sitting there ready to move money. It now calls
+the route — which had always done the real work — and stays on the panel if the
+call fails, because redirecting after a failed decline would leave the operator
+believing they had declined something they had not.
+
+### B-7 cannot be implemented as written, and should not be
+
+> *"forecasting still reads canonical records directly… introduce the correct
+> state-consumption boundary"*
+
+`FinancialState` is **aggregate-only**: cash position, receivables, payables,
+inflow/outflow totals, a commitment count. `buildForecast` builds a day-by-day
+runway, which needs each invoice's due date and each payout's scheduled date —
+per-record detail the state does not carry and was never designed to.
+
+Making it carry that detail would turn it into a second copy of the ledger,
+which the spec explicitly forbids: *"Do not make `FinancialState` a second
+conflicting source of truth."* The canonical rows **are** the truth; a
+materialised aggregate cannot outrank them. C-10 already noted the same
+structural limit from the other side — the state is aggregate-level and cannot
+see one ₹5L invoice substituted for another.
+
+**What was built instead** (`src/lib/state/forecastConsistency.ts`): the
+forecast keeps reading canonical rows, and the state gets a *vote* on whether to
+trust the result. Two independent paths compute overlapping totals; when they
+disagree, something is wrong that neither can see alone — a stale sync, an
+unreconciled conflict, or a record that changed between the two computations.
+
+The verdict is `AGREES` / `DIVERGED` / `NOT_COMPARABLE`. Divergence is **named,
+never resolved**: one side may be stale, and silently preferring either would be
+inventing an answer (§7). Absent state is `NOT_COMPARABLE`, not a disagreement —
+otherwise every tenant that has never synced would cry wolf.
+
+**B-7b done (same pass):** `/api/forecast` now returns a `consistency` block on
+every successful response. The state is read AFTER the forecast, so a slow state
+query cannot delay the figure the operator came for, and a failure to read it
+degrades the CHECK to `NOT_COMPARABLE` — never the forecast, and never a false
+`AGREES`. A test asserts exactly that, because swallowing the error and claiming
+agreement is the one failure this whole mechanism exists to prevent.
+
+### Regression floor
+
+| Check | Result |
+|---|---|
+| `npm run typecheck` | clean |
+| `npm run lint` | 0 errors |
+| `npm test` | 106 files, **1460 passed**, 5 skipped |
+| `npm run build` | passing |
+
+---
+
+## K. What is left — the complete list
+
+The honest state of everything not closed, so nothing is silently assumed done.
+
+### Left, and I can do it
+
+| # | Item | Size |
+|---|---|---|
+| **B-12a** | Cross-source conflict centre (§7) — the reconciler finds conflicts; no screen shows them | medium |
+| **B-12b** | Evidence trail UI (§24) — "why does CashPilot believe this number?" | medium |
+| **B-12c** | "Why this decision?" drill-down (§23) | medium |
+| **B-12d** | Decision freshness/expiry surfaced *before* it refuses (§25, C-16) | small |
+| **P14** | Per-decision outcome measurement completion (§26) | medium |
+| **§30–32** | `FinancialSourceAdapter` abstraction; bank and ERP connectors | large |
+| **§28** | Deterministic calibration framework | large |
+
+### Left, and it is yours
+
+| # | Item | Why |
+|---|---|---|
+| **MIGRATION** | `npx prisma migrate deploy` — one pending, `phase17_partial_invoice_payment` | Applying migrations to a database holding real financial data is your call. **The app fails against the database until this runs**, because the client now selects `Invoice.paidAmount`. |
+| **A-2** | One real Razorpay test-mode payment | Needs a human to complete a payment |
+| **A-3** | One real webhook delivery | Needs a reachable URL and a real provider event |
+| **A-4** | `RAZORPAY_WEBHOOK_SECRET` | It is a secret; I must not handle it |
+| **A-5** | `npm run test:live` | Needs test-mode credentials in `.env` |
+| **C-15** | Look at the authenticated screens with real data | Behind a login I do not enter |
+
+### Partially done — do not read these as closed
+
+| # | Item | Done | Not done |
+|---|---|---|---|
+| **C-3** | Merge review | API + screen, tested | Never seen rendered with real data (behind auth) |
+| **C-9** | List-lag bound | Configurable, reasoned | Still a margin, not a measurement — no observed-latency collection |
+| **B-7** | State boundary | Checker built, wired, verdict on every forecast response | No UI renders the verdict yet |
+| **C-1** | Predictive confidence | Formula complete | Still capped until settled history accumulates |
+| **C-12** | Model constants | Reasoned, documented | None fitted to real data — there is none yet |
+| **C-14** | `FORECAST_EVENT_PIPELINE` | Preconditions 1, 2 and 4 now hold | Still `false`; needs 5+ settled payments per customer (3) and a manual-skew review (5) |
+
+### Deliberately not done
+
+**C-2** (identity beyond names — GSTIN, PAN, bank identifier) needs a decision
+about collecting those identifiers at all; §5 says not to store sensitive
+identifiers unnecessarily. **C-5**, **C-6** and **C-13** remain accurate as
+written.
+
+Production GO remains **NO-GO** on A-2 and A-3.

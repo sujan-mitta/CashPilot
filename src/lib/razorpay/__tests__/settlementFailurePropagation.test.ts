@@ -47,9 +47,20 @@ vi.mock("@/lib/prisma", () => ({
     business: { findUnique: vi.fn(async () => ({ id: "biz-1", currentCash: 0 })), update: vi.fn() },
     decision: { findFirst: vi.fn(async () => null) },
     decisionEvent: { create: vi.fn() },
+    financialEvent: {
+      create: vi.fn(async (args: any) => ({
+        id: `fe_${Math.random().toString(36).slice(2, 10)}`,
+        ...args.data,
+      })),
+      findUnique: vi.fn(async () => null),
+    },
     $transaction: vi.fn(async (cb: any) => {
       if (world.transactionShouldThrow) throw world.transactionShouldThrow;
       return cb({
+        financialEvent: {
+          create: vi.fn(async (a: any) => ({ id: "fe_1", ...a.data })),
+          findUnique: vi.fn(async () => null),
+        },
         invoice: {
           findFirst: vi.fn(async () => world.invoice),
           updateMany: vi.fn(async () => ({ count: world.invoiceUpdateCount })),
