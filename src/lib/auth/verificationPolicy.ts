@@ -22,3 +22,37 @@ import { resolveMailerProvider } from "@/lib/notifications/mailer";
 export function verificationCanBeRequired(): boolean {
   return resolveMailerProvider() !== "LOCAL_SANDBOX";
 }
+
+/**
+ * The moment verification became a requirement.
+ *
+ * Accounts created before it cannot be held to it. They were made when signup
+ * asked for no code, many sit on addresses that were never deliverable, and
+ * barring them from signing in would lock real people out of real ledgers over
+ * a rule that did not exist when they registered — with no way back in, because
+ * the only route is a code to the address that does not work.
+ *
+ * Deliberately a cutoff rather than a backfill. Stamping `emailVerified` on
+ * those accounts would have been simpler and is exactly wrong: it would assert
+ * a round trip that never happened, and the alert dispatcher would start mailing
+ * them again — which is the bounce this whole feature exists to stop.
+ *
+ * So the two questions are separated. An older account may SIGN IN unverified;
+ * it still receives no mail until someone proves the address. New accounts get
+ * neither, which is what keeps the signup step from being bypassable by
+ * registering and then logging in instead.
+ */
+export const VERIFICATION_REQUIRED_FROM = new Date("2026-08-30T12:00:00.000Z");
+
+export interface AccountForLogin {
+  createdAt: Date;
+  emailVerified: Date | null;
+}
+
+/** Whether this account must verify before it is given a session. */
+export function loginRequiresVerification(user: AccountForLogin): boolean {
+  if (user.emailVerified) return false;
+  // No mailer means no code can arrive; see above.
+  if (!verificationCanBeRequired()) return false;
+  return user.createdAt.getTime() >= VERIFICATION_REQUIRED_FROM.getTime();
+}
