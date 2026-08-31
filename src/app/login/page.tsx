@@ -428,7 +428,14 @@ function LoginForm() {
               <Button type="submit" variant="primary" size="lg" loading={isLoading} className="mt-1 w-full">
                 {!isLoading && (
                   <>
-                    {mode === "SIGN_IN" ? "Access dashboard" : "Register & seed demo"}
+                    {/* Was "Register & seed demo", which promised something signup
+                        has never done: it creates a business with an opening cash
+                        balance and nothing else — no transactions, invoices or
+                        payouts. The demo scenario is a separate, explicit choice
+                        from the dashboard's empty state. Signup now also ends at a
+                        verification code rather than a dashboard, so the old label
+                        was wrong about both halves of what it claimed. */}
+                    {mode === "SIGN_IN" ? "Access dashboard" : "Create account"}
                     <ArrowRight className="w-4 h-4" />
                   </>
                 )}
