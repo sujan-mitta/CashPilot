@@ -8,6 +8,8 @@ import { PilotIcon } from "@/components/PilotIcon";
 import { Button } from "@/components/ui/Button";
 import { EASE_GLIDE, DUR } from "@/components/ui/motion";
 import { errorMessage } from "@/lib/errors";
+import { useCashPilot } from "@/context/CashPilotContext";
+import { rememberChosenStart } from "@/lib/onboardingChoice";
 import clsx from "clsx";
 
 /**
@@ -41,6 +43,7 @@ interface RazorpayStatus {
 
 export default function Onboarding() {
   const router = useRouter();
+  const { user } = useCashPilot();
   const [choice, setChoice] = useState<Choice | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -85,6 +88,7 @@ export default function Onboarding() {
         setBusy(false);
         return;
       }
+      rememberChosenStart(user?.businessId);
       router.push("/dashboard");
     } catch (err) {
       setError(errorMessage(err, "Could not reach the server."));
@@ -94,8 +98,12 @@ export default function Onboarding() {
 
   const continueWithRazorpay = () => {
     setBusy(true);
-    // Nothing is written. The ledger stays empty on purpose: this path exists
-    // so the first numbers on the dashboard are the user's own.
+    // Nothing is written to the ledger — it stays empty on purpose, so the
+    // first numbers on the dashboard are the user's own. The choice itself is
+    // remembered, though: this is the one branch that leaves no trace in the
+    // data, and without a marker the dashboard would send them straight back
+    // here on every visit.
+    rememberChosenStart(user?.businessId);
     router.push("/dashboard");
   };
 

@@ -23,6 +23,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import clsx from "clsx";
+import { hasChosenStart } from "@/lib/onboardingChoice";
 import { errorMessage } from "@/lib/errors";
 import { useToast } from "@/components/ui/Toast";
 
@@ -58,7 +59,7 @@ function confidenceTone(level: "HIGH" | "MEDIUM" | "LOW" | "UNKNOWN"): string {
 export default function Dashboard() {
   const router = useRouter();
   const { toast } = useToast();
-  const { cachedForecast, setCachedForecast, setCachedInvestigation, logout } = useCashPilot();
+  const { user, cachedForecast, setCachedForecast, setCachedInvestigation, logout } = useCashPilot();
   const chartRef = useRef<HTMLDivElement>(null);
 
   const [error, setError] = useState<string | null>(null);
@@ -245,6 +246,20 @@ export default function Dashboard() {
       setLoadingDemo(false);
     }
   };
+
+  // An empty ledger that has never chosen a starting point belongs at the fork,
+  // not at a bare "load the sample data" card.
+  //
+  // This sits on the dashboard rather than in the sign-in handler because the
+  // dashboard is the one choke point every route into the app passes through —
+  // signup, sign-in, Google's callback, and a bookmark all arrive here. Wiring
+  // it into the auth handlers alone is what let the fork be skipped entirely
+  // when a deployment with no mailer signed a new account straight in.
+  useEffect(() => {
+    if (cachedForecast?.status !== "NO_DATA") return;
+    if (hasChosenStart(user?.businessId)) return;
+    router.replace("/onboarding");
+  }, [cachedForecast?.status, user?.businessId, router]);
 
   if (pageState === "LOADING") {
     return (
