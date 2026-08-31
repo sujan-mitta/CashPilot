@@ -50,7 +50,11 @@ export function resolveMailerProvider(): "SMTP" | "RESEND" | "LOCAL_SANDBOX" {
   // state the rest of the system understands: verificationCanBeRequired() sees
   // it, stands the sign-in gate down, and nobody is stranded behind a code that
   // cannot be sent.
-  if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASSWORD) {
+  if (
+    process.env.SMTP_HOST?.trim() &&
+    process.env.SMTP_USER?.trim() &&
+    process.env.SMTP_PASSWORD?.trim()
+  ) {
     return "SMTP";
   }
   return "LOCAL_SANDBOX";
@@ -134,8 +138,14 @@ export async function sendNotificationEmail(options: SendMailOptions): Promise<M
         socketTimeout: 15000,
         greetingTimeout: 10000,
         auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASSWORD,
+          user: process.env.SMTP_USER?.trim(),
+          // Trimmed because this value is normally pasted into a deployment
+          // provider's web field, where a trailing space survives invisibly and
+          // fails authentication with an error that says nothing about
+          // whitespace. Only the ends: a password may legitimately contain
+          // spaces, and a Gmail app password is displayed in four groups that
+          // people paste as-is.
+          pass: process.env.SMTP_PASSWORD?.trim(),
         },
       });
 

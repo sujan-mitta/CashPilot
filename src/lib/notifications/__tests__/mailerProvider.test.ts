@@ -79,3 +79,21 @@ describe("Provider precedence", () => {
     expect(resolveMailerProvider()).toBe("LOCAL_SANDBOX");
   });
 });
+
+describe("Whitespace is not a credential", () => {
+  it("treats a whitespace-only password as absent", () => {
+    // These values are pasted into a deployment provider's web field, where a
+    // stray space survives invisibly.
+    process.env.SMTP_HOST = "smtp.gmail.com";
+    process.env.SMTP_USER = "someone@example.com";
+    process.env.SMTP_PASSWORD = "   ";
+    expect(resolveMailerProvider()).toBe("LOCAL_SANDBOX");
+  });
+
+  it("still selects SMTP when a real value merely has padding", () => {
+    process.env.SMTP_HOST = " smtp.gmail.com ";
+    process.env.SMTP_USER = " someone@example.com ";
+    process.env.SMTP_PASSWORD = " app-password ";
+    expect(resolveMailerProvider()).toBe("SMTP");
+  });
+});
