@@ -816,6 +816,36 @@ export default function Dashboard() {
             </Button>
           )}
         </StaggerItem>
+
+        {/* WHERE TO GO NEXT
+            The stepper across the top says "Step 1 of 5", but the only way
+            onward was a button inside the alert card near the TOP of the page.
+            Anyone who read down through the chart and the day-by-day table
+            arrived at the bottom with nothing to act on and no indication that
+            four more steps existed. This closes the page with the same action,
+            where reading actually ends. */}
+        <StaggerItem>
+          <div className="rounded-lg border border-line-soft bg-ground-100 p-5 flex flex-wrap items-center justify-between gap-4">
+            <div className="min-w-0">
+              <p className="label">Step 2 of 5</p>
+              <h3 className="text-[15px] font-semibold text-ink-100 mt-1">
+                {minProjected < 0 ? "Find the cause" : "Nothing to investigate yet"}
+              </h3>
+              <p className="text-ink-400 text-[12.5px] mt-1 leading-relaxed max-w-xl">
+                {minProjected < 0
+                  ? "CashPilot traces the shortfall back to the specific invoices and payouts that cause it, then compares ways to close the gap."
+                  : "Your balance stays above zero across this window, so there is no shortfall to trace. This step opens when one appears."}
+              </p>
+            </div>
+
+            {minProjected < 0 && (
+              <Button variant="primary" size="lg" onClick={runDiagnostics} className="shrink-0">
+                Find the cause
+                <ArrowRight className="w-4 h-4" />
+              </Button>
+            )}
+          </div>
+        </StaggerItem>
       </Stagger>
     </main>
   );
