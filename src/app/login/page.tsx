@@ -82,10 +82,12 @@ function LoginForm() {
 
   // Where to land once a session exists.
   //
-  // A freshly verified account goes to the onboarding fork instead of straight
-  // to the dashboard, because the choice it offers — seeded sample data, or an
-  // empty ledger wired to Razorpay — has to be made BEFORE anything is written.
-  // Everyone else (an ordinary sign-in) goes where they always did.
+  // A NEW account goes to the onboarding fork instead of straight to the
+  // dashboard, because the choice it offers — seeded sample data, or an empty
+  // ledger wired to Razorpay — has to be made before anything is written. Both
+  // routes into a new account set this: finishing verification, and signup
+  // issuing a session directly when no mailer is configured. An ordinary
+  // sign-in goes where it always did.
   const [postAuthTarget, setPostAuthTarget] = useState("/dashboard");
 
   // Redirect if already authenticated.
@@ -147,6 +149,19 @@ function LoginForm() {
         setError(data.error || "Authentication failed.");
         setIsLoading(false);
         return;
+      }
+
+      // A brand-new account goes to the onboarding fork, whether or not it had
+      // to verify first.
+      //
+      // This was originally hung off the verification path alone, which meant a
+      // deployment with no mail provider — where signup issues the session
+      // directly rather than stranding the user behind a code that cannot be
+      // sent — skipped the fork entirely and dropped a new account on an empty
+      // dashboard. The choice belongs to account CREATION; verification is just
+      // one route through it.
+      if (mode === "SIGN_UP") {
+        setPostAuthTarget("/onboarding");
       }
 
       // The redirect is driven solely by the `user` effect above. Pushing here

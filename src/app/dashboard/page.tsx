@@ -297,6 +297,19 @@ export default function Dashboard() {
             >
               {loadingDemo ? "Loading sample data…" : "Load the sample data"}
             </Button>
+
+            {/* The same fork onboarding offers, kept reachable from here.
+                Sample data is not the only way to start — the other is an empty
+                ledger wired to Razorpay — and someone who arrives at this screen
+                without passing through onboarding would otherwise never learn
+                the second option existed. */}
+            <button
+              type="button"
+              onClick={() => router.push("/onboarding")}
+              className="mt-3.5 text-[12px] text-ink-400 hover:text-ink-200 transition-colors focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 focus-visible:ring-offset-ground-050 rounded"
+            >
+              Or connect Razorpay and use your own figures
+            </button>
           </Card>
         </Reveal>
       </main>
