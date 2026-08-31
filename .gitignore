@@ -51,3 +51,7 @@ migration-snapshots/
 
 # Local persistent state for notifications & runtime cache
 .cashpilot_data/
+
+# Account backups from scripts/purgeTestAccounts.ts — contain password hashes.
+account-backup-*.json
+cashpilot-account-backup-*.json
