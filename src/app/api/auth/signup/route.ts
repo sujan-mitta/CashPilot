@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { cookies } from "next/headers";
+import { signSession } from "@/lib/auth";
 import { hashPassword } from "@/lib/auth/password";
 import { issueVerificationCode } from "@/lib/auth/issueVerificationCode";
+import { verificationCanBeRequired } from "@/lib/auth/verificationPolicy";
 import { rateLimit, clientKey } from "@/lib/auth/rateLimit";
 import { logger } from "@/lib/observability";
 import { parseJsonBody } from "@/lib/errors";
@@ -107,6 +110,34 @@ export async function POST(req: Request) {
       });
       return { user, business };
     });
+
+    const sessionPayload = {
+      userId: user.id,
+      name: user.name,
+      email: user.email,
+      businessId: business.id,
+      businessName: business.name,
+    };
+
+    // With no mail provider configured a code can never arrive, so demanding
+    // one would leave the account created and unreachable — no session, and no
+    // way to get one. Such a deployment sends no alerts either, so there is no
+    // bounce to protect against and nothing is lost by signing them straight in.
+    if (!verificationCanBeRequired()) {
+      const cookieStore = await cookies();
+      cookieStore.set("cashpilot_session", signSession(sessionPayload), {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        maxAge: 604800,
+        path: "/",
+      });
+      logger.info("Account created without email verification (no mailer configured)", {
+        userId: user.id,
+        businessId: business.id,
+      });
+      return NextResponse.json({ success: true, user: sessionPayload });
+    }
 
     // No session yet. The account exists, but nobody has shown they can read
     // the address on it, and an address that only LOOKS valid is how the alert

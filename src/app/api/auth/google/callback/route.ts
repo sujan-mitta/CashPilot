@@ -66,6 +66,19 @@ export async function GET(req: Request) {
       return fail(req, "google_no_account");
     }
 
+    // Google already proved this address receives mail — that is exactly what
+    // the refusal above checks, and it is stronger evidence than our own code
+    // round trip. Recording it means a Google user is not left permanently
+    // unverified, with every alert suppressed and no way to fix it: they never
+    // touch the code screen, so nothing else would ever set this.
+    if (!user.emailVerified) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { emailVerified: new Date() },
+      });
+      logger.info("Email verified via Google identity", { userId: user.id });
+    }
+
     const business = user.businesses[0];
     const sessionPayload = {
       userId: user.id,

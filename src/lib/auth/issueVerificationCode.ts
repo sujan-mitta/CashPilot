@@ -71,8 +71,12 @@ export async function issueVerificationCode(
     text: rendered.text,
   });
 
-  const delivered =
-    result.status === "SENT" || result.status === "ACCEPTED" || result.status === "SIMULATED";
+  // SIMULATED is NOT delivery. The sandbox provider returns it when no mail
+  // provider is configured, and counting it as sent would tell the user a code
+  // is on its way when nothing left the process — locking every account out of
+  // sign-in with no way to recover, since the only route back in is a code that
+  // will never arrive.
+  const delivered = result.status === "SENT" || result.status === "ACCEPTED";
 
   if (!delivered) {
     // The code is never logged, at any level. A verification code in an

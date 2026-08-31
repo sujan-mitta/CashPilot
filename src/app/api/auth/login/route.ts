@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { signSession } from "@/lib/auth";
 import { verifyPassword, isPlaceholderHash } from "@/lib/auth/password";
 import { issueVerificationCode } from "@/lib/auth/issueVerificationCode";
+import { verificationCanBeRequired } from "@/lib/auth/verificationPolicy";
 import { rateLimit, clientKey } from "@/lib/auth/rateLimit";
 import { cookies } from "next/headers";
 import { logger } from "@/lib/observability";
@@ -84,7 +85,10 @@ export async function POST(req: Request) {
     // stuck — they land on the verification step with mail already on its way.
     // Accounts that predate verification are unverified too, and take this same
     // one-time detour.
-    if (!user.emailVerified) {
+    // `verificationCanBeRequired` guards this: with no mail provider configured
+    // the code would never arrive, and barring sign-in would lock every account
+    // out with no way back in.
+    if (!user.emailVerified && verificationCanBeRequired()) {
       const issued = await issueVerificationCode({
         id: user.id,
         name: user.name,

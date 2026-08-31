@@ -24,14 +24,18 @@ const read = (p: string) => readFileSync(join(API, p), "utf8");
 
 // Every route that sets the authenticated session cookie.
 //
-// Signup is deliberately NOT here any more: it creates the account but issues
-// no session, because nobody has yet shown they can read the address on it.
-// The session for a new account is set by auth/verify/confirm, once a code
-// mailed to that address is returned. A hand-maintained list like this goes
-// stale silently, so "the list is complete" is asserted below rather than
-// assumed.
+// auth/verify/confirm is where a new account normally gets its session: signup
+// creates the account but withholds one until a code mailed to the address
+// comes back. Signup is still listed because it retains one fallback path that
+// signs the user straight in — when no mail provider is configured, a code can
+// never arrive, and demanding one would lock the account out permanently. That
+// path sets a real session cookie, so it is held to the same rules.
+//
+// A hand-maintained list like this goes stale silently, so "the list is
+// complete" is asserted below rather than assumed.
 const SESSION_COOKIE_ROUTES = [
   "auth/login/route.ts",
+  "auth/signup/route.ts",
   "auth/verify/confirm/route.ts",
   "auth/switch/route.ts",
   "auth/google/callback/route.ts",
