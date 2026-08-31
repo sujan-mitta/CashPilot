@@ -49,11 +49,22 @@ export async function issueVerificationCode(
   const expiresAt = expiryFrom(now);
 
   const record = await prisma.$transaction(async (tx) => {
-    // Retire outstanding codes for this address. Marking them used is enough:
-    // `evaluateCode` refuses a used code outright.
-    await tx.emailVerificationCode.updateMany({
-      where: { userId: user.id, email: user.email, usedAt: null },
-      data: { usedAt: now },
+    // Superseded codes are DELETED, not flagged.
+    //
+    // Marking them used would be enough to make them unusable — `evaluateCode`
+    // refuses a used code outright — but it leaves the hash of a dead secret in
+    // the table forever, and they accumulate one per resend. Nothing reads them
+    // afterwards. The smallest store of live secrets is the right one, and a
+    // row that exists only to be rejected is not worth keeping.
+    //
+    // Expired codes for this address go too: they are already inert, and this
+    // is the natural moment to sweep them.
+    await tx.emailVerificationCode.deleteMany({
+      where: {
+        userId: user.id,
+        email: user.email,
+        OR: [{ usedAt: null }, { expiresAt: { lt: now } }],
+      },
     });
     return tx.emailVerificationCode.create({
       data: { userId: user.id, email: user.email, codeHash: hashCode(code), expiresAt },

@@ -70,6 +70,47 @@ export async function POST(req: Request) {
     // An existing email must sign in, not sign up again. This also stops a
     // second registration silently re-connecting an account elsewhere.
     const existingUser = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+
+    // Except when that account never finished verifying. Signup creates the
+    // account and then waits for a code, so anyone who closed the tab, lost the
+    // email, or let the code expire owns an account they cannot reach: signing
+    // up again said "already exists, please sign in", and signing in asked for
+    // the code they never had. A dead end built out of two correct-looking
+    // refusals.
+    //
+    // Resuming is the fix, NOT deleting the half-made account. Deleting on an
+    // incomplete verification would destroy an account because someone closed a
+    // tab, and would release their email and business name for anyone else to
+    // claim in the meantime.
+    //
+    // Nothing about the account is modified here — not the password, not the
+    // business. This only re-sends a code, and the code goes to the address on
+    // file, so a stranger cannot use it to take anything over: at most they
+    // cause one email to be sent to its rightful owner.
+    if (existingUser && !existingUser.emailVerified && verificationCanBeRequired()) {
+      const resent = await issueVerificationCode({
+        id: existingUser.id,
+        name: existingUser.name,
+        email: existingUser.email,
+      });
+
+      logger.info("Signup resumed for an unverified account", {
+        userId: existingUser.id,
+        codeSent: resent.ok,
+      });
+
+      return NextResponse.json(
+        {
+          requiresVerification: true,
+          email: existingUser.email,
+          error: resent.ok
+            ? "This email is already registered but not yet confirmed. We have sent a new code."
+            : "This email is already registered but not yet confirmed. We could not send a code just now — request a new one.",
+        },
+        { status: 200 }
+      );
+    }
+
     if (existingUser) {
       return NextResponse.json(
         { error: "An account with this email already exists. Please sign in." },

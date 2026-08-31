@@ -16,7 +16,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   findFirst: vi.fn(),
-  updateMany: vi.fn(),
+  deleteMany: vi.fn(),
   create: vi.fn(),
   transaction: vi.fn(),
   sendNotificationEmail: vi.fn(),
@@ -54,7 +54,7 @@ beforeEach(() => {
   mocks.create.mockResolvedValue({ id: "code_1" });
   mocks.transaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
     fn({
-      emailVerificationCode: { updateMany: mocks.updateMany, create: mocks.create },
+      emailVerificationCode: { deleteMany: mocks.deleteMany, create: mocks.create },
     })
   );
   mocks.sendNotificationEmail.mockResolvedValue({ status: "SENT", provider: "SMTP" });
@@ -108,15 +108,25 @@ describe("The code is written before it is sent", () => {
     expect(JSON.stringify(data)).not.toMatch(/\b\d{6}\b/);
   });
 
-  it("retires outstanding codes for the address", async () => {
+  it("removes outstanding codes for the address", async () => {
     // Several live codes multiply the guessing surface for free: press resend
     // five times and five different six-digit codes are each acceptable.
+    //
+    // They are deleted rather than flagged. A flagged code is unusable but its
+    // hash sits in the table forever, one per resend, read by nothing.
     await issueVerificationCode(USER, T0);
 
-    expect(mocks.updateMany).toHaveBeenCalledTimes(1);
-    const arg = mocks.updateMany.mock.calls[0][0];
-    expect(arg.where).toMatchObject({ userId: USER.id, email: USER.email, usedAt: null });
-    expect(arg.data.usedAt).toBeInstanceOf(Date);
+    expect(mocks.deleteMany).toHaveBeenCalledTimes(1);
+    const arg = mocks.deleteMany.mock.calls[0][0];
+    expect(arg.where).toMatchObject({ userId: USER.id, email: USER.email });
+  });
+
+  it("also sweeps expired codes for the address", async () => {
+    await issueVerificationCode(USER, T0);
+
+    const where = mocks.deleteMany.mock.calls[0][0].where;
+    // Already inert, and this is the natural moment to clear them.
+    expect(JSON.stringify(where)).toContain("expiresAt");
   });
 });
 
