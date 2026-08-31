@@ -80,12 +80,20 @@ function LoginForm() {
   const [pendingEmail, setPendingEmail] = useState<string | null>(null);
   const [pendingNotice, setPendingNotice] = useState<string | null>(null);
 
+  // Where to land once a session exists.
+  //
+  // A freshly verified account goes to the onboarding fork instead of straight
+  // to the dashboard, because the choice it offers — seeded sample data, or an
+  // empty ledger wired to Razorpay — has to be made BEFORE anything is written.
+  // Everyone else (an ordinary sign-in) goes where they always did.
+  const [postAuthTarget, setPostAuthTarget] = useState("/dashboard");
+
   // Redirect if already authenticated.
   useEffect(() => {
     if (user) {
-      router.push("/dashboard");
+      router.push(postAuthTarget);
     }
-  }, [user, router]);
+  }, [user, router, postAuthTarget]);
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -237,7 +245,12 @@ function LoginForm() {
             <VerifyStep
               email={pendingEmail}
               notice={pendingNotice}
-              onVerified={login}
+              onVerified={(verified) => {
+                // Set before login() so the redirect effect, which runs after
+                // both state updates are applied, already sees the new target.
+                setPostAuthTarget("/onboarding");
+                login(verified);
+              }}
               onBack={() => {
                 setPendingEmail(null);
                 setPendingNotice(null);

@@ -36,6 +36,7 @@ const SESSION_COOKIE = "cashpilot_session";
 /** Pages that require a session. */
 const PROTECTED_PREFIXES = [
   "/dashboard",
+  "/onboarding",
   "/investigation",
   "/strategies",
   "/approval",

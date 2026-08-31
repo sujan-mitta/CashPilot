@@ -26,7 +26,7 @@ vi.mock("@/lib/prisma", () => ({
   prisma: {
     emailVerificationCode: {
       findFirst: mocks.findFirst,
-      updateMany: mocks.updateMany,
+      deleteMany: mocks.deleteMany,
       create: mocks.create,
     },
     $transaction: mocks.transaction,
