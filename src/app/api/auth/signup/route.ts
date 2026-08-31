@@ -124,8 +124,18 @@ export async function POST(req: Request) {
     // Case-insensitive: "ACME Ltd" and "acme ltd" are the same tenant name, and
     // allowing both to exist is how one operator ends up signing into the other
     // company by accident.
+    //
+    // `users: { some: {} }` matters: a business with NO members is unreachable.
+    // There is no path to join an existing business, so nobody can ever sign in
+    // to it, and it exists only as a tombstone left behind when its last member
+    // was deleted. Letting it reserve a name meant a deleted account blocked its
+    // own business name forever — and the refusal told the user to "ask an
+    // existing member to invite you", of a business that has no members to ask.
     const existingBusiness = await prisma.business.findFirst({
-      where: { name: { equals: businessNameStr, mode: "insensitive" } },
+      where: {
+        name: { equals: businessNameStr, mode: "insensitive" },
+        users: { some: {} },
+      },
     });
     if (existingBusiness) {
       return NextResponse.json(

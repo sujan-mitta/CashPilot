@@ -167,3 +167,35 @@ describe("A finished account is still refused", () => {
     expect(mocks.issueVerificationCode).not.toHaveBeenCalled();
   });
 });
+
+describe("A member-less business does not reserve its name", () => {
+  beforeEach(() => mocks.findUnique.mockResolvedValue(null));
+
+  it("queries only businesses that still have members", () => {
+    // A business with no members is unreachable — there is no path to join an
+    // existing business — so it exists only as a tombstone left behind when its
+    // last member was deleted. Letting it hold the name meant deleting an
+    // account blocked its own business name forever, and the refusal advised
+    // asking "an existing member" of a business that has none.
+    mocks.findFirst.mockResolvedValue(null);
+    mocks.transaction.mockResolvedValue({
+      user: { id: "u", name: "S", email: "new@example.com" },
+      business: { id: "b", name: "Brand New Co" },
+    });
+
+    return post().then(() => {
+      const where = mocks.findFirst.mock.calls[0][0].where;
+      expect(where.users).toEqual({ some: {} });
+    });
+  });
+
+  it("still refuses a name held by a business with members", async () => {
+    mocks.findFirst.mockResolvedValue({ id: "b_existing", name: "Brand New Co" });
+
+    const res = await post();
+    const data = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(data.error).toMatch(/already registered/i);
+  });
+});
