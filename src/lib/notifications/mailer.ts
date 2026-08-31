@@ -38,7 +38,19 @@ export function resolveMailerProvider(): "SMTP" | "RESEND" | "LOCAL_SANDBOX" {
   if (process.env.RESEND_API_KEY) {
     return "RESEND";
   }
-  if (process.env.SMTP_HOST && process.env.SMTP_USER) {
+  // SMTP_PASSWORD is required here because the transport AUTHENTICATES with it.
+  //
+  // Checking only host and user let a half-configured deployment select SMTP
+  // and then fail at authentication on every send — the provider was chosen on
+  // credentials it never verified it had. That failure is invisible in the
+  // right way to be dangerous: the mailer reports FAILED, verification codes
+  // never arrive, and the deployment looks configured.
+  //
+  // Falling through to the sandbox instead is strictly better. The sandbox is a
+  // state the rest of the system understands: verificationCanBeRequired() sees
+  // it, stands the sign-in gate down, and nobody is stranded behind a code that
+  // cannot be sent.
+  if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASSWORD) {
     return "SMTP";
   }
   return "LOCAL_SANDBOX";
