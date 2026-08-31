@@ -83,6 +83,37 @@ export function withActionId(shortUrl: string | null | undefined, actionId: stri
 }
 
 /**
+ * Where to actually send a payer.
+ *
+ * THE BUG THIS CLOSES: `createRecoveryPaymentLink` returns the provider's own
+ * `short_url`, and the executor discarded it — keeping only the link id and
+ * hardcoding `/sandbox/checkout?...`. So with Razorpay live in TEST mode a
+ * genuine, payable link was created at the provider and then nobody was ever
+ * sent to it. The customer landed on our simulation page instead.
+ *
+ * Worse in production specifically: the simulation refuses to run there at all,
+ * because `simulatePaid` is gated on NODE_ENV and a query parameter must never
+ * be able to assert that money arrived. So the payer reached a dead end while a
+ * real obligation to pay sat unpaid at Razorpay. Observed live as
+ * "Checkout Session Failure" on a real plink_ id.
+ *
+ * The provider's URL wins whenever we have one. The sandbox path is the
+ * fallback for the simulated provider, which returns exactly that as its own
+ * short_url anyway.
+ */
+export function checkoutUrlFor(
+  providerShortUrl: string | null | undefined,
+  storedShortUrl: string | null | undefined,
+  linkId: string
+): string {
+  if (providerShortUrl) return providerShortUrl;
+  // A duplicate create (ALREADY_SUCCEEDED) does not re-run the provider call,
+  // so nothing fresh came back; whatever was stored the first time still stands.
+  if (storedShortUrl) return storedShortUrl;
+  return `/sandbox/checkout?paymentLinkId=${linkId}`;
+}
+
+/**
  * RECOVER_FAILED_PAYMENTS - issues one recovery payment link.
  *
  * The PaymentRecovery row is moved to RECOVERY_INITIATED before the external
@@ -183,6 +214,9 @@ export async function executeRecoverFailedPayments(
     data: { status: RecoveryStatus.RECOVERY_INITIATED },
   });
 
+  // Captured from the provider call so the real checkout URL survives; the
+  // outcome object carries only the reference id.
+  let providerShortUrl: string | null = null;
   const outcome = await executeWithDurableIntent(client, {
     businessId: ctx.businessId,
     strategyId: ctx.strategyId,
@@ -205,13 +239,14 @@ export async function executeRecoverFailedPayments(
         recovery.transaction?.description || "Failed payment recovery",
         idempotencyKey
       );
+      providerShortUrl = link.short_url;
       return { externalRef: link.id, externalStatus: link.status };
     },
   });
 
   if (outcome.outcome === "SUCCEEDED" || outcome.outcome === "ALREADY_SUCCEEDED") {
     const linkId = outcome.externalRef as string;
-    const shortUrl = `/sandbox/checkout?paymentLinkId=${linkId}&actionId=${ctx.action.id}`;
+    const shortUrl = withActionId(checkoutUrlFor(providerShortUrl, recovery.shortUrl, linkId), ctx.action.id);
     await client.paymentRecovery.update({
       where: { id: recovery.id },
       data: {
@@ -280,6 +315,9 @@ export async function executePrioritizeCollections(
   let anyFailed: string | undefined;
 
   for (const inv of overdueInvoices) {
+    // Captured from the provider call so the real checkout URL survives; the
+    // outcome object carries only the reference id.
+    let providerShortUrl: string | null = null;
     const outcome = await executeWithDurableIntent(client, {
       businessId: ctx.businessId,
       strategyId: ctx.strategyId,
@@ -295,6 +333,7 @@ export async function executePrioritizeCollections(
           `Invoice Collection for ${inv.customerName}`,
           idempotencyKey
         );
+        providerShortUrl = link.short_url;
         return { externalRef: link.id, externalStatus: link.status };
       },
     });
@@ -308,7 +347,7 @@ export async function executePrioritizeCollections(
         invoiceId: inv.id,
         customerName: inv.customerName,
         paymentLinkId: linkId,
-        shortUrl: `/sandbox/checkout?paymentLinkId=${linkId}&actionId=${ctx.action.id}`,
+        shortUrl: withActionId(checkoutUrlFor(providerShortUrl, null, linkId), ctx.action.id),
         amount: inv.amount,
       });
     } else if (
