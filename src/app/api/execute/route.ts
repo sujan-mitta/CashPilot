@@ -22,6 +22,15 @@ import { logger, withCorrelationId } from "@/lib/observability";
 import { errorMessage, parseJsonBody } from "@/lib/errors";
 
 /** One action's outcome, as returned to the client. */
+/**
+ * A step that never began, as distinct from one that ran and failed.
+ *
+ * Deliberately not a member of the ActionStatus enum: it describes THIS
+ * execution attempt, not the action, whose own status is authoritative and
+ * untouched.
+ */
+export const STEP_NOT_STARTED = "NOT_STARTED";
+
 export interface ExecutedStep {
   id: string;
   action: string;
@@ -334,9 +343,20 @@ export const POST = withCorrelationId(async (req: Request) => {
         executedSteps.push({
           id: action.id,
           action: action.actionType,
-          // The action's own status is authoritative and untouched - this step
-          // failed to START, which is not the same as the action failing.
-          status: ActionStatus.FAILED,
+          // NOT a failure, and no longer reported as one.
+          //
+          // This step did not start, which is not the same as the action
+          // failing — in the commonest case the action is healthy and simply
+          // already in flight, awaiting settlement of a link that exists. It
+          // was previously reported as FAILED, which rendered a red badge on a
+          // correct state and read as "execution broke". Observed live: an
+          // operator re-ran the action repeatedly against a guard that was
+          // right to refuse, because the screen said it had failed.
+          //
+          // ExecutedStep.status is a plain string on the API response and is
+          // not persisted, so this value costs no migration and cannot reach
+          // the AgentAction enum.
+          status: STEP_NOT_STARTED,
           result: reason,
           narration: `Execution not started.`,
           externalRefs: [],

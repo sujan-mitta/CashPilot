@@ -29,6 +29,7 @@ import {
   ExecutionIntentStatus,
   Prisma,
 } from "../../../generated/prisma/client";
+import { describeProviderProvenance } from "./provenance";
 
 /**
  * Derives a decision's reconciliation status from the authoritative per-action
@@ -436,6 +437,10 @@ async function emitSettlementEvent(
     trigger: SettlementTrigger;
   }
 ): Promise<void> {
+  // Read at write time, from the credentials that actually produced this
+  // settlement, rather than passed in by a caller who might not know.
+  const provenance = describeProviderProvenance();
+
   await recordFinancialEvent(tx, params.businessId, {
     eventType: params.eventType,
     sourceType: "RAZORPAY",
@@ -455,6 +460,21 @@ async function emitSettlementEvent(
       // observation that may be days after the money actually moved (C-13).
       settlementTrigger: params.trigger,
       timestampMeaning: params.trigger === "MANUAL" ? "OBSERVED" : "PROVIDER_REPORTED",
+
+      // WHERE the money came from, alongside how it reached us.
+      //
+      // A TEST settlement and a LIVE one are otherwise identical in this spine:
+      // both settle, both credit the ledger, both move the forecast. Only one
+      // of them is money. Once a deployment's key changes from rzp_test_ to
+      // rzp_live_ there is nothing left to infer from, so every row written
+      // before that flip has to carry its own origin or become permanently
+      // unattributable.
+      //
+      // The fingerprint identifies the merchant account without being the key:
+      // two settlements either share an account or they do not, and the value
+      // is useless to anyone who obtains it.
+      providerMode: provenance.mode,
+      providerAccount: provenance.accountFingerprint,
     },
   });
 }

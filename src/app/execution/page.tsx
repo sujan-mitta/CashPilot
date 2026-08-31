@@ -52,6 +52,9 @@ function getStatusOrder(status: string) {
 function statusTone(status: string, resolved: boolean): BadgeTone {
   if (resolved || status === "COMPLETED") return "success";
   if (status === "FAILED" || status === "RECONCILIATION_FAILED") return "danger";
+  // Not started is not a failure. Most often the action is healthy and already
+  // in flight, awaiting settlement of a link that exists.
+  if (status === "NOT_STARTED") return "warning";
   if (status === "EXECUTION_UNKNOWN" || status === "RECONCILIATION_MISMATCH") return "warning";
   return "brand";
 }
@@ -453,6 +456,16 @@ function ExecutionContent() {
                     </div>
                   )}
 
+                  {/* Did not start. Its own panel, because presenting it in the
+                      red failure box is what made a correct refusal look like a
+                      break and sent an operator re-running it. */}
+                  {stepStatus === "NOT_STARTED" && stepObj?.result && (
+                    <div className="bg-warn-500/10 border border-warn-500/25 rounded-md p-4 text-xs text-warn-400">
+                      <span className="font-semibold block text-warn-400 flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5" /> Not started &mdash; nothing was changed</span>
+                      <p className="mt-1 font-medium">{stepObj.result}</p>
+                    </div>
+                  )}
+
                   {/* Reconciliation Mismatch Panel */}
                   {stepStatus === "RECONCILIATION_MISMATCH" && (
                     <div className="bg-warn-500/10 border border-warn-500/25 rounded-md p-4 text-xs font-semibold space-y-2">
@@ -541,6 +554,13 @@ function ExecutionContent() {
                   {(stepStatus === "FAILED" || stepStatus === "RECONCILIATION_FAILED") && stepObj?.result && (
                     <div className="bg-risk-500/10 border border-risk-500/25 rounded-md p-4 text-xs font-semibold text-risk-400">
                       <span className="font-semibold block text-risk-400 flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5" /> Execution Failure Detail:</span>
+                      <p className="mt-1 font-medium">{stepObj.result}</p>
+                    </div>
+                  )}
+
+                  {stepStatus === "NOT_STARTED" && stepObj?.result && (
+                    <div className="bg-warn-500/10 border border-warn-500/25 rounded-md p-4 text-xs text-warn-400">
+                      <span className="font-semibold block text-warn-400 flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5" /> Not started &mdash; nothing was changed</span>
                       <p className="mt-1 font-medium">{stepObj.result}</p>
                     </div>
                   )}
