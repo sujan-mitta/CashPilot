@@ -346,6 +346,38 @@ export async function reconcilePaymentLink(
   return interpretScan(referenceId, scan, now, operationRecordedAt ?? window.from);
 }
 
+/**
+ * Look up an existing payment link at the provider.
+ *
+ * Exists because a link id cannot be turned into a checkout URL locally — only
+ * Razorpay knows the short_url it minted. When a link was created but its URL
+ * was lost or stored wrongly, asking the provider is the only way to recover a
+ * payable address for money that is genuinely owed.
+ *
+ * A READ, so it is retried with bounded backoff. It never creates anything.
+ */
+export async function fetchPaymentLink(
+  linkId: string
+): Promise<{ id: string; short_url: string; status: string } | null> {
+  if (isPlaceholder || !razorpay) return null;
+
+  const fetchMethod = razorpay.paymentLink.fetch as unknown as (
+    id: string
+  ) => Promise<{ id: string; short_url: string; status: string }>;
+
+  try {
+    return await withProviderReadRetry(() => fetchMethod(linkId), {
+      operation: "paymentLink.fetch",
+    });
+  } catch (error) {
+    logger.warn("Could not fetch payment link from provider", {
+      linkId,
+      reason: describeProviderError(error),
+    });
+    return null;
+  }
+}
+
 export interface RazorpayPaymentLinkResponse {
   id: string;
   short_url: string;
