@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useCashPilot } from "@/context/CashPilotContext";
 import { Eye, EyeOff, Lock, Mail, User, Briefcase, ArrowRight, ShieldCheck } from "lucide-react";
 import { PilotIcon } from "@/components/PilotIcon";
+import { HeroScene } from "@/components/hero/HeroScene";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/Button";
 import { Stagger, StaggerItem } from "@/components/ui/Reveal";
@@ -194,6 +195,22 @@ function LoginForm() {
 
   return (
     <div className="relative min-h-screen flex overflow-hidden bg-ground-050">
+      {/* The 3D runway terrain, restored.
+          
+          It was built in 83e02f4 and removed from this page by 3793291, which
+          left the whole chain orphaned — HeroScene, RunwayTerrain and the
+          pointer-wave maths all still present, tested, and rendered by nothing.
+          
+          `pointer-events-none` is deliberate and does NOT disable the hover
+          waves: RunwayTerrain listens on the window and intersects a ray with
+          the terrain plane analytically, precisely so it can react to the
+          cursor without ever capturing a click meant for the sign-in form.
+          
+          HeroScene is a gate, not the scene: it skips WebGL entirely on
+          reduced-motion, small screens, or devices without it, and paints a
+          static gradient instead. Nothing here can prevent the form rendering. */}
+      <HeroScene className="pointer-events-none absolute inset-x-0 bottom-0 h-[78vh] z-0" />
+
       {/* Sign-in renders without the app chrome, so the theme control has to
           live here too — otherwise the first screen anyone sees is the one
           screen where they cannot change it. */}
