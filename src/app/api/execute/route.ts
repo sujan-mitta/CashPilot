@@ -680,7 +680,16 @@ export const POST = withCorrelationId(async (req: Request) => {
     if (error instanceof InvalidDecisionTransitionError) {
       logger.warn("Execute refused by decision state machine", { reason: errorMessage(error) });
       return NextResponse.json(
-        { error: "This strategy can no longer be executed in its current state." },
+        {
+          error: "STRATEGY_NOT_EXECUTABLE",
+          // `message` rather than only `error`, because the client prefers a
+          // supplied message and otherwise falls back to a generic sentence
+          // that explains nothing. The commonest reason to land here is the
+          // happiest one — the money already arrived, so the plan built before
+          // it is working from figures that no longer hold.
+          message:
+            "This plan has already run, or the figures behind it have moved on — most often because a payment arrived. Nothing was executed. Start again from the dashboard to build a plan from your current balance.",
+        },
         { status: 409 }
       );
     }

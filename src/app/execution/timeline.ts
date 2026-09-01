@@ -75,7 +75,12 @@ export function executionErrorDetail(
   if (Array.isArray(data?.missing) && data.missing.length > 0) {
     return `Missing configuration: ${data.missing.join(", ")}.`;
   }
-  if (httpStatus === 409) return "This plan can no longer run in its current state.";
+  // A 409 with no message is almost always "already run, or the numbers moved",
+  // and the most frequent cause is a payment landing. Saying so beats a
+  // sentence that leaves an operator wondering what broke.
+  if (httpStatus === 409) {
+    return "This plan has already run, or the figures behind it have changed — often because a payment arrived. Nothing was executed.";
+  }
   if (httpStatus === 401) return "Your session has expired. Sign in again.";
   return "Something went wrong on our side.";
 }

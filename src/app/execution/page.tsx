@@ -93,6 +93,32 @@ function ExecutionContent() {
 
   // Execution states
   const [started, setStarted] = useState(false);
+
+  /**
+   * Money that has already arrived, read from the server on every load.
+   *
+   * Settlement does not happen on this page. A payer opens a Razorpay link and
+   * a webhook credits the ledger minutes later, quite possibly after this tab
+   * was closed. Without asking the server, the page only knows whether IT
+   * started an execution in this browser session — so a real payment could land,
+   * move the cash and write the ledger event while the screen still said
+   * "Awaiting Execution" and offered to run the plan again.
+   */
+  const [receipts, setReceipts] = useState<{
+    currentCash: number;
+    totalReceived: number;
+    outstandingCount: number;
+    received: Array<{ id: string; amount: number; description: string; settledAt: string }>;
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/recovery-status")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelled && d && !d.error) setReceipts(d); })
+      .catch(() => { /* The panel is additive; its absence must not break the page. */ });
+    return () => { cancelled = true; };
+  }, []);
   const [executing, setExecuting] = useState(false);
   const [steps, setSteps] = useState<ActionStepLog[]>([]);
 
@@ -373,6 +399,60 @@ function ExecutionContent() {
         </span>
         <Badge tone="brand">Approved</Badge>
       </Reveal>
+
+      {/* MONEY THAT HAS ARRIVED
+          Deliberately the first thing on the page and written in plain words:
+          an operator who has just paid a link wants one question answered — did
+          it land? — and previously nothing here answered it. */}
+      {receipts && receipts.received.length > 0 && (
+        <Reveal>
+          <div className="rounded-md border border-safe-500/30 bg-safe-500/[0.07] p-5">
+            <div className="flex items-start gap-3.5">
+              <CheckCircle2 className="w-5 h-5 text-safe-400 shrink-0 mt-0.5" />
+              <div className="min-w-0 flex-1">
+                <h2 className="text-[15px] font-semibold text-ink-100">
+                  {receipts.received.length === 1
+                    ? "Payment received"
+                    : `${receipts.received.length} payments received`}
+                </h2>
+                <p className="text-ink-300 text-[13px] mt-1 leading-relaxed">
+                  <strong className="text-safe-400 font-semibold">
+                    {formatINR(receipts.totalReceived)}
+                  </strong>{" "}
+                  has arrived and is already counted in your balance. You have{" "}
+                  <strong className="text-ink-100 font-semibold">
+                    {formatINR(receipts.currentCash)}
+                  </strong>{" "}
+                  in the bank now.
+                </p>
+
+                <ul className="mt-3.5 space-y-2">
+                  {receipts.received.map((r) => (
+                    <li
+                      key={r.id}
+                      className="flex items-center justify-between gap-4 text-[12.5px] border-t border-line-faint pt-2"
+                    >
+                      <span className="text-ink-300 truncate">{r.description}</span>
+                      <span className="text-safe-400 font-semibold shrink-0">
+                        + {formatINR(r.amount)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+
+                <p className="text-ink-400 text-[11.5px] mt-3 leading-relaxed">
+                  {receipts.outstandingCount > 0
+                    ? `${receipts.outstandingCount} more payment link${receipts.outstandingCount === 1 ? " is" : "s are"} still waiting to be paid.`
+                    : "Nothing else is outstanding."}{" "}
+                  Because this money has landed, any plan built before it arrived is now
+                  working from out-of-date figures — start again from the dashboard to get one
+                  based on what you actually have.
+                </p>
+              </div>
+            </div>
+          </div>
+        </Reveal>
+      )}
 
       {/* Trigger state wrapper */}
       {!started ? (
