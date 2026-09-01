@@ -30,6 +30,8 @@ interface ActionStepLog {
   narration: string;
   /** Provider ids this step produced. Empty when nothing was dispatched. */
   externalRefs?: string[];
+  /** Where a payer is sent. An id is not an address; see below. */
+  shortUrl?: string;
   intentIds?: string[];
 }
 
@@ -302,6 +304,14 @@ function ExecutionContent() {
   // written, so the old parse produced null or a fragment of an error message
   // on every path except the happy one.
   const failedStep = steps.find((s) => s.action === "RECOVER_FAILED_PAYMENTS");
+
+  // THE CHECKOUT ADDRESS, which is not the same thing as the link id.
+  //
+  // This button used to be `href={failedPaymentLinkId}` — a provider ID used
+  // directly as a URL. The browser resolved it relative to our own origin, so
+  // "Open Test Checkout" navigated to /plink_TWLacSR5QT2y0D on cash-pilot and
+  // returned a 404. The step now carries the URL the executor already knew.
+  const failedCheckoutUrl = failedStep?.shortUrl ?? null;
   const failedPaymentLinkId =
     failedStep?.externalRefs?.[0] ??
     (failedStep?.result?.includes("generated: ")
@@ -486,9 +496,13 @@ function ExecutionContent() {
 
                   {failedPaymentLinkId && (
                     <div className="pt-2 flex items-center gap-3 border-t border-line-faint flex-wrap">
-                      {!isFailedCardPaid && stepStatus !== "COMPLETED" && (
+                      {/* Rendered only when we hold a real address. Offering a
+                          checkout button that leads to a 404 is worse than not
+                          offering one: the money is genuinely owed, and the
+                          payer concludes the link is broken. */}
+                      {failedCheckoutUrl && !isFailedCardPaid && stepStatus !== "COMPLETED" && (
                         <a
-                          href={failedPaymentLinkId}
+                          href={failedCheckoutUrl}
                           target="_blank"
                           rel="noreferrer"
                           className="inline-flex items-center gap-1.5 bg-brand-500 hover:bg-brand-600 text-white font-bold text-xs px-4 py-2 rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 focus-visible:ring-offset-ground-050"

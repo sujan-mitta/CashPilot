@@ -9,7 +9,7 @@ import {
   PrismaClient,
 } from "../../../generated/prisma/client";
 import { addDays } from "date-fns";
-import { createRecoveryPaymentLink } from "../razorpay/client";
+import { createRecoveryPaymentLink, fetchPaymentLink } from "../razorpay/client";
 import { executeWithDurableIntent, ExecuteResult } from "./executor";
 import { validateRecoveryTransition } from "../engine/stateTransitions";
 import { formatLakhs } from "../format";
@@ -21,6 +21,8 @@ export interface ActionExecutionOutcome {
   /** Intent ids touched by this action - the observability trail (PART 30). */
   intentIds: string[];
   externalRefs: string[];
+  /** Where a payer is sent, when this action produced a single payable link. */
+  shortUrl?: string;
   unknownReason?: string;
 }
 
@@ -113,6 +115,45 @@ export function checkoutUrlFor(
   return `/sandbox/checkout?paymentLinkId=${linkId}`;
 }
 
+/** A link the provider minted, as opposed to our own simulation. */
+function isRealProviderLink(linkId: string): boolean {
+  return linkId.startsWith("plink_") && !linkId.startsWith("plink_sim_");
+}
+
+/**
+ * The same decision, but allowed to ASK the provider.
+ *
+ * Re-running an action whose links already exist short-circuits on
+ * ALREADY_SUCCEEDED, so the dispatch never runs and no fresh short_url comes
+ * back. The synchronous fallback then produced a /sandbox/checkout path for a
+ * REAL Razorpay link — which is a dead end in production, because the
+ * simulation is gated on NODE_ENV and refuses to run there.
+ *
+ * Observed live: two collection links and a recovery link all pointing at the
+ * sandbox after a re-run, on links that were live and payable at Razorpay the
+ * whole time.
+ *
+ * A short_url cannot be derived from a link id — only the provider knows it —
+ * so when we hold neither a fresh nor a stored URL for a real link, we ask. It
+ * is a read, and it fails soft: if the provider cannot answer we keep the
+ * sandbox path rather than inventing an address for money that is owed.
+ */
+export async function resolveCheckoutUrl(
+  providerShortUrl: string | null | undefined,
+  storedShortUrl: string | null | undefined,
+  linkId: string
+): Promise<string> {
+  if (providerShortUrl) return providerShortUrl;
+  if (storedShortUrl && !storedShortUrl.includes("/sandbox/checkout")) return storedShortUrl;
+
+  if (isRealProviderLink(linkId)) {
+    const link = await fetchPaymentLink(linkId);
+    if (link?.short_url) return link.short_url;
+  }
+
+  return checkoutUrlFor(providerShortUrl, storedShortUrl, linkId);
+}
+
 /**
  * RECOVER_FAILED_PAYMENTS - issues one recovery payment link.
  *
@@ -190,6 +231,7 @@ export async function executeRecoverFailedPayments(
         result: `Razorpay link generated: ${url}`,
         intentIds: [],
         externalRefs: activePending.paymentLinkId ? [activePending.paymentLinkId] : [],
+        shortUrl: url,
       };
     }
     return {
@@ -246,7 +288,10 @@ export async function executeRecoverFailedPayments(
 
   if (outcome.outcome === "SUCCEEDED" || outcome.outcome === "ALREADY_SUCCEEDED") {
     const linkId = outcome.externalRef as string;
-    const shortUrl = withActionId(checkoutUrlFor(providerShortUrl, recovery.shortUrl, linkId), ctx.action.id);
+    const shortUrl = withActionId(
+      await resolveCheckoutUrl(providerShortUrl, recovery.shortUrl, linkId),
+      ctx.action.id
+    );
     await client.paymentRecovery.update({
       where: { id: recovery.id },
       data: {
@@ -260,6 +305,7 @@ export async function executeRecoverFailedPayments(
       result: `Razorpay link generated: ${shortUrl}`,
       intentIds: [outcome.intentId],
       externalRefs: [linkId],
+      shortUrl,
     };
   }
 
@@ -347,7 +393,7 @@ export async function executePrioritizeCollections(
         invoiceId: inv.id,
         customerName: inv.customerName,
         paymentLinkId: linkId,
-        shortUrl: withActionId(checkoutUrlFor(providerShortUrl, null, linkId), ctx.action.id),
+        shortUrl: withActionId(await resolveCheckoutUrl(providerShortUrl, null, linkId), ctx.action.id),
         amount: inv.amount,
       });
     } else if (

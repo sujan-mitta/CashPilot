@@ -56,8 +56,7 @@ async function main() {
   if (skipped > 0) console.log(`  simulated links skipped (their URL is correct): ${skipped}`);
 
   if (candidates.length === 0) {
-    console.log("\nnothing to repair");
-    return;
+    console.log("  no PaymentRecovery rows need repair");
   }
 
   let repaired = 0;
@@ -92,6 +91,8 @@ async function main() {
     }
   }
 
+  await repairAgentActionLinks();
+
   if (!CONFIRMED) {
     console.log("\nDRY RUN — nothing was changed. Re-run with --confirm to apply.");
     return;
@@ -99,6 +100,62 @@ async function main() {
 
   console.log(`\nrepaired: ${repaired}   unresolved: ${unresolved}`);
 }
+
+/**
+ * The per-invoice collection links, which do NOT live in PaymentRecovery.
+ *
+ * PRIORITIZE_COLLECTIONS writes its links into AgentAction.result as JSON and
+ * the execution page reads them straight back out. A repair that only walked
+ * PaymentRecovery left those pointing at the sandbox — exactly what was seen:
+ * the single recovery link fixed, while two collection links on the same
+ * screen still led nowhere.
+ */
+async function repairAgentActionLinks(): Promise<void> {
+  const actions = await prisma.agentAction.findMany({
+    where: { actionType: "PRIORITIZE_COLLECTIONS", result: { contains: "/sandbox/checkout" } },
+    select: { id: true, result: true },
+  });
+
+  console.log(`
+collection actions holding sandbox URLs: ${actions.length}`);
+
+  for (const a of actions) {
+    let parsed: { links?: Array<{ paymentLinkId?: string; shortUrl?: string }> };
+    try {
+      parsed = JSON.parse(a.result ?? "{}");
+    } catch {
+      console.log(`  SKIP ${a.id} (result is not JSON)`);
+      continue;
+    }
+    if (!Array.isArray(parsed.links)) continue;
+
+    let changed = false;
+    for (const link of parsed.links) {
+      const id = link.paymentLinkId;
+      if (!id || !isRealProviderLink(id)) continue;
+      if (!link.shortUrl?.includes("/sandbox/checkout")) continue;
+
+      const fetched = await fetchPaymentLink(id);
+      if (!fetched?.short_url) {
+        console.log(`  UNRESOLVED ${id}`);
+        continue;
+      }
+      const actionId = /actionId=([^&]+)/.exec(link.shortUrl)?.[1];
+      link.shortUrl = actionId ? withActionId(fetched.short_url, actionId) : fetched.short_url;
+      console.log(`  ${id}`);
+      console.log(`     now: ${link.shortUrl}`);
+      changed = true;
+    }
+
+    if (changed && CONFIRMED) {
+      await prisma.agentAction.update({
+        where: { id: a.id },
+        data: { result: JSON.stringify(parsed) },
+      });
+    }
+  }
+}
+
 
 main()
   .catch((e) => {

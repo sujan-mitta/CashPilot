@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { checkoutUrlFor, withActionId } from "../actionExecutors";
+import { checkoutUrlFor, withActionId, resolveCheckoutUrl } from "../actionExecutors";
+import { vi, beforeEach } from "vitest";
+
+const fetchPaymentLink = vi.hoisted(() => vi.fn());
+vi.mock("../../razorpay/client", () => ({
+  createRecoveryPaymentLink: vi.fn(),
+  fetchPaymentLink,
+}));
 
 /**
  * Where a payer is actually sent.
@@ -69,5 +76,59 @@ describe("The action id is attached correctly to whichever URL wins", () => {
   it("uses & on the sandbox path, which already has one", () => {
     const url = withActionId(checkoutUrlFor(null, null, LINK_ID), ACTION);
     expect(url).toBe(`/sandbox/checkout?paymentLinkId=${LINK_ID}&actionId=${ACTION}`);
+  });
+});
+
+describe("Re-running an action recovers the real address", () => {
+  beforeEach(() => fetchPaymentLink.mockReset());
+
+  it("asks the provider when nothing fresh or stored is available", async () => {
+    // A re-run short-circuits on ALREADY_SUCCEEDED, so the dispatch never runs
+    // and no fresh short_url comes back. Falling back to /sandbox/checkout for
+    // a REAL link is a dead end in production, where the simulation refuses to
+    // run at all. Observed live on three links at once.
+    fetchPaymentLink.mockResolvedValue({ id: LINK_ID, short_url: REAL_LINK, status: "created" });
+
+    expect(await resolveCheckoutUrl(null, null, LINK_ID)).toBe(REAL_LINK);
+    expect(fetchPaymentLink).toHaveBeenCalledWith(LINK_ID);
+  });
+
+  it("ignores a stored sandbox URL and asks instead", async () => {
+    // Rows written before this hold the sandbox path. Trusting it would keep
+    // sending payers to the dead end forever.
+    fetchPaymentLink.mockResolvedValue({ id: LINK_ID, short_url: REAL_LINK, status: "created" });
+
+    const stale = `/sandbox/checkout?paymentLinkId=${LINK_ID}`;
+    expect(await resolveCheckoutUrl(null, stale, LINK_ID)).toBe(REAL_LINK);
+  });
+
+  it("does not ask when a fresh provider URL is already in hand", async () => {
+    expect(await resolveCheckoutUrl(REAL_LINK, null, LINK_ID)).toBe(REAL_LINK);
+    expect(fetchPaymentLink).not.toHaveBeenCalled();
+  });
+
+  it("does not ask about a simulated link", async () => {
+    // plink_sim_ never existed at the provider; its sandbox URL is correct.
+    const sim = "plink_sim_abc";
+    expect(await resolveCheckoutUrl(null, null, sim)).toBe(
+      `/sandbox/checkout?paymentLinkId=${sim}`
+    );
+    expect(fetchPaymentLink).not.toHaveBeenCalled();
+  });
+
+  it("keeps the sandbox path when the provider cannot answer", async () => {
+    // Fails soft. Inventing an address for money that is genuinely owed would
+    // be worse than an honest dead end.
+    fetchPaymentLink.mockResolvedValue(null);
+
+    expect(await resolveCheckoutUrl(null, null, LINK_ID)).toBe(
+      `/sandbox/checkout?paymentLinkId=${LINK_ID}`
+    );
+  });
+
+  it("prefers a stored REAL url without asking", async () => {
+    const stored = "https://rzp.io/rzp/previously";
+    expect(await resolveCheckoutUrl(null, stored, LINK_ID)).toBe(stored);
+    expect(fetchPaymentLink).not.toHaveBeenCalled();
   });
 });

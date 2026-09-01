@@ -39,6 +39,15 @@ export interface ExecutedStep {
   narration: string;
   /** Provider ids this step produced. Empty when nothing was dispatched. */
   externalRefs: string[];
+  /**
+   * Where a payer should actually be sent.
+   *
+   * The UI previously had only externalRefs — provider IDS — and rendered one
+   * directly as an href, producing a relative link like "/plink_TWLacSR5QT2y0D"
+   * on our own domain, which 404s. An id is not an address, and the executor
+   * already knows the real URL.
+   */
+  shortUrl?: string;
   /** Durable intent ids, for correlating with the reconciliation trail. */
   intentIds: string[];
 }
@@ -458,6 +467,7 @@ export const POST = withCorrelationId(async (req: Request) => {
         // garbage on every non-happy path - and `result` is also where the
         // "Already in flight" / "Not in a claimable state" explanations go.
         externalRefs: outcome.externalRefs,
+        shortUrl: outcome.shortUrl,
         intentIds: outcome.intentIds,
       });
     }
