@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { errorMessage } from "@/lib/errors";
+import { buildMovementsForBusiness } from "@/lib/forecast/movements";
+import { buildForecast } from "@/lib/engine/forecast";
+import { calculateLiquiditySafetyRequirement } from "@/lib/engine/liquiditySafety";
+import { describeSafetyProgress } from "@/lib/engine/safetyProgress";
 import { logger } from "@/lib/observability";
 
 /**
@@ -48,17 +52,58 @@ export async function GET() {
       },
     });
 
-    const outstanding = await prisma.paymentRecovery.count({
+    const pending = await prisma.paymentRecovery.findMany({
       where: {
         status: "PAYMENT_PENDING",
         transaction: { businessId: session.businessId },
       },
+      orderBy: { updatedAt: "desc" },
+      select: {
+        id: true,
+        amount: true,
+        shortUrl: true,
+        paymentLinkId: true,
+        transaction: { select: { description: true } },
+      },
+    });
+
+    // Where the projection stands NOW — after whatever has already settled.
+    //
+    // Recomputed here rather than trusting a figure captured when the plan was
+    // built: money has landed since, which is the entire reason an operator is
+    // looking at this page.
+    const transactions = await prisma.transaction.findMany({
+      where: { businessId: session.businessId },
+    });
+    const movements = await buildMovementsForBusiness(prisma, session.businessId, transactions);
+    const days = buildForecast(business.currentCash, movements);
+    const projectedLow = days.length
+      ? Math.min(...days.map((d) => d.closingBalance))
+      : business.currentCash;
+
+    const safety = await calculateLiquiditySafetyRequirement(session.businessId, prisma);
+
+    const progress = describeSafetyProgress({
+      projectedLow,
+      safeFloor: safety.requiredBuffer,
+      recovered: settled.reduce((sum, r) => sum + r.amount, 0),
+      outstanding: pending.reduce((sum, r) => sum + r.amount, 0),
     });
 
     return NextResponse.json({
       currentCash: business.currentCash,
       totalReceived: settled.reduce((sum, r) => sum + r.amount, 0),
-      outstandingCount: outstanding,
+      outstandingCount: pending.length,
+      progress,
+      // The links still payable, so the operator can act on them from here
+      // rather than being told a gap exists and left to find them.
+      outstanding: pending.map((r) => ({
+        id: r.id,
+        amount: r.amount,
+        description: r.transaction?.description ?? "Outstanding payment",
+        shortUrl: r.shortUrl,
+        paymentLinkId: r.paymentLinkId,
+      })),
       received: settled.map((r) => ({
         id: r.id,
         amount: r.amount,

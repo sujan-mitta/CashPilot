@@ -21,6 +21,7 @@ import {
   executionErrorTitle,
   timelineLineFor,
 } from "./timeline";
+import { WhereYouStand, type StandingData } from "./WhereYouStand";
 
 interface ActionStepLog {
   id: string;
@@ -104,12 +105,7 @@ function ExecutionContent() {
    * move the cash and write the ledger event while the screen still said
    * "Awaiting Execution" and offered to run the plan again.
    */
-  const [receipts, setReceipts] = useState<{
-    currentCash: number;
-    totalReceived: number;
-    outstandingCount: number;
-    received: Array<{ id: string; amount: number; description: string; settledAt: string }>;
-  } | null>(null);
+  const [receipts, setReceipts] = useState<StandingData | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -400,59 +396,10 @@ function ExecutionContent() {
         <Badge tone="brand">Approved</Badge>
       </Reveal>
 
-      {/* MONEY THAT HAS ARRIVED
-          Deliberately the first thing on the page and written in plain words:
-          an operator who has just paid a link wants one question answered — did
-          it land? — and previously nothing here answered it. */}
-      {receipts && receipts.received.length > 0 && (
-        <Reveal>
-          <div className="rounded-md border border-safe-500/30 bg-safe-500/[0.07] p-5">
-            <div className="flex items-start gap-3.5">
-              <CheckCircle2 className="w-5 h-5 text-safe-400 shrink-0 mt-0.5" />
-              <div className="min-w-0 flex-1">
-                <h2 className="text-[15px] font-semibold text-ink-100">
-                  {receipts.received.length === 1
-                    ? "Payment received"
-                    : `${receipts.received.length} payments received`}
-                </h2>
-                <p className="text-ink-300 text-[13px] mt-1 leading-relaxed">
-                  <strong className="text-safe-400 font-semibold">
-                    {formatINR(receipts.totalReceived)}
-                  </strong>{" "}
-                  has arrived and is already counted in your balance. You have{" "}
-                  <strong className="text-ink-100 font-semibold">
-                    {formatINR(receipts.currentCash)}
-                  </strong>{" "}
-                  in the bank now.
-                </p>
-
-                <ul className="mt-3.5 space-y-2">
-                  {receipts.received.map((r) => (
-                    <li
-                      key={r.id}
-                      className="flex items-center justify-between gap-4 text-[12.5px] border-t border-line-faint pt-2"
-                    >
-                      <span className="text-ink-300 truncate">{r.description}</span>
-                      <span className="text-safe-400 font-semibold shrink-0">
-                        + {formatINR(r.amount)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-
-                <p className="text-ink-400 text-[11.5px] mt-3 leading-relaxed">
-                  {receipts.outstandingCount > 0
-                    ? `${receipts.outstandingCount} more payment link${receipts.outstandingCount === 1 ? " is" : "s are"} still waiting to be paid.`
-                    : "Nothing else is outstanding."}{" "}
-                  Because this money has landed, any plan built before it arrived is now
-                  working from out-of-date figures — start again from the dashboard to get one
-                  based on what you actually have.
-                </p>
-              </div>
-            </div>
-          </div>
-        </Reveal>
-      )}
+      {/* What has landed, whether it was enough, and what is left.
+          Extracted rather than grown inline: this page is already long, and
+          the arithmetic behind it is tested in describeSafetyProgress. */}
+      <WhereYouStand data={receipts} />
 
       {/* Trigger state wrapper */}
       {!started ? (
