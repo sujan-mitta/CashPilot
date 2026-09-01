@@ -14,6 +14,14 @@ export interface Action {
 export interface Strategy {
   id: string;
   name: string;
+  /**
+   * When this plan was built.
+   *
+   * Present because the API spreads the whole row; declared so the UI can
+   * compare it against settlement times and tell an operator, exactly rather
+   * than vaguely, that money arrived after the plan was reasoned out.
+   */
+  createdAt?: string;
   actions: {
     id: string;
     type: string;

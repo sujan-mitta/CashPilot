@@ -21,7 +21,8 @@ import {
   executionErrorTitle,
   timelineLineFor,
 } from "./timeline";
-import { WhereYouStand, type StandingData } from "./WhereYouStand";
+import { WhereYouStand } from "@/components/WhereYouStand";
+import { useStanding } from "@/lib/useStanding";
 
 interface ActionStepLog {
   id: string;
@@ -88,6 +89,7 @@ function ExecutionContent() {
   const { setCachedForecast, setCachedStrategies, setCachedInvestigation, cachedStrategies } = useCashPilot();
   const { toast } = useToast();
 
+
   const [strategy, setStrategy] = useState<Strategy | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -95,26 +97,20 @@ function ExecutionContent() {
   // Execution states
   const [started, setStarted] = useState(false);
 
-  /**
-   * Money that has already arrived, read from the server on every load.
-   *
-   * Settlement does not happen on this page. A payer opens a Razorpay link and
-   * a webhook credits the ledger minutes later, quite possibly after this tab
-   * was closed. Without asking the server, the page only knows whether IT
-   * started an execution in this browser session — so a real payment could land,
-   * move the cash and write the ledger event while the screen still said
-   * "Awaiting Execution" and offered to run the plan again.
-   */
-  const [receipts, setReceipts] = useState<StandingData | null>(null);
+  // Where the business stands, and a one-time notice when money arrives.
+  // Shared with the dashboard: settlement happens off-page, so both screens
+  // have to ask rather than assume.
+  const { standing: receipts, newlyArrived, acknowledge } = useStanding();
 
   useEffect(() => {
-    let cancelled = false;
-    fetch("/api/recovery-status")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (!cancelled && d && !d.error) setReceipts(d); })
-      .catch(() => { /* The panel is additive; its absence must not break the page. */ });
-    return () => { cancelled = true; };
-  }, []);
+    if (!newlyArrived) return;
+    toast({
+      tone: "success",
+      title: newlyArrived.count === 1 ? "Payment received" : `${newlyArrived.count} payments received`,
+      description: `${formatINR(newlyArrived.total)} has arrived and is already counted in your balance.`,
+    });
+    acknowledge();
+  }, [newlyArrived, toast, acknowledge]);
   const [executing, setExecuting] = useState(false);
   const [steps, setSteps] = useState<ActionStepLog[]>([]);
 
@@ -399,7 +395,7 @@ function ExecutionContent() {
       {/* What has landed, whether it was enough, and what is left.
           Extracted rather than grown inline: this page is already long, and
           the arithmetic behind it is tested in describeSafetyProgress. */}
-      <WhereYouStand data={receipts} />
+      <WhereYouStand data={receipts} planCreatedAt={strategy?.createdAt} />
 
       {/* Trigger state wrapper */}
       {!started ? (

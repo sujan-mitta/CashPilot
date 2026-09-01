@@ -24,6 +24,8 @@ import {
 } from "lucide-react";
 import clsx from "clsx";
 import { hasChosenStart } from "@/lib/onboardingChoice";
+import { WhereYouStand } from "@/components/WhereYouStand";
+import { useStanding } from "@/lib/useStanding";
 import { errorMessage } from "@/lib/errors";
 import { useToast } from "@/components/ui/Toast";
 
@@ -60,6 +62,22 @@ export default function Dashboard() {
   const router = useRouter();
   const { toast } = useToast();
   const { user, cachedForecast, setCachedForecast, setCachedInvestigation, logout } = useCashPilot();
+
+  // What has landed and where that leaves them. This is the first screen anyone
+  // opens, and it showed a gap to the safe minimum without ever saying whether
+  // anything had been done about it.
+  const { standing, newlyArrived, acknowledge } = useStanding();
+
+  useEffect(() => {
+    if (!newlyArrived) return;
+    toast({
+      tone: "success",
+      title:
+        newlyArrived.count === 1 ? "Payment received" : `${newlyArrived.count} payments received`,
+      description: `${formatINR(newlyArrived.total)} has arrived and is already counted in your balance.`,
+    });
+    acknowledge();
+  }, [newlyArrived, toast, acknowledge]);
   const chartRef = useRef<HTMLDivElement>(null);
 
   const [error, setError] = useState<string | null>(null);
@@ -494,6 +512,15 @@ export default function Dashboard() {
             </div>
           </div>
         </StaggerItem>
+
+        {/* WHERE YOU STAND.
+            Above the alert on purpose: an operator who has already recovered
+            money should see that before being told again what is wrong. */}
+        {standing && (
+          <StaggerItem>
+            <WhereYouStand data={standing} />
+          </StaggerItem>
+        )}
 
         {/* PRIMARY ALERT */}
         {minProjected < 0 && (
