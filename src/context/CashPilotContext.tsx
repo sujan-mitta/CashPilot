@@ -31,13 +31,7 @@ export interface Strategy {
     status: string;
     label: string;
   }[];
-  forecast: {
-    date: string;
-    openingBalance: number;
-    expectedInflows: number;
-    expectedOutflows: number;
-    projectedBalance: number;
-  }[];
+  forecast: ForecastDayPoint[];
   result: {
     projectedBalance: number;
     minimumProjectedBalance: number;
@@ -96,12 +90,21 @@ export interface Strategy {
   agentActions?: Action[];
 }
 
+/** One movement within a day, as /api/forecast returns it. */
+export interface ForecastMovement {
+  description: string;
+  inflow: number;
+  outflow: number;
+}
+
 export interface ForecastDayPoint {
   date: string;
   openingBalance: number;
   expectedInflows: number;
   expectedOutflows: number;
   projectedBalance: number;
+  /** What the day's totals are made of. Absent on responses predating this. */
+  movements?: ForecastMovement[];
 }
 
 /** The adaptive per-business buffer, as /api/forecast returns it. */

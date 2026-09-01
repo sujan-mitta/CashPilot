@@ -21,6 +21,7 @@ import {
   Circle,
   History,
   ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import clsx from "clsx";
 import { hasChosenStart } from "@/lib/onboardingChoice";
@@ -67,6 +68,10 @@ export default function Dashboard() {
   // opens, and it showed a gap to the safe minimum without ever saying whether
   // anything had been done about it.
   const { standing, newlyArrived, acknowledge } = useStanding();
+
+  // Which day row is expanded, if any. One at a time: opening every row at
+  // once turns a fourteen-line summary into a wall of movements.
+  const [expandedDay, setExpandedDay] = useState<number | null>(null);
 
   useEffect(() => {
     if (!newlyArrived) return;
@@ -795,29 +800,91 @@ export default function Dashboard() {
                   {days.map((d, idx: number) => {
                     if (d.expectedInflows <= 0 && d.expectedOutflows <= 0) return null;
                     const date = new Date(d.date).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+                    // WHAT the day is made of, not just how much.
+                    //
+                    // "Bills to pay, -Rs 8,00,000" on the worst day of a
+                    // forecast is a category where a fact is needed: that
+                    // figure is a payroll run AND a supplier payout landing
+                    // together, and only one of those can be moved.
+                    const detail = d.movements ?? [];
+                    const canExpand = detail.length > 0;
+                    const isOpen = expandedDay === idx;
+
                     return (
-                      <tr key={idx}>
-                        <td className="whitespace-nowrap">
-                          <span className="text-ink-100 font-medium">Day {idx + 1}</span>
-                          <span className="text-ink-400"> · {date}</span>
-                        </td>
-                        <td className="text-ink-300">
-                          {d.expectedInflows > 0 && d.expectedOutflows > 0
-                            ? "Money in and out"
-                            : d.expectedInflows > 0
-                            ? "Customer payments due"
-                            : "Bills to pay"}
-                        </td>
-                        <td className="num text-safe-400">
-                          {d.expectedInflows > 0 ? `+${formatINR(d.expectedInflows)}` : "—"}
-                        </td>
-                        <td className="num text-risk-400">
-                          {d.expectedOutflows > 0 ? `-${formatINR(d.expectedOutflows)}` : "—"}
-                        </td>
-                        <td className={clsx("num font-medium", d.projectedBalance < 0 ? "text-risk-400" : "text-ink-100")}>
-                          {formatINR(d.projectedBalance)}
-                        </td>
-                      </tr>
+                      <React.Fragment key={idx}>
+                        <tr
+                          {...(canExpand
+                            ? {
+                                onClick: () => setExpandedDay(isOpen ? null : idx),
+                                // Keyboard-reachable. A click-only row is
+                                // invisible to anyone not using a mouse, and
+                                // this is the only route to the detail.
+                                onKeyDown: (e: React.KeyboardEvent) => {
+                                  if (e.key === "Enter" || e.key === " ") {
+                                    e.preventDefault();
+                                    setExpandedDay(isOpen ? null : idx);
+                                  }
+                                },
+                                tabIndex: 0,
+                                role: "button",
+                                "aria-expanded": isOpen,
+                                className: "cursor-pointer hover:bg-ground-200/60 transition-colors focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-inset",
+                              }
+                            : {})}
+                        >
+                          <td className="whitespace-nowrap">
+                            <span className="text-ink-100 font-medium">Day {idx + 1}</span>
+                            <span className="text-ink-400"> · {date}</span>
+                          </td>
+                          <td className="text-ink-300">
+                            <span className="inline-flex items-center gap-1.5">
+                              {canExpand && (
+                                <ChevronRight
+                                  className={clsx(
+                                    "w-3.5 h-3.5 text-ink-400 transition-transform duration-200 shrink-0",
+                                    isOpen && "rotate-90"
+                                  )}
+                                  aria-hidden
+                                />
+                              )}
+                              {d.expectedInflows > 0 && d.expectedOutflows > 0
+                                ? "Money in and out"
+                                : d.expectedInflows > 0
+                                ? "Customer payments due"
+                                : "Bills to pay"}
+                              {canExpand && !isOpen && (
+                                <span className="text-ink-500 text-[11px]">
+                                  ({detail.length} item{detail.length === 1 ? "" : "s"})
+                                </span>
+                              )}
+                            </span>
+                          </td>
+                          <td className="num text-safe-400">
+                            {d.expectedInflows > 0 ? `+${formatINR(d.expectedInflows)}` : "—"}
+                          </td>
+                          <td className="num text-risk-400">
+                            {d.expectedOutflows > 0 ? `-${formatINR(d.expectedOutflows)}` : "—"}
+                          </td>
+                          <td className={clsx("num font-medium", d.projectedBalance < 0 ? "text-risk-400" : "text-ink-100")}>
+                            {formatINR(d.projectedBalance)}
+                          </td>
+                        </tr>
+
+                        {isOpen &&
+                          detail.map((m, mIdx) => (
+                            <tr key={`${idx}-${mIdx}`} className="bg-ground-200/40">
+                              <td />
+                              <td className="text-ink-400 pl-8 text-[12.5px]">{m.description}</td>
+                              <td className="num text-safe-400 text-[12.5px]">
+                                {m.inflow > 0 ? `+${formatINR(m.inflow)}` : "—"}
+                              </td>
+                              <td className="num text-risk-400 text-[12.5px]">
+                                {m.outflow > 0 ? `-${formatINR(m.outflow)}` : "—"}
+                              </td>
+                              <td />
+                            </tr>
+                          ))}
+                      </React.Fragment>
                     );
                   })}
                 </tbody>

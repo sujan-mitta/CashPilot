@@ -11,12 +11,34 @@ export interface DailyMovement {
   payoutId?: string;
 }
 
+/**
+ * One movement on a day, as an operator would describe it.
+ *
+ * The day totals answer "how much", and nothing answered "what". A row reading
+ * "Bills to pay, -Rs 8,00,000" on the worst day of a forecast is a category
+ * where a fact is needed: that figure is a payroll run AND a supplier payout
+ * landing together, and only one of those can be moved. Summing them away
+ * turned an actionable fact into something to be taken on trust.
+ */
+export interface DayMovementDetail {
+  description: string;
+  inflow: number; // in paise
+  outflow: number; // in paise
+}
+
 export interface ForecastDay {
   date: Date;
   openingBalance: number; // in paise
   expectedInflows: number; // in paise
   expectedOutflows: number; // in paise
   closingBalance: number; // in paise
+  /**
+   * What makes up the totals above.
+   *
+   * Optional because callers that only need the shape of the curve should not
+   * be forced to carry it, and because every existing consumer predates this.
+   */
+  movements?: DayMovementDetail[];
 }
 
 export interface RunwayMetrics {
@@ -94,6 +116,15 @@ export function buildForecast(
       expectedInflows: inflows,
       expectedOutflows: outflows,
       closingBalance: closing,
+      // Already computed above and previously discarded. A movement with no
+      // description of its own still appears — it is real money, and hiding it
+      // would make the parts fail to add up to the total, which is worse than
+      // an unhelpful label.
+      movements: dayMovements.map((m) => ({
+        description: m.description?.trim() || (m.inflows > 0 ? "Money in" : "Money out"),
+        inflow: m.inflows,
+        outflow: m.outflows,
+      })),
     });
 
     runningBalance = closing;

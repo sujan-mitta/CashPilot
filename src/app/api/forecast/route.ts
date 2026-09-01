@@ -104,6 +104,11 @@ export async function GET() {
       expectedInflows: d.expectedInflows,
       expectedOutflows: d.expectedOutflows,
       projectedBalance: d.closingBalance,
+      // What the day's totals are made of. Sent so the dashboard can answer
+      // "what IS that Rs 8,00,000" without a second request, which for a
+      // fourteen-row table would be fourteen round trips to say what the
+      // forecast already knew.
+      movements: d.movements ?? [],
     }));
 
     // Find the ISO dates corresponding to runway event indices if they exist
