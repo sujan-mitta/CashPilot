@@ -35,10 +35,39 @@
 import "dotenv/config";
 import { addDays } from "date-fns";
 import { prisma } from "../src/lib/prisma";
+import { buildMovementsForBusiness } from "../src/lib/forecast/movements";
+import { buildForecast } from "../src/lib/engine/forecast";
 
 const VENDOR = "CERT-TEMP Supplier (CashPilot certification)";
-const AMOUNT_PAISE = 185_000_000;
-const DAYS_AHEAD = 6;
+
+/**
+ * Which business, how much, and when — all overridable.
+ *
+ * The amount and date are not arbitrary. To exercise the whole flow the deficit
+ * has to be CLOSABLE by recovery money that already exists in the ledger,
+ * otherwise the engine correctly declines to recommend RECOVER_ONLY and steps
+ * 3-5 lead nowhere. Size it under the available recovery, and land it on the
+ * day the projection already troughs.
+ *
+ *   npx tsx scripts/seedCertificationDeficit.ts  *     --business "Sujan Verify Co" --amount 20000000 --days 4
+ */
+function arg(flag: string): string | undefined {
+  const i = process.argv.indexOf(flag);
+  return i >= 0 ? process.argv[i + 1] : undefined;
+}
+
+const BUSINESS_MATCH = arg("--business") ?? "ABC";
+const AMOUNT_PAISE = Number(arg("--amount") ?? 185_000_000);
+const DAYS_AHEAD = Number(arg("--days") ?? 6);
+
+if (!Number.isFinite(AMOUNT_PAISE) || AMOUNT_PAISE <= 0) {
+  console.error("--amount must be a positive number of paise");
+  process.exit(1);
+}
+if (!Number.isFinite(DAYS_AHEAD) || DAYS_AHEAD < 0) {
+  console.error("--days must be a non-negative number");
+  process.exit(1);
+}
 
 async function undo() {
   const payouts = await prisma.payout.deleteMany({
@@ -51,9 +80,11 @@ async function undo() {
 }
 
 async function seed() {
-  const business = await prisma.business.findFirst({ where: { name: { contains: "ABC" } } });
+  const business = await prisma.business.findFirst({
+    where: { name: { contains: BUSINESS_MATCH, mode: "insensitive" } },
+  });
   if (!business) {
-    console.error("No business matching 'ABC' found.");
+    console.error(`No business matching '${BUSINESS_MATCH}' found.`);
     process.exit(1);
   }
 
@@ -91,14 +122,23 @@ async function seed() {
     },
   });
 
-  const low = business.currentCash - AMOUNT_PAISE;
   console.log(`business:       ${business.name}`);
   console.log(`cash before:    ${business.currentCash} paise`);
   console.log(`payout id:      ${payout.id}`);
   console.log(`transaction id: ${tx.id}`);
   console.log(`payout amount:  ${AMOUNT_PAISE} paise`);
   console.log(`scheduled:      ${payout.scheduledDate.toISOString().slice(0, 10)} (+${DAYS_AHEAD}d)`);
-  console.log(`projected low:  ${low} paise  ${low < 0 ? "(DEFICIT — gate will open)" : "(still healthy)"}`);
+  // The projected low is NOT `cash - amount`. That ignores every movement
+  // already in the ledger and reported "still healthy" for a seed that in fact
+  // took the trough to -Rs 2,00,000, because the projection had already spent
+  // its way down to zero before this landed. Computed from the real engine
+  // instead, so the script cannot mislead about what it just did.
+  const transactions = await prisma.transaction.findMany({ where: { businessId: business.id } });
+  const movements = await buildMovementsForBusiness(prisma, business.id, transactions);
+  const forecast = buildForecast(business.currentCash, movements, 14);
+  const low = Math.min(...forecast.map((d) => d.closingBalance));
+
+  console.log(`projected low:  ${low} paise (Rs ${low / 100})  ${low < 0 ? "DEFICIT — the gate is open" : "still healthy — the gate stays shut"}`);
 }
 
 const main = process.argv.includes("--undo") ? undo : seed;
