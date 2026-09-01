@@ -4,6 +4,8 @@ import React, { useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import { useCashPilot } from "@/context/CashPilotContext";
+import { useStanding } from "@/lib/useStanding";
+import { isPlanStale } from "@/lib/planStaleness";
 import { PilotIcon } from "./PilotIcon";
 import { ThemeToggle } from "./ThemeToggle";
 import { NotificationCenter } from "./NotificationCenter";
@@ -32,7 +34,23 @@ const steps = [
 export function Navbar({ activeStep }: { activeStep: number }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, login, logout } = useCashPilot();
+  const { user, login, logout, selectedStrategyId, cachedStrategies } = useCashPilot();
+
+  /**
+   * Has money arrived since the plan these ticks describe was built?
+   *
+   * The completed steps promise "this is settled, you can go back and look".
+   * After a payment lands that promise is false — the figures those steps were
+   * reasoned from have moved — and a green tick is the strongest possible
+   * signal that nothing is wrong. Left alone it invites approving a plan built
+   * on superseded numbers, which is a real mistake rather than a cosmetic one.
+   *
+   * The comparison is exact: a settlement timestamp later than the plan's own
+   * creation time. Nothing is inferred, so a plan that genuinely predates
+   * nothing stays green.
+   */
+  const { standing } = useStanding();
+  const planIsStale = isPlanStale(standing, cachedStrategies, selectedStrategyId);
   const { toast } = useToast();
   const [businesses, setBusinesses] = React.useState<{ id: string; name: string }[]>([]);
 
@@ -158,7 +176,9 @@ export function Navbar({ activeStep }: { activeStep: number }) {
                       {...(isPast
                         ? {
                             onClick: () => router.push(s.route),
-                            title: `Back to step ${s.num}: ${s.label}`,
+                            title: planIsStale
+                              ? `Step ${s.num}: ${s.label} — the figures behind this changed after a payment arrived. Start again from the dashboard.`
+                              : `Back to step ${s.num}: ${s.label}`,
                             type: "button" as const,
                           }
                         : {})}
@@ -180,8 +200,13 @@ export function Navbar({ activeStep }: { activeStep: number }) {
                           "relative z-10 w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-semibold transition-colors duration-300",
                           {
                             "bg-white text-brand-600": isCurrent,
+                            // A completed step whose figures have been overtaken
+                            // is no longer a reassurance, so it stops looking
+                            // like one.
                             "bg-safe-500/20 text-safe-400 ring-1 ring-inset ring-safe-500/40":
-                              isPast,
+                              isPast && !planIsStale,
+                            "bg-warn-500/20 text-warn-400 ring-1 ring-inset ring-warn-500/40":
+                              isPast && planIsStale,
                             "bg-ground-200 text-ink-400": !isCurrent && !isPast,
                           }
                         )}
@@ -193,7 +218,8 @@ export function Navbar({ activeStep }: { activeStep: number }) {
                           "relative z-10 text-[11.5px] font-medium whitespace-nowrap transition-colors duration-300",
                           {
                             "text-white": isCurrent,
-                            "text-safe-400": isPast,
+                            "text-safe-400": isPast && !planIsStale,
+                            "text-warn-400": isPast && planIsStale,
                             "text-ink-400": !isCurrent && !isPast,
                           }
                         )}
@@ -205,7 +231,11 @@ export function Navbar({ activeStep }: { activeStep: number }) {
                       <span
                         className={clsx(
                           "h-px w-3 mx-0.5 rounded-full transition-colors duration-500",
-                          isPast ? "bg-safe-500/40" : "bg-line-soft"
+                          isPast
+                            ? planIsStale
+                              ? "bg-warn-500/40"
+                              : "bg-safe-500/40"
+                            : "bg-line-soft"
                         )}
                       />
                     )}

@@ -28,6 +28,34 @@ import type { StandingData } from "@/components/WhereYouStand";
 
 const SEEN_KEY = "cp_seen_settlements";
 
+/**
+ * One request, however many components ask.
+ *
+ * The navbar needs this to mark a stale plan, and the page under it needs the
+ * same answer for its panel. Without sharing, every navigation fires two
+ * identical requests — and worse, the two could disagree if they resolved
+ * either side of a settlement landing, so one part of the screen would call a
+ * plan stale while another did not.
+ *
+ * Deliberately short-lived. This is a de-duplication window for a single render
+ * pass, not a cache: money arrives while people are looking at the page, and
+ * holding a stale answer for minutes would defeat the entire point.
+ */
+const SHARE_WINDOW_MS = 3000;
+let inflight: { at: number; promise: Promise<unknown> } | null = null;
+
+function fetchStanding(): Promise<unknown> {
+  const now = Date.now();
+  if (inflight && now - inflight.at < SHARE_WINDOW_MS) return inflight.promise;
+
+  const promise = fetch("/api/recovery-status")
+    .then((r) => (r.ok ? r.json() : null))
+    .catch(() => null);
+
+  inflight = { at: now, promise };
+  return promise;
+}
+
 function readSeen(): Set<string> {
   try {
     const raw = localStorage.getItem(SEEN_KEY);
@@ -66,8 +94,7 @@ export function useStanding(): {
   useEffect(() => {
     let cancelled = false;
 
-    fetch("/api/recovery-status")
-      .then((r) => (r.ok ? r.json() : null))
+    fetchStanding()
       .then((raw: unknown) => {
         if (cancelled || !raw || typeof raw !== "object") return;
         if ("error" in raw) return;
