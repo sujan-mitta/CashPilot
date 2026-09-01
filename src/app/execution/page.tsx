@@ -473,6 +473,18 @@ function ExecutionContent() {
                     <div className="bg-warn-500/10 border border-warn-500/25 rounded-md p-4 text-xs text-warn-400">
                       <span className="font-semibold block text-warn-400 flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5" /> Not started &mdash; nothing was changed</span>
                       <p className="mt-1 font-medium">{stepObj.result}</p>
+                      {/* The refusal says to settle the outstanding link, so it
+                          has to be reachable from here. */}
+                      {stepObj.shortUrl && (
+                        <a
+                          href={stepObj.shortUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-3 inline-flex items-center gap-1.5 bg-warn-500/20 hover:bg-warn-500/30 text-warn-400 font-semibold px-3 py-1.5 rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 focus-visible:ring-offset-ground-050"
+                        >
+                          Open the outstanding link <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      )}
                     </div>
                   )}
 
@@ -576,6 +588,18 @@ function ExecutionContent() {
                     <div className="bg-warn-500/10 border border-warn-500/25 rounded-md p-4 text-xs text-warn-400">
                       <span className="font-semibold block text-warn-400 flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5" /> Not started &mdash; nothing was changed</span>
                       <p className="mt-1 font-medium">{stepObj.result}</p>
+                      {/* The refusal says to settle the outstanding link, so it
+                          has to be reachable from here. */}
+                      {stepObj.shortUrl && (
+                        <a
+                          href={stepObj.shortUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-3 inline-flex items-center gap-1.5 bg-warn-500/20 hover:bg-warn-500/30 text-warn-400 font-semibold px-3 py-1.5 rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 focus-visible:ring-offset-ground-050"
+                        >
+                          Open the outstanding link <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      )}
                     </div>
                   )}
 

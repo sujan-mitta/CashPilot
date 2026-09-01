@@ -40,7 +40,8 @@ vi.mock("@/lib/prisma", async () => {
         findMany: vi.fn(),
         updateMany: vi.fn(),
       },
-      agentAction: {
+      paymentRecovery: { findFirst: vi.fn().mockResolvedValue(null) },
+    agentAction: {
         findUnique: vi.fn(),
         updateMany: vi.fn(),
         update: vi.fn(),

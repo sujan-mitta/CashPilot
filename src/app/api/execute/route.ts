@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { runAgent } from "@/lib/ai/agents";
 import { actionNarratorPrompt } from "@/lib/ai/prompts";
-import { ActionStatus, Prisma } from "../../../../generated/prisma/client";
+import { ActionStatus, Prisma, RecoveryStatus } from "../../../../generated/prisma/client";
 import { addDays } from "date-fns";
 import { getSession } from "@/lib/auth";
 import { buildForecast } from "@/lib/engine/forecast";
@@ -349,9 +349,40 @@ export const POST = withCorrelationId(async (req: Request) => {
           reason = `Not in a claimable state (current: ${current ?? "unavailable"}; claimable: ${CLAIMABLE_STATUSES.join(", ")}).`;
         }
 
+        // The outstanding link, so the refusal is actionable.
+        //
+        // The message tells the operator to "settle or cancel the outstanding
+        // payment link" — and then offered no way to reach it. Now that the UI
+        // correctly refuses to render a button without a real address, this
+        // path would otherwise show the instruction and nothing to act on.
+        //
+        // Read from PaymentRecovery, which holds the provider's own URL, rather
+        // than parsed out of the prose result, which predates the fix and still
+        // records a sandbox path.
+        let outstandingUrl: string | undefined;
+        if (current === ActionStatus.EXECUTING) {
+          try {
+            const pending = await prisma.paymentRecovery.findFirst({
+              where: {
+                status: RecoveryStatus.PAYMENT_PENDING,
+                transaction: { businessId: session.businessId },
+                shortUrl: { not: null },
+              },
+              orderBy: { updatedAt: "desc" },
+              select: { shortUrl: true },
+            });
+            outstandingUrl = pending?.shortUrl ?? undefined;
+          } catch {
+            // A convenience link is not worth failing an execution request
+            // over. Without this guard the lookup threw and took the whole
+            // route down, turning a correct refusal into a 500.
+          }
+        }
+
         executedSteps.push({
           id: action.id,
           action: action.actionType,
+          shortUrl: outstandingUrl,
           // NOT a failure, and no longer reported as one.
           //
           // This step did not start, which is not the same as the action
