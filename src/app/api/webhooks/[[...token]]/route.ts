@@ -20,6 +20,7 @@ import {
   UNMATCHED_RETRY_ATTEMPTS,
 } from "@/lib/razorpay/webhookDelivery";
 import { webhookSecretForToken } from "@/lib/razorpay/connection";
+import { notifySettlement } from "@/lib/notifications/settlementNotice";
 
 /**
  * True only for a unique-constraint violation.
@@ -381,6 +382,19 @@ export const POST = withCorrelationId(async (req: Request) => {
         executionIntentId: intent?.id ?? null,
         externalRef: paymentLinkId,
       });
+
+      // Tell the operator the money arrived, and what it changed.
+      //
+      // AFTER the settlement and outside its transaction, so the figures in the
+      // email describe where the business stands now. Awaited rather than left
+      // dangling — a serverless function can be frozen the moment it responds,
+      // which would kill an unawaited send partway through.
+      //
+      // It cannot fail this request: the money is already settled and recorded,
+      // and throwing here would fail the webhook, so Razorpay would retry a
+      // payment that has already been applied.
+      await notifySettlement(businessId, { amount: actualAmount ?? 0, paymentLinkId });
+
       return NextResponse.json({ status: finalStatus });
      } catch (settleError) {
       // ProcessedEvent is released so a provider retry can still settle this
