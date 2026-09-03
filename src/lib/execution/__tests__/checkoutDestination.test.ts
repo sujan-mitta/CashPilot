@@ -90,7 +90,10 @@ describe("Re-running an action recovers the real address", () => {
     fetchPaymentLink.mockResolvedValue({ id: LINK_ID, short_url: REAL_LINK, status: "created" });
 
     expect(await resolveCheckoutUrl(null, null, LINK_ID)).toBe(REAL_LINK);
-    expect(fetchPaymentLink).toHaveBeenCalledWith(LINK_ID);
+    // Called with the business too, so the link is looked up on the account
+    // that actually issued it. Asking the wrong account returns nothing and
+    // strands a payer on a link that is perfectly real.
+    expect(fetchPaymentLink).toHaveBeenCalledWith(LINK_ID, undefined);
   });
 
   it("ignores a stored sandbox URL and asks instead", async () => {

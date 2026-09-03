@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import crypto from "crypto";
-import { POST as handleWebhook } from "../route";
+import { POST as handleWebhook } from "../[[...token]]/route";
 import { prisma } from "@/lib/prisma";
 import { UNMATCHED_RETRY_ATTEMPTS } from "@/lib/razorpay/webhookDelivery";
 

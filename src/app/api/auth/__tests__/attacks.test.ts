@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { GET as getPaymentStatus } from "../../payment-status/route";
-import { POST as handleWebhook } from "../../webhooks/route";
+import { POST as handleWebhook } from "../../webhooks/[[...token]]/route";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import crypto from "crypto";

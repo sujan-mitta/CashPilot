@@ -40,6 +40,15 @@ export type WebhookErrorClass =
   | "MALFORMED_SIGNATURE"
   | "INVALID_SIGNATURE"
   | "SECRET_NOT_CONFIGURED"
+  /**
+   * The URL named a business we have no connection for.
+   *
+   * Distinct from an invalid signature: nothing was verified, because there was
+   * no key to verify against. Recorded separately so a merchant whose webhook
+   * URL is stale can be told that, rather than being told their signature was
+   * wrong.
+   */
+  | "UNKNOWN_WEBHOOK_TOKEN"
   | "MALFORMED_BODY"
   | "MISSING_EVENT_ID"
   | "MISSING_PAYMENT_LINK_ID"

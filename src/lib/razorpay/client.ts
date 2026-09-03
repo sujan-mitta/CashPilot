@@ -27,6 +27,58 @@ if (!isPlaceholder) {
   }
 }
 
+/**
+ * The provider client to use for a given business.
+ *
+ * A business that has connected its own Razorpay account gets a client built
+ * from ITS credentials, so links are issued on its account and the money lands
+ * there. Everything else falls back to the deployment's own — which is correct
+ * for a single-merchant install and is what every existing caller relied on.
+ *
+ * The fallback is what makes this shippable incrementally: nothing changes for
+ * a business that has connected nothing, so there is no cutover.
+ *
+ * `businessId` is optional because a handful of callers genuinely have no
+ * tenant in scope — repair scripts walking rows across businesses, for one —
+ * and forcing a fake value on them would be worse than an explicit undefined.
+ */
+async function clientFor(
+  businessId?: string
+): Promise<{ client: Razorpay | null; simulated: boolean }> {
+  if (businessId) {
+    try {
+      // Imported here rather than at module scope on purpose. A static import
+      // pulls Prisma into everything that touches this file — including unit
+      // tests of pure link logic, which then fail on a missing DATABASE_URL and
+      // are one careless mock away from opening a real connection. The database
+      // is reached only when a caller actually asks about a specific business.
+      const { credentialsForBusiness } = await import("./connection");
+      const creds = await credentialsForBusiness(businessId);
+      if (creds) {
+        return {
+          client: new Razorpay({ key_id: creds.keyId, key_secret: creds.keySecret }),
+          simulated: false,
+        };
+      }
+    } catch {
+      // Reading or using a connection failed — the table is unreachable, the
+      // credential will not decrypt, or it will not build a client.
+      //
+      // Falling back rather than failing, deliberately. The fallback still
+      // issues a REAL payment link, so the customer can pay and the debt is
+      // collected; it lands in the deployment's account instead of the
+      // merchant's until the connection is repaired. Refusing to issue
+      // anything would leave the money uncollected, which is the worse of two
+      // bad outcomes.
+      //
+      // Logged without the businessId's credentials, at error level, because a
+      // merchant silently being paid into the wrong account must be findable.
+      logger.error("Falling back to deployment Razorpay credentials", { businessId });
+    }
+  }
+  return { client: razorpay, simulated: isPlaceholder };
+}
+
 export interface PaymentLinkResult {
   id: string;
   short_url: string;
@@ -229,8 +281,12 @@ export async function createRecoveryPaymentLink(
   amountInPaise: number,
   customerDescription: string,
   idempotencyKey?: string,
-  customer?: PaymentLinkCustomer
+  customer?: PaymentLinkCustomer,
+  /** Issues on this business's own connected account when it has one. */
+  businessId?: string
 ): Promise<PaymentLinkResult> {
+  const { client: razorpay, simulated: isPlaceholder } = await clientFor(businessId);
+
   if (isPlaceholder || !razorpay) {
     if (process.env.NODE_ENV === "production") {
       throw new Error("CRITICAL: Razorpay credentials are missing or placeholders in production. Refusing to run simulated operations.");
@@ -302,8 +358,18 @@ export async function reconcilePaymentLink(
   window: { from: Date; to: Date },
   now: Date = new Date(),
   /** When the operation was first attempted; gates the NOT_FOUND conclusion. */
-  operationRecordedAt?: Date
+  operationRecordedAt?: Date,
+  /**
+   * Reconciles against this business's own account when it has one.
+   *
+   * Critical: a link created on a merchant's account does not exist on the
+   * deployment's. Scanning the wrong account would find nothing and conclude
+   * NOT_FOUND for a payment that is real.
+   */
+  businessId?: string
 ): Promise<ReconciliationResult> {
+  const { client: razorpay, simulated: isPlaceholder } = await clientFor(businessId);
+
   if (isPlaceholder || !razorpay) {
     if (process.env.NODE_ENV === "production") {
       throw new Error("CRITICAL: Razorpay credentials are missing or placeholders in production. Refusing to run simulated operations.");
@@ -357,8 +423,11 @@ export async function reconcilePaymentLink(
  * A READ, so it is retried with bounded backoff. It never creates anything.
  */
 export async function fetchPaymentLink(
-  linkId: string
+  linkId: string,
+  /** Looks it up on this business's own account when it has one. */
+  businessId?: string
 ): Promise<{ id: string; short_url: string; status: string } | null> {
+  const { client: razorpay, simulated: isPlaceholder } = await clientFor(businessId);
   if (isPlaceholder || !razorpay) return null;
 
   const fetchMethod = razorpay.paymentLink.fetch as unknown as (

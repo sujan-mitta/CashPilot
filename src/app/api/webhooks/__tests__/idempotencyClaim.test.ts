@@ -82,7 +82,7 @@ vi.mock("@/lib/razorpay/settlement", () => ({
   }),
 }));
 
-import { POST } from "../route";
+import { POST } from "../[[...token]]/route";
 
 /** Prisma's shape for a unique-constraint violation. */
 const uniqueViolation = () => Object.assign(new Error("Unique constraint failed"), { code: "P2002" });

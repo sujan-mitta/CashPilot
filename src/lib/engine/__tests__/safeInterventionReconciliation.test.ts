@@ -4,7 +4,7 @@ import { scoreAllStrategies } from "../scorer";
 import { POST as handleApprove } from "../../../app/api/approve/route";
 import { seedFreshDecision } from "./helpers/prismaFakes";
 import { POST as handleExecute } from "../../../app/api/execute/route";
-import { POST as handleWebhook } from "../../../app/api/webhooks/route";
+import { POST as handleWebhook } from "../../../app/api/webhooks/[[...token]]/route";
 import { prisma } from "../../../lib/prisma";
 import crypto from "crypto";
 import { addDays } from "date-fns";

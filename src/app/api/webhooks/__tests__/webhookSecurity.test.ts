@@ -64,7 +64,7 @@ const sign = (body: string, secret: string) =>
   crypto.createHmac("sha256", secret).update(body).digest("hex");
 
 async function post(body: string, signature?: string) {
-  const { POST } = await import("../route");
+  const { POST } = await import("../[[...token]]/route");
   return POST(
     new Request("http://localhost/api/webhooks", {
       method: "POST",

@@ -141,13 +141,21 @@ function isRealProviderLink(linkId: string): boolean {
 export async function resolveCheckoutUrl(
   providerShortUrl: string | null | undefined,
   storedShortUrl: string | null | undefined,
-  linkId: string
+  linkId: string,
+  /**
+   * Whose account to ask.
+   *
+   * A link created on a merchant's account does not exist on the deployment's,
+   * so asking the wrong one returns nothing and the payer is left with the
+   * sandbox dead end for a link that is perfectly real.
+   */
+  businessId?: string
 ): Promise<string> {
   if (providerShortUrl) return providerShortUrl;
   if (storedShortUrl && !storedShortUrl.includes("/sandbox/checkout")) return storedShortUrl;
 
   if (isRealProviderLink(linkId)) {
-    const link = await fetchPaymentLink(linkId);
+    const link = await fetchPaymentLink(linkId, businessId);
     if (link?.short_url) return link.short_url;
   }
 
@@ -279,7 +287,11 @@ export async function executeRecoverFailedPayments(
       const link = await createRecoveryPaymentLink(
         recovery.amount,
         recovery.transaction?.description || "Failed payment recovery",
-        idempotencyKey
+        idempotencyKey,
+        undefined,
+        // Issued on this business's own Razorpay account when it has connected
+        // one, so the money lands with the merchant rather than with us.
+        ctx.businessId
       );
       providerShortUrl = link.short_url;
       return { externalRef: link.id, externalStatus: link.status };
@@ -289,7 +301,7 @@ export async function executeRecoverFailedPayments(
   if (outcome.outcome === "SUCCEEDED" || outcome.outcome === "ALREADY_SUCCEEDED") {
     const linkId = outcome.externalRef as string;
     const shortUrl = withActionId(
-      await resolveCheckoutUrl(providerShortUrl, recovery.shortUrl, linkId),
+      await resolveCheckoutUrl(providerShortUrl, recovery.shortUrl, linkId, ctx.businessId),
       ctx.action.id
     );
     await client.paymentRecovery.update({
@@ -377,7 +389,9 @@ export async function executePrioritizeCollections(
         const link = await createRecoveryPaymentLink(
           inv.amount,
           `Invoice Collection for ${inv.customerName}`,
-          idempotencyKey
+          idempotencyKey,
+          undefined,
+          ctx.businessId
         );
         providerShortUrl = link.short_url;
         return { externalRef: link.id, externalStatus: link.status };
@@ -393,7 +407,10 @@ export async function executePrioritizeCollections(
         invoiceId: inv.id,
         customerName: inv.customerName,
         paymentLinkId: linkId,
-        shortUrl: withActionId(await resolveCheckoutUrl(providerShortUrl, null, linkId), ctx.action.id),
+        shortUrl: withActionId(
+          await resolveCheckoutUrl(providerShortUrl, null, linkId, ctx.businessId),
+          ctx.action.id
+        ),
         amount: inv.amount,
       });
     } else if (

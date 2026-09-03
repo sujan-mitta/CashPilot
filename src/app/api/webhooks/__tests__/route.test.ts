@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { POST as handleWebhook } from "../route";
+import { POST as handleWebhook } from "../[[...token]]/route";
 import { prisma } from "@/lib/prisma";
 import crypto from "crypto";
 

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { validateActionTransition, validateRecoveryTransition } from "../stateTransitions";
 import { POST as handleApprove } from "../../../app/api/approve/route";
 import { POST as handleExecute } from "../../../app/api/execute/route";
-import { POST as handleWebhook } from "../../../app/api/webhooks/route";
+import { POST as handleWebhook } from "../../../app/api/webhooks/[[...token]]/route";
 import { GET as handlePaymentStatus } from "../../../app/api/payment-status/route";
 import { prisma } from "../../../lib/prisma";
 import crypto from "crypto";

@@ -19,6 +19,7 @@ import {
   countDeliveriesForEvent,
   UNMATCHED_RETRY_ATTEMPTS,
 } from "@/lib/razorpay/webhookDelivery";
+import { webhookSecretForToken } from "@/lib/razorpay/connection";
 
 /**
  * True only for a unique-constraint violation.
@@ -77,7 +78,39 @@ export const POST = withCorrelationId(async (req: Request) => {
 
     const body = await req.text();
     const signature = req.headers.get("x-razorpay-signature");
-    const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
+
+    // WHICH ACCOUNT SIGNED THIS?
+    //
+    // Razorpay signs with a per-account secret, so a deployment serving several
+    // merchants cannot verify with one shared value. The account is identified
+    // by the URL — /api/webhooks/<token> — and not by anything in the body.
+    //
+    // The URL rather than the payload, because a webhook can arrive BEFORE our
+    // own record of the payment link is written. That race has already been
+    // observed here; resolving the tenant from the payload would leave those
+    // webhooks unverifiable through no fault of the sender.
+    //
+    // Read from the path rather than route params because withCorrelationId
+    // forwards only the request, and changing a wrapper used by every route to
+    // thread one parameter would be a worse trade.
+    const token = new URL(req.url).pathname.split("/api/webhooks/")[1]?.split("/")[0] || null;
+
+    let secret: string | undefined;
+    if (token) {
+      const connection = await webhookSecretForToken(token);
+      if (!connection) {
+        // An unknown token is REFUSED, never quietly verified against the
+        // deployment's secret. Falling back would let anyone invent a token and
+        // still be checked against a key that might match — which would make
+        // the token look like security while providing none.
+        logger.warn("Webhook rejected for unknown token", { failureClassification: "UNKNOWN_WEBHOOK_TOKEN" });
+        await recordRejectedDelivery("UNKNOWN_WEBHOOK_TOKEN");
+        return NextResponse.json({ error: "Unknown webhook endpoint" }, { status: 404 });
+      }
+      secret = connection.secret;
+    } else {
+      secret = process.env.RAZORPAY_WEBHOOK_SECRET;
+    }
 
     // Cryptographically verify Razorpay Webhook Signature if secret is configured
     if (secret) {

@@ -88,7 +88,7 @@ vi.mock("@/lib/razorpay/settlement", () => ({
   }),
 }));
 
-import { POST } from "../route";
+import { POST } from "../[[...token]]/route";
 
 const SECRET = "whsec_m1_test_secret_value_9876543210";
 

@@ -431,7 +431,7 @@ describe("PART 29 - Webhook safety regression", () => {
     delete process.env.RAZORPAY_WEBHOOK_SECRET;
     vi.stubEnv("NODE_ENV", "production");
 
-    const { POST } = await import("../../../app/api/webhooks/route");
+    const { POST } = await import("../../../app/api/webhooks/[[...token]]/route");
     const res = await POST(new Request("http://x/api/webhooks", { method: "POST", body }));
     expect(res.status).toBe(500);
     expect((await res.json()).error).toBe("WEBHOOK_SECRET_NOT_CONFIGURED");
@@ -445,7 +445,7 @@ describe("PART 29 - Webhook safety regression", () => {
     process.env.RAZORPAY_WEBHOOK_SECRET = secret;
     vi.stubEnv("NODE_ENV", "test");
 
-    const { POST } = await import("../../../app/api/webhooks/route");
+    const { POST } = await import("../../../app/api/webhooks/[[...token]]/route");
     const res = await POST(
       new Request("http://x/api/webhooks", {
         method: "POST",
@@ -465,7 +465,7 @@ describe("PART 29 - Webhook safety regression", () => {
     const originalSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
     process.env.RAZORPAY_WEBHOOK_SECRET = secret;
 
-    const { POST } = await import("../../../app/api/webhooks/route");
+    const { POST } = await import("../../../app/api/webhooks/[[...token]]/route");
     const res = await POST(
       new Request("http://x/api/webhooks", {
         method: "POST",
