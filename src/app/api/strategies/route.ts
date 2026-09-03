@@ -22,6 +22,11 @@ import { rateLimit } from "@/lib/auth/rateLimit";
 import type { Prisma } from "../../../../generated/prisma/client";
 import { getLatestFinancialState } from "@/lib/state/store";
 import { totalOutstanding } from "@/lib/engine/invoiceOutstanding";
+import {
+  isReschedulablePayout,
+  isPausableExpense,
+  HANDLED_RECOVERY_STATUSES,
+} from "@/lib/engine/actionEligibility";
 
 /** The per-strategy object returned to the client and fed to the AI narrator. */
 interface ResponseStrategy {
@@ -125,7 +130,7 @@ export async function POST() {
       const settledOrInFlight = await prisma.paymentRecovery.findMany({
         where: {
           transaction: { businessId: business.id },
-          status: { in: ["RECOVERED", "PAYMENT_PENDING", "RECOVERY_INITIATED"] },
+          status: { in: [...HANDLED_RECOVERY_STATUSES] },
         },
         select: { transactionId: true },
       });
@@ -171,7 +176,12 @@ export async function POST() {
       invoices.filter((i) => i.status === "OVERDUE" || i.status === "PARTIALLY_PAID")
     );
 
-    const packagingPayout = payouts.find((p) => p.vendor === "Packaging Co");
+    // Only a payout the executor could actually move. Proposing to reschedule
+    // one already rescheduled fails at execution, and worse, double-counts: the
+    // benefit of moving that money was banked the first time.
+    const packagingPayout = payouts.find(
+      (p) => p.vendor === "Packaging Co" && isReschedulablePayout(p)
+    );
     const rescheduleAmount = packagingPayout ? packagingPayout.amount : 0;
     const packagingPayoutId = packagingPayout ? packagingPayout.id : "";
     const packagingTx = transactions.find(
@@ -179,9 +189,11 @@ export async function POST() {
     );
     const packagingTxId = packagingTx ? packagingTx.id : "";
 
-    const saasTx = transactions.find(
-      (t) => t.description?.toLowerCase().includes("saas") || t.description?.toLowerCase().includes("recurring")
-    );
+    // Matched on type and status as well as description. Description alone
+    // picked up a FAILED outflow — a payment that already did not happen, so no
+    // saving is available — and would have picked an INFLOW described as a
+    // "recurring payment" too, offering money coming IN as an expense to stop.
+    const saasTx = transactions.find(isPausableExpense);
     const pauseAmount = saasTx ? saasTx.amount : 0;
     const saasTxId = saasTx ? saasTx.id : "";
 

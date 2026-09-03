@@ -14,6 +14,10 @@ import { executeWithDurableIntent, ExecuteResult } from "./executor";
 import { validateRecoveryTransition } from "../engine/stateTransitions";
 import { formatLakhs } from "../format";
 import { FINANCIAL_CONFIG } from "../engine/financialConfig";
+import {
+  RESCHEDULABLE_PAYOUT_STATUSES,
+  PAUSABLE_TRANSACTION_STATUSES,
+} from "../engine/actionEligibility";
 
 export interface ActionExecutionOutcome {
   status: ActionStatus;
@@ -524,7 +528,9 @@ export async function executeReschedulePayout(
           : await tx.payout.findFirst({
               where: {
                 vendor: "Packaging Co",
-                status: PayoutStatus.SCHEDULED,
+                // Same rule the planner selects by, from one definition, so the
+                // two cannot drift apart again.
+                status: { in: [...RESCHEDULABLE_PAYOUT_STATUSES] },
                 businessId: ctx.businessId,
               },
             });
@@ -627,7 +633,7 @@ export async function executePauseExpense(
                 businessId: ctx.businessId,
                 type: "OUTFLOW",
                 description: { contains: "SaaS" },
-                status: TransactionStatus.PENDING,
+                status: { in: [...PAUSABLE_TRANSACTION_STATUSES] },
               },
             });
 
