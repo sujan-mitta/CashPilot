@@ -136,3 +136,42 @@ export function detectProvenanceMismatch(
 
   return { foreignModeCount, testMoneyInLiveLedger, unattributedCount, detail };
 }
+
+/**
+ * Provenance for a specific business, which is the only kind worth recording.
+ *
+ * THE BUG THIS CLOSES
+ *
+ * `describeProviderProvenance()` reads the DEPLOYMENT's environment. Once a
+ * merchant connects their own account, links are issued there and the money
+ * lands there — but every settlement was still stamped with the deployment's
+ * fingerprint, so the ledger asserted that we received money that had in fact
+ * gone to them.
+ *
+ * Observed live: a connection made at 04:21, a link created on that account at
+ * 04:23, settled at 04:25, and stamped with the deployment's account. The one
+ * question this stamp exists to answer — which merchant account received this —
+ * was answered wrongly, and confidently.
+ *
+ * Falls back to the deployment's own when a business has connected nothing,
+ * which is correct: that is genuinely the account that received it.
+ */
+export async function describeProviderProvenanceFor(
+  businessId: string
+): Promise<ProviderProvenance> {
+  try {
+    // Imported lazily for the same reason the provider client does it: a static
+    // import drags Prisma into every consumer of this module, including pure
+    // unit tests that never touch a database.
+    const { credentialsForBusiness } = await import("./connection");
+    const creds = await credentialsForBusiness(businessId);
+    if (creds) {
+      return { mode: creds.mode, accountFingerprint: fingerprintAccount(creds.keyId) };
+    }
+  } catch {
+    // Unreadable connection state falls through to the deployment's. A
+    // settlement must still be recorded; an imperfect stamp beats none, and the
+    // failure is visible in the logs of the call that failed.
+  }
+  return describeProviderProvenance();
+}

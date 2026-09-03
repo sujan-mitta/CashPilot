@@ -29,7 +29,7 @@ import {
   ExecutionIntentStatus,
   Prisma,
 } from "../../../generated/prisma/client";
-import { describeProviderProvenance } from "./provenance";
+import { describeProviderProvenanceFor } from "./provenance";
 
 /**
  * Derives a decision's reconciliation status from the authoritative per-action
@@ -438,8 +438,10 @@ async function emitSettlementEvent(
   }
 ): Promise<void> {
   // Read at write time, from the credentials that actually produced this
-  // settlement, rather than passed in by a caller who might not know.
-  const provenance = describeProviderProvenance();
+  // settlement — the BUSINESS's connected account when it has one, not the
+  // deployment's. Stamping the deployment's fingerprint on money that went to a
+  // merchant makes the ledger assert we received what they did.
+  const provenance = await describeProviderProvenanceFor(params.businessId);
 
   await recordFinancialEvent(tx, params.businessId, {
     eventType: params.eventType,

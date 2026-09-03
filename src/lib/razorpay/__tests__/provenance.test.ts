@@ -1,6 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+const credentialsForBusiness = vi.hoisted(() => vi.fn());
+vi.mock("../connection", () => ({ credentialsForBusiness }));
+
 import {
   describeProviderProvenance,
+  describeProviderProvenanceFor,
   fingerprintAccount,
   detectProvenanceMismatch,
 } from "../provenance";
@@ -123,5 +127,70 @@ describe("An empty ledger", () => {
       testMoneyInLiveLedger: false,
       detail: null,
     });
+  });
+});
+
+describe("A settlement is stamped with the account that received it", () => {
+  const savedKey = process.env.RAZORPAY_KEY_ID;
+  const savedSecret = process.env.RAZORPAY_KEY_SECRET;
+
+  beforeEach(() => {
+    credentialsForBusiness.mockReset();
+    process.env.RAZORPAY_KEY_ID = "rzp_test_deployment";
+    process.env.RAZORPAY_KEY_SECRET = "deployment-secret";
+  });
+
+  it("uses the BUSINESS's account when it has connected one", async () => {
+    // THE BUG: this read the deployment's environment regardless, so once a
+    // merchant connected their own account the ledger asserted we had received
+    // money that went to them. Observed live — a link issued on the merchant's
+    // account two minutes after connecting, stamped with ours.
+    credentialsForBusiness.mockResolvedValue({
+      keyId: "rzp_test_merchant",
+      keySecret: "s",
+      mode: "TEST",
+    });
+
+    const p = await describeProviderProvenanceFor("biz");
+
+    expect(p.accountFingerprint).toBe(fingerprintAccount("rzp_test_merchant"));
+    expect(p.accountFingerprint).not.toBe(fingerprintAccount("rzp_test_deployment"));
+  });
+
+  it("falls back to the deployment's when nothing is connected", async () => {
+    // Correct rather than a compromise: that IS the account that received it.
+    credentialsForBusiness.mockResolvedValue(null);
+
+    const p = await describeProviderProvenanceFor("biz");
+
+    expect(p.accountFingerprint).toBe(fingerprintAccount("rzp_test_deployment"));
+  });
+
+  it("still stamps something when the connection cannot be read", async () => {
+    // A settlement must be recorded either way. An imperfect stamp beats none.
+    credentialsForBusiness.mockRejectedValue(new Error("db down"));
+
+    const p = await describeProviderProvenanceFor("biz");
+
+    expect(p.accountFingerprint).toBe(fingerprintAccount("rzp_test_deployment"));
+  });
+
+  it("never puts the merchant's key in the stamp", async () => {
+    credentialsForBusiness.mockResolvedValue({
+      keyId: "rzp_test_merchant_secret_looking",
+      keySecret: "s",
+      mode: "TEST",
+    });
+
+    const p = await describeProviderProvenanceFor("biz");
+
+    expect(JSON.stringify(p)).not.toContain("rzp_test_merchant_secret_looking");
+  });
+
+  afterEach(() => {
+    if (savedKey === undefined) delete process.env.RAZORPAY_KEY_ID;
+    else process.env.RAZORPAY_KEY_ID = savedKey;
+    if (savedSecret === undefined) delete process.env.RAZORPAY_KEY_SECRET;
+    else process.env.RAZORPAY_KEY_SECRET = savedSecret;
   });
 });
