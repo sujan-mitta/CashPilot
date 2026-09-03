@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { describeRazorpayIntegration } from "@/lib/razorpay/status";
+import { describeConnection } from "@/lib/razorpay/connection";
 
 /**
  * Whether Razorpay is usable, for the onboarding choice.
@@ -17,5 +18,13 @@ export async function GET() {
   }
 
   // Returns mode and capability only. Never a key, masked or otherwise.
-  return NextResponse.json(describeRazorpayIntegration());
+  //
+  // `deployment` describes the fallback account this install uses when a
+  // business has connected none of its own; `connection` describes the
+  // business's own, which takes precedence once it exists.
+  const connection = await describeConnection(session.businessId);
+  return NextResponse.json({
+    ...describeRazorpayIntegration(),
+    connection,
+  });
 }

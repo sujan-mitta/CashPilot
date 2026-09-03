@@ -10,6 +10,7 @@ import { EASE_GLIDE, DUR } from "@/components/ui/motion";
 import { errorMessage } from "@/lib/errors";
 import { useCashPilot } from "@/context/CashPilotContext";
 import { rememberChosenStart } from "@/lib/onboardingChoice";
+import { RazorpayConnect } from "@/components/RazorpayConnect";
 import clsx from "clsx";
 
 /**
@@ -186,6 +187,16 @@ export default function Onboarding() {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Picking Razorpay opens the connection form in place.
+            Making it the next thing on the same screen, rather than a setting
+            to be found later, is the difference between an option that reads as
+            real and one that reads as a label. */}
+        {choice === "RAZORPAY" && (
+          <div className="mt-5">
+            <RazorpayConnect />
+          </div>
+        )}
 
         {/* Choosing Razorpay when nothing is configured is allowed but not
             silent: the ledger works, and only the recovery step is unavailable.

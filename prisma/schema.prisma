@@ -7,6 +7,55 @@ datasource db {
   provider = "postgresql"
 }
 
+/// A merchant's own Razorpay account, connected by them.
+///
+/// Until this exists for a business, its payment links are issued on the
+/// DEPLOYMENT's account — which is correct for a single-merchant install and
+/// wrong the moment there are two, because the money lands in the deployment
+/// owner's account rather than the merchant's.
+///
+/// The secrets here are not ours. They authorise moving that merchant's money,
+/// so they are stored encrypted under a key held in the environment, never in
+/// this database: the point is that stealing the database is not enough.
+model RazorpayConnection {
+  id         String   @id @default(cuid())
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  /// One account per business. A second would make "which one issued this
+  /// link" ambiguous at exactly the moment it matters — reconciliation.
+  businessId String   @unique
+
+  /// The key id identifies the merchant account. Not a secret, but never
+  /// returned by any endpoint either: it has no use in a UI, and a value that
+  /// is displayed is a value that ends up in screenshots and issue trackers.
+  keyId              String
+  /// AES-256-GCM, packed as version:iv:tag:ciphertext.
+  keySecretEnc       String
+  /// Razorpay signs webhooks with a per-account secret, so this cannot be
+  /// shared with the deployment's. Nullable because an account can be connected
+  /// before webhooks are configured at the provider.
+  webhookSecretEnc   String?
+
+  /// Selects this business from the webhook URL, before any body is read.
+  ///
+  /// Resolving the tenant from the payload would fail for a webhook that
+  /// arrives before our own record of the payment link is written — a race that
+  /// has already been observed here. The URL does not have that problem.
+  webhookToken String @unique
+
+  /// TEST or LIVE, derived from the key prefix and pinned at connect time.
+  mode String
+
+  /// Lets a rotation be noticed without decrypting or displaying anything.
+  keyFingerprint String
+
+  connectedAt    DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  /// When the credentials were last confirmed to work against the provider.
+  lastVerifiedAt DateTime?
+
+  @@index([businessId])
+}
+
 model Business {
   id           String        @id @default(cuid())
   name         String
@@ -19,6 +68,7 @@ model Business {
   strategies   Strategy[]
   users        User[]
   decisions    Decision[]
+  razorpay     RazorpayConnection?
 }
 
 enum TransactionType {
