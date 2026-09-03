@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import crypto from "node:crypto";
 
 /**
@@ -40,6 +40,12 @@ vi.mock("@/lib/razorpay/webhookDelivery", () => ({
 }));
 
 vi.mock("@/lib/prisma", () => ({ prisma: {} }));
+// Stubbed: it reaches for the database to build a health report, which has
+// nothing to do with whether a signature verifies and made this test slow
+// enough to time out under full-suite load.
+vi.mock("@/lib/notifications/settlementNotice", () => ({
+  notifySettlement: vi.fn().mockResolvedValue({ sent: 0, suppressed: 0 }),
+}));
 vi.mock("@/lib/observability", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
   withCorrelationId: (h: unknown) => h,
@@ -56,8 +62,9 @@ const BODY = JSON.stringify({
   payload: { payment_link: { entity: { id: "plink_abc", reference_id: "ref_1" } } },
 });
 
+import { POST } from "../[[...token]]/route";
+
 const post = async (path: string, body: string, signature: string) => {
-  const { POST } = await import("../[[...token]]/route");
   return POST(
     new Request(`https://app.test${path}`, {
       method: "POST",
@@ -67,9 +74,17 @@ const post = async (path: string, body: string, signature: string) => {
   );
 };
 
+const savedWebhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+
+afterEach(() => {
+  // Restored: leaving it set leaked into every other webhook suite that reads
+  // the environment.
+  if (savedWebhookSecret === undefined) delete process.env.RAZORPAY_WEBHOOK_SECRET;
+  else process.env.RAZORPAY_WEBHOOK_SECRET = savedWebhookSecret;
+});
+
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.resetModules();
   mocks.beginDelivery.mockResolvedValue("d1");
   mocks.recordRejectedDelivery.mockResolvedValue(undefined);
 });

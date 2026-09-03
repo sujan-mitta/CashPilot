@@ -38,6 +38,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { prisma } from "../src/lib/prisma";
+import { deleteAccountCompletely } from "./lib/accountDeletion";
 
 /**
  * Accounts to keep.
@@ -129,15 +130,19 @@ single-owner sandboxes discarded with their owner: ${discarded.length}`);
   );
   console.log(`\nbackup written: ${backupPath}`);
 
+  // One deletion path, shared with scripts/deleteAccount.ts.
+  //
+  // This used to remove the user and three side tables and stop there, leaving
+  // the business behind — unreachable, still holding its name, and found only
+  // afterwards. deleteAccountCompletely takes the businesses a departing user
+  // was the last member of, and everything hanging off them.
   for (const u of doomed) {
-    // These key off userId as a plain column with no foreign key, so they are
-    // cleared explicitly rather than relying on a cascade that does not exist.
-    // Leaving them keeps an alert history pointing at an account that is gone.
-    await prisma.notificationPreference.deleteMany({ where: { userId: u.id } });
-    await prisma.userActivityRecord.deleteMany({ where: { userId: u.id } });
-    await prisma.notificationAlertRecord.deleteMany({ where: { userId: u.id } });
-    await prisma.user.delete({ where: { id: u.id } });
-    console.log(`  removed ${u.email}`);
+    const summary = await deleteAccountCompletely(u.email);
+    const tables = summary ? Object.entries(summary.rowsDeleted).map(([t, n]) => `${t}=${n}`).join(" ") : "";
+    console.log(`  removed ${u.email}${tables ? `  [${tables}]` : ""}`);
+    if (summary?.businessesLeftAlone.length) {
+      console.log(`     kept (shared): ${summary.businessesLeftAlone.join(", ")}`);
+    }
   }
 
   const left = await prisma.user.findMany({
