@@ -23,6 +23,7 @@ import {
 } from "./timeline";
 import { WhereYouStand } from "@/components/WhereYouStand";
 import { useStanding } from "@/lib/useStanding";
+import { describePlanRunState } from "@/lib/engine/planRunState";
 
 interface ActionStepLog {
   id: string;
@@ -101,6 +102,9 @@ function ExecutionContent() {
   // Shared with the dashboard: settlement happens off-page, so both screens
   // have to ask rather than assume.
   const { standing: receipts, newlyArrived, acknowledge } = useStanding();
+
+  // Whether this plan can still be run at all, from the decision's own status.
+  const planRun = describePlanRunState(strategy?.decisionStatus);
 
   useEffect(() => {
     if (!newlyArrived) return;
@@ -402,21 +406,38 @@ function ExecutionContent() {
         <Reveal
           variants={{ hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: EASE_OUT_EXPO } } }}
         >
+          {/* What the SERVER says about this plan, not what this browser
+              session happens to have done.
+              
+              This screen previously offered "Begin Approved Execution" for a
+              decision that had already executed, and the operator learned
+              otherwise only after pressing it — beside a heading claiming the
+              plan was awaiting execution when it was not. The status was in the
+              API response the whole time; the page just never read it. */}
           <Card className="rounded-md text-center space-y-6 py-10">
             <div className="relative w-14 h-14 mx-auto">
-              <div className="absolute inset-0 rounded-full bg-safe-500/15 animate-pulse-ring" />
-              <CheckCircle2 className="w-14 h-14 text-safe-400 relative" />
+              {planRun.canRun && (
+                <div className="absolute inset-0 rounded-full bg-safe-500/15 animate-pulse-ring" />
+              )}
+              {planRun.canRun ? (
+                <CheckCircle2 className="w-14 h-14 text-safe-400 relative" />
+              ) : (
+                <AlertTriangle className="w-14 h-14 text-warn-400 relative" />
+              )}
             </div>
             <div className="max-w-md mx-auto space-y-2">
-              <h2 className="text-xl font-semibold text-ink-100">Plan Approved &amp; Awaiting Execution</h2>
-              <p className="text-xs text-ink-300 leading-relaxed font-semibold">
-                This strategy is fully authorized by human review.
-                Clicking the button below will generate test-mode payment links via the Razorpay API.
-              </p>
+              <h2 className="text-xl font-semibold text-ink-100">{planRun.heading}</h2>
+              <p className="text-xs text-ink-300 leading-relaxed font-semibold">{planRun.detail}</p>
             </div>
-            <Button variant="primary" size="lg" onClick={handleStartExecution}>
-              Begin Approved Execution
-            </Button>
+            {planRun.canRun ? (
+              <Button variant="primary" size="lg" onClick={handleStartExecution}>
+                Begin Approved Execution
+              </Button>
+            ) : (
+              <Button variant="secondary" size="lg" onClick={() => router.push("/dashboard")}>
+                Back to the dashboard
+              </Button>
+            )}
           </Card>
         </Reveal>
       ) : (

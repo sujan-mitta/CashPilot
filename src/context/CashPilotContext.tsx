@@ -22,6 +22,13 @@ export interface Strategy {
    * than vaguely, that money arrived after the plan was reasoned out.
    */
   createdAt?: string;
+  /**
+   * The decision's status, as /api/strategies/[id] returns it.
+   *
+   * Present so the execution page can tell whether a plan can still be run,
+   * rather than offering a button the state machine will refuse.
+   */
+  decisionStatus?: string | null;
   actions: {
     id: string;
     type: string;
