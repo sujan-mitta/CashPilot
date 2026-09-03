@@ -2,7 +2,12 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { rateLimit, clientKey } from "@/lib/auth/rateLimit";
 import { parseJsonBody } from "@/lib/errors";
-import { connectRazorpay, disconnectRazorpay, describeConnection } from "@/lib/razorpay/connection";
+import {
+  connectRazorpay,
+  disconnectRazorpay,
+  describeConnection,
+  setWebhookSecret,
+} from "@/lib/razorpay/connection";
 import { logger } from "@/lib/observability";
 
 /**
@@ -64,6 +69,38 @@ export async function POST(req: Request) {
     });
     return NextResponse.json({ error: "Could not save that connection." }, { status: 500 });
   }
+}
+
+/**
+ * Add the webhook secret to an existing connection, keeping the same URL.
+ *
+ * Separate from POST because reconnecting rotates the token, which would change
+ * the URL the merchant has just finished pasting into Razorpay.
+ */
+export async function PATCH(req: Request) {
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const limited = rateLimit(`rzp-webhook:${clientKey(req)}`, 10, 60_000);
+  if (!limited.ok) {
+    return NextResponse.json(
+      { error: "Too many attempts. Please wait a minute and try again." },
+      { status: 429, headers: { "Retry-After": String(limited.retryAfterSec) } }
+    );
+  }
+
+  const parsed = await parseJsonBody<Record<string, unknown>>(req);
+  if (!parsed.ok) return parsed.response;
+
+  const webhookSecret =
+    typeof parsed.data.webhookSecret === "string" ? parsed.data.webhookSecret : "";
+
+  const result = await setWebhookSecret(session.businessId, webhookSecret);
+  if (!result.ok) {
+    return NextResponse.json({ error: "WEBHOOK_SECRET_REJECTED", message: result.message }, { status: 400 });
+  }
+
+  return NextResponse.json({ summary: await describeConnection(session.businessId) });
 }
 
 export async function DELETE() {

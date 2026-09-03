@@ -174,6 +174,50 @@ export async function connectRazorpay(
   return { ok: true, webhookToken, mode };
 }
 
+/**
+ * Add or replace only the webhook secret, keeping the same URL.
+ *
+ * WHY THIS EXISTS SEPARATELY
+ *
+ * Setting up webhooks is inherently a loop: Razorpay needs the URL before it
+ * can be configured, and the secret only exists once the merchant invents one
+ * there. Without this, the only way to save that secret was to reconnect —
+ * which issues a FRESH token, changing the URL they had just pasted into
+ * Razorpay, so it had to be pasted again. A setup step that invalidates itself.
+ *
+ * The token is deliberately untouched here. Rotating it is the right response
+ * to credentials being REPLACED, which is what connect does; adding the webhook
+ * secret is completing the same setup, not replacing anything.
+ */
+export async function setWebhookSecret(
+  businessId: string,
+  webhookSecret: string
+): Promise<{ ok: boolean; message?: string }> {
+  if (!encryptionAvailable()) {
+    return {
+      ok: false,
+      message:
+        "This deployment cannot store credentials securely yet, so it will not store them at all.",
+    };
+  }
+
+  const secret = webhookSecret?.trim();
+  if (!secret) return { ok: false, message: "The webhook secret is required." };
+
+  const existing = await prisma.razorpayConnection.findUnique({ where: { businessId } });
+  if (!existing) {
+    return { ok: false, message: "Connect your Razorpay account before adding a webhook secret." };
+  }
+
+  await prisma.razorpayConnection.update({
+    where: { businessId },
+    data: { webhookSecretEnc: encryptSecret(secret) },
+  });
+
+  logger.info("Razorpay webhook secret set", { businessId });
+  return { ok: true };
+}
+
 export async function disconnectRazorpay(businessId: string): Promise<boolean> {
   const existing = await prisma.razorpayConnection.findUnique({ where: { businessId } });
   if (!existing) return false;
@@ -190,6 +234,15 @@ export interface ConnectionSummary {
   webhooksConfigured: boolean;
   connectedAt: string | null;
   lastVerifiedAt: string | null;
+  /**
+   * The webhook token, so the URL can be shown whenever it is needed rather
+   * than only in the seconds after connecting.
+   *
+   * Not a secret: it selects WHICH key a signature is verified against, and
+   * verification still has to pass. Returned only to authenticated members of
+   * the business that owns it, which the route enforces.
+   */
+  webhookToken: string | null;
 }
 
 /**
@@ -209,6 +262,7 @@ export async function describeConnection(businessId: string): Promise<Connection
       webhooksConfigured: false,
       connectedAt: null,
       lastVerifiedAt: null,
+      webhookToken: null,
     };
   }
   return {
@@ -218,6 +272,7 @@ export async function describeConnection(businessId: string): Promise<Connection
     webhooksConfigured: Boolean(c.webhookSecretEnc),
     connectedAt: c.connectedAt.toISOString(),
     lastVerifiedAt: c.lastVerifiedAt?.toISOString() ?? null,
+    webhookToken: c.webhookToken,
   };
 }
 
