@@ -106,8 +106,46 @@ export async function POST() {
     // Only failed INFLOWS are recoverable, and the largest is chosen so the
     // same ledger always produces the same recommendation - which is what the
     // decision fingerprint assumes.
+    // Debts already collected, or already being collected.
+    //
+    // A recovered payment leaves its transaction FAILED — correctly, because the
+    // original payment DID fail and the behaviour model needs that fact. The
+    // money arrived by another route and is counted in currentCash.
+    //
+    // But that left the planner proposing to recover a debt that was already
+    // paid, and the executor then refusing with "No candidate failed payment
+    // found to recover" — a plan that could never run, presented as approved.
+    // Observed live: the operator paid a link, built a fresh plan, and the
+    // first action failed on the money they had just successfully recovered.
+    //
+    // PAYMENT_PENDING is excluded too. A link is already out for that debt, and
+    // issuing a second one asks the same customer to pay twice.
+    let alreadyHandled = new Set<string>();
+    try {
+      const settledOrInFlight = await prisma.paymentRecovery.findMany({
+        where: {
+          transaction: { businessId: business.id },
+          status: { in: ["RECOVERED", "PAYMENT_PENDING", "RECOVERY_INITIATED"] },
+        },
+        select: { transactionId: true },
+      });
+      alreadyHandled = new Set(settledOrInFlight.map((r) => r.transactionId));
+    } catch (error) {
+      // Unreadable recovery state falls back to offering every failed inflow —
+      // the behaviour before this filter existed.
+      //
+      // The failure modes are not symmetric. Offering an already-settled debt
+      // produces a plan whose first action refuses with a clear message, which
+      // is annoying and recoverable. Refusing to produce ANY plan leaves an
+      // operator staring at a shortfall with nothing to act on, which is worse.
+      logger.error("Could not read recovery state; offering all failed inflows", {
+        businessId: business.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
     const recoverableFailures = transactions
-      .filter((t) => t.status === "FAILED" && t.type === "INFLOW")
+      .filter((t) => t.status === "FAILED" && t.type === "INFLOW" && !alreadyHandled.has(t.id))
       .sort((a, b) => b.amount - a.amount || a.id.localeCompare(b.id));
 
     const failedTx = recoverableFailures[0];
