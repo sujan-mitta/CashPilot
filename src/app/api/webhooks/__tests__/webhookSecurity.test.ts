@@ -51,6 +51,18 @@ vi.mock("@/lib/razorpay/settlement", () => ({
   }),
 }));
 
+// Stubbed for the same reason settlementNotice is stubbed in
+// perTenantSecret.test.ts: it walks the whole ledger to rebuild entities and a
+// state snapshot, which has nothing to do with whether a signature verifies.
+//
+// Left real, it ran against this file's PARTIAL prisma mock, spent fifteen
+// seconds failing on a model the mock does not define, and the timeout leaked a
+// settlement into the next case — so "an invalid signature settles nothing"
+// failed while counting a settlement from the test before it.
+vi.mock("@/lib/brain/afterSettlement", () => ({
+  syncAfterSettlement: vi.fn(async () => undefined),
+}));
+
 const SECRET = "whsec_phase18_test_secret_value_0123456789";
 
 const eventBody = (id: string) =>
