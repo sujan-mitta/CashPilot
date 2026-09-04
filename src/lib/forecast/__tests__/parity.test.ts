@@ -279,12 +279,30 @@ describe("the P9 extension point", () => {
 });
 
 describe("the flag", () => {
-  it("is off by default, so no call site changes behaviour by importing this", () => {
-    expect(FORECAST_EVENT_PIPELINE.enabled).toBe(false);
+  it("is ON, so behavioural timing reaches the forecast", () => {
+    // Was asserted OFF while the seam shipped without moving a number. Now that
+    // applyExpectedTiming genuinely shifts inflow dates, the flag is what makes
+    // that reach a real forecast — and the config versions were bumped with it,
+    // so strategies built under the old method are marked stale rather than
+    // carried into a forecast that no longer matches them.
+    expect(FORECAST_EVENT_PIPELINE.enabled).toBe(true);
   });
 
   it("defaults to the flag when no override is supplied", () => {
     const txs = [tx({ id: "t1" })];
-    expect(buildMovements(txs)).toStrictEqual(buildMovements(txs, { useEventPipeline: false }));
+    expect(buildMovements(txs)).toStrictEqual(
+      buildMovements(txs, { useEventPipeline: FORECAST_EVENT_PIPELINE.enabled })
+    );
+  });
+
+  it("still matches the ledger pipeline when no behaviour is known", () => {
+    // The safety property that survives the flip: with no payment history there
+    // is nothing to learn from, so the forecast must be exactly what it was.
+    // A business with a thin ledger must not see its numbers move because a
+    // flag changed.
+    const txs = [tx({ id: "t1" })];
+    expect(buildMovements(txs, { useEventPipeline: true })).toStrictEqual(
+      buildMovements(txs, { useEventPipeline: false })
+    );
   });
 });

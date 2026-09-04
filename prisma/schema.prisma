@@ -91,10 +91,23 @@ model Transaction {
   status           TransactionStatus
   description      String?
   expectedDate     DateTime
+
+  /// Canonical counterparty, when entity resolution has linked one.
+  ///
+  /// The behavioural forecast reads this to decide whether it knows how a payer
+  /// actually behaves. Without it `applyExpectedTiming` has nothing to key on,
+  /// so a learned delay could never reach a forecast however good the model was
+  /// — TransactionRecord already declared the field and the table never had it.
+  ///
+  /// Nullable and never required: absent simply means no behavioural adjustment,
+  /// which is the correct default for a transaction nobody has resolved.
+  counterpartyId   String?
+
   paymentRecovery  PaymentRecovery?
   createdAt        DateTime          @default(now())
 
   @@index([businessId])
+  @@index([counterpartyId])
 }
 
 enum InvoiceStatus {

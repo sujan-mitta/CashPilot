@@ -220,8 +220,12 @@ export const FINANCIAL_CONFIG: FinancialConfig = {
    * decision can answer which rules produced it without consulting today's config.
    * Bump the relevant one whenever its rules change.
    */
-  SCORING_CONFIG_VERSION: "15.0.0",
-  LIQUIDITY_CONFIG_VERSION: "15.0.0",
+  // 16.0.0: behavioural timing enabled. Inflow dates now shift by each
+  // counterparty's observed payment delay, which moves forecast numbers — so
+  // decisions built under 15.x must be seen as stale rather than carried into a
+  // forecast that no longer matches them.
+  SCORING_CONFIG_VERSION: "16.0.0",
+  LIQUIDITY_CONFIG_VERSION: "16.0.0",
   OUTCOME_RULES_VERSION: "15.0.0",
 };
 

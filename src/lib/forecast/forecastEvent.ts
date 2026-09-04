@@ -100,7 +100,14 @@ export interface ForecastEvent {
  * gate instead of silently surviving into a different forecast.
  */
 export const FORECAST_EVENT_PIPELINE = {
-  enabled: false,
+  // ON. `applyExpectedTiming` now moves inflow dates by each counterparty's
+  // OBSERVED delay, so the forecast is no longer output-identical to the ledger
+  // pipeline — which is exactly the change the warning above anticipated.
+  //
+  // The config versions were bumped alongside this, so every strategy generated
+  // under the old method is classified MATERIAL_CHANGE by the freshness gate
+  // rather than silently surviving into a forecast that no longer matches it.
+  enabled: true,
 } as const;
 
 /**
