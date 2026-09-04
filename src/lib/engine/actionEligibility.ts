@@ -63,6 +63,17 @@ export const HANDLED_RECOVERY_STATUSES = [
   "RECOVERY_INITIATED",
 ] as const;
 
+/**
+ * Invoices a collection run can actually chase.
+ *
+ * The planner counted OVERDUE and PARTIALLY_PAID — a part-paid invoice past its
+ * due date is exactly the case worth chasing — while the executor queried
+ * OVERDUE alone. So the promised inflow included invoices no link was ever
+ * issued for, and the plan committed to collecting money it would not go and
+ * ask for.
+ */
+export const COLLECTIBLE_INVOICE_STATUSES = ["OVERDUE", "PARTIALLY_PAID"] as const;
+
 export interface PayoutLike {
   vendor: string | null;
   status: string;

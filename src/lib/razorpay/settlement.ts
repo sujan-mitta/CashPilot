@@ -15,7 +15,7 @@ import {
   type SettledAmountRejection,
 } from "./amounts";
 import { validateActionTransition, validateRecoveryTransition } from "../engine/stateTransitions";
-import { statusAfterPayment } from "@/lib/engine/invoiceOutstanding";
+import { statusAfterPayment, outstandingAmount } from "@/lib/engine/invoiceOutstanding";
 import {
   transitionDecision,
   InvalidDecisionTransitionError,
@@ -883,7 +883,15 @@ export async function settlePayment(
                 actionId: action.id,
                 paymentLinkId,
                 businessId,
-                expectedAmount: freshInvoice.amount,
+                // What was OWED when the link was issued, not the face value.
+                //
+                // Collection links bill the outstanding balance, so a customer
+                // who had already part-paid pays less than inv.amount by
+                // design. Comparing against the face value would classify a
+                // perfectly correct settlement as RECONCILIATION_MISMATCH.
+                // freshInvoice is the pre-increment snapshot, so this is
+                // exactly the figure that was asked for.
+                expectedAmount: outstandingAmount(freshInvoice),
                 actualAmount,
                 successMessage: `Successfully prioritized collections via Razorpay Link ${paymentLinkId}`,
                 trigger,

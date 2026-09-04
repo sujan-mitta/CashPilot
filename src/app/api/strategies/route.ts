@@ -26,6 +26,7 @@ import {
   isReschedulablePayout,
   isPausableExpense,
   HANDLED_RECOVERY_STATUSES,
+  COLLECTIBLE_INVOICE_STATUSES,
 } from "@/lib/engine/actionEligibility";
 
 /** The per-strategy object returned to the client and fed to the AI narrator. */
@@ -173,7 +174,9 @@ export async function POST() {
     // PARTIALLY_PAID is included alongside OVERDUE: a part-paid invoice past its
     // due date is exactly the case this figure exists to describe.
     const overdueAmount = totalOutstanding(
-      invoices.filter((i) => i.status === "OVERDUE" || i.status === "PARTIALLY_PAID")
+      invoices.filter((i) =>
+        (COLLECTIBLE_INVOICE_STATUSES as readonly string[]).includes(i.status)
+      )
     );
 
     // Only a payout the executor could actually move. Proposing to reschedule

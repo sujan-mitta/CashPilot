@@ -17,7 +17,9 @@ import { FINANCIAL_CONFIG } from "../engine/financialConfig";
 import {
   RESCHEDULABLE_PAYOUT_STATUSES,
   PAUSABLE_TRANSACTION_STATUSES,
+  COLLECTIBLE_INVOICE_STATUSES,
 } from "../engine/actionEligibility";
+import { outstandingAmount } from "../engine/invoiceOutstanding";
 
 export interface ActionExecutionOutcome {
   status: ActionStatus;
@@ -358,7 +360,13 @@ export async function executePrioritizeCollections(
   hooks: ExecutionHooks = {}
 ): Promise<ActionExecutionOutcome> {
   const overdueInvoices = await client.invoice.findMany({
-    where: { status: "OVERDUE", businessId: ctx.businessId },
+    where: {
+      // Same list the planner counts by, from one definition. Querying OVERDUE
+      // alone meant a part-paid overdue invoice was promised in the plan's
+      // inflow and then never chased.
+      status: { in: [...COLLECTIBLE_INVOICE_STATUSES] },
+      businessId: ctx.businessId,
+    },
   });
 
   if (!overdueInvoices || overdueInvoices.length === 0) {
@@ -391,7 +399,14 @@ export async function executePrioritizeCollections(
       onIntentRecorded: hooks.onIntentRecorded,
       dispatch: async (idempotencyKey) => {
         const link = await createRecoveryPaymentLink(
-          inv.amount,
+          // What is STILL OWED, never the face value.
+          //
+          // A customer who has already paid Rs 6L of a Rs 10L invoice must be
+          // asked for Rs 4L. Billing inv.amount would charge them the Rs 6L a
+          // second time — and the planner has always promised the outstanding
+          // figure, so the face value was never the number this plan agreed to
+          // collect either.
+          outstandingAmount(inv),
           `Invoice Collection for ${inv.customerName}`,
           idempotencyKey,
           undefined,
@@ -415,7 +430,7 @@ export async function executePrioritizeCollections(
           await resolveCheckoutUrl(providerShortUrl, null, linkId, ctx.businessId),
           ctx.action.id
         ),
-        amount: inv.amount,
+        amount: outstandingAmount(inv),
       });
     } else if (
       outcome.outcome === "UNKNOWN" ||
