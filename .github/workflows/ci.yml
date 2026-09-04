@@ -27,6 +27,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
+    env:
+      # A placeholder that is never connected to, and deliberately not a secret.
+      #
+      # `next build` collects page data by importing every route, and
+      # src/lib/prisma.ts throws at module load when DATABASE_URL is absent.
+      # That eager check is right — an app booting without a database should
+      # fail loudly rather than at the first query — so the build needs a
+      # connection STRING, not a database. Nothing here opens a connection:
+      # the unit suite mocks Prisma and the build never executes a query.
+      #
+      # Putting a real URL here would hand every fork's pull request a
+      # credential and buy nothing.
+      DATABASE_URL: "postgresql://ci:ci@localhost:5432/cashpilot"
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
