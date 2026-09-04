@@ -21,13 +21,8 @@ import { logger } from "@/lib/observability";
 import { rateLimit } from "@/lib/auth/rateLimit";
 import type { Prisma } from "../../../../generated/prisma/client";
 import { getLatestFinancialState } from "@/lib/state/store";
-import { totalOutstanding } from "@/lib/engine/invoiceOutstanding";
-import {
-  isReschedulablePayout,
-  isPausableExpense,
-  HANDLED_RECOVERY_STATUSES,
-  COLLECTIBLE_INVOICE_STATUSES,
-} from "@/lib/engine/actionEligibility";
+import { HANDLED_RECOVERY_STATUSES } from "@/lib/engine/actionEligibility";
+import { buildActionLibrary } from "@/lib/engine/actionLibrary";
 
 /** The per-strategy object returned to the client and fed to the AI narrator. */
 interface ResponseStrategy {
@@ -150,55 +145,15 @@ export async function POST() {
       });
     }
 
-    const recoverableFailures = transactions
-      .filter((t) => t.status === "FAILED" && t.type === "INFLOW" && !alreadyHandled.has(t.id))
-      .sort((a, b) => b.amount - a.amount || a.id.localeCompare(b.id));
-
-    const failedTx = recoverableFailures[0];
-    const failedAmount = failedTx ? failedTx.amount : 0;
-    const failedTxId = failedTx ? failedTx.id : "";
-    // Surfaced rather than silently dropped: the executor recovers ONE debt per
-    // action, so any others are real money this recommendation does not address
-    // and the operator is entitled to know that.
-    const unaddressedFailures = recoverableFailures.slice(1).map((t) => ({
-      id: t.id,
-      amount: t.amount,
-      description: t.description,
-    }));
-
-    // Recoverable receivables are what is STILL OUTSTANDING, not the face value
-    // of the invoices. A customer who has already paid ₹6L of a ₹10L invoice
-    // will only ever deliver the remaining ₹4L, and simulating a collection of
-    // the full ₹10L overstates the inflow the strategy can actually produce.
-    //
-    // PARTIALLY_PAID is included alongside OVERDUE: a part-paid invoice past its
-    // due date is exactly the case this figure exists to describe.
-    const overdueAmount = totalOutstanding(
-      invoices.filter((i) =>
-        (COLLECTIBLE_INVOICE_STATUSES as readonly string[]).includes(i.status)
-      )
-    );
-
-    // Only a payout the executor could actually move. Proposing to reschedule
-    // one already rescheduled fails at execution, and worse, double-counts: the
-    // benefit of moving that money was banked the first time.
-    const packagingPayout = payouts.find(
-      (p) => p.vendor === "Packaging Co" && isReschedulablePayout(p)
-    );
-    const rescheduleAmount = packagingPayout ? packagingPayout.amount : 0;
-    const packagingPayoutId = packagingPayout ? packagingPayout.id : "";
-    const packagingTx = transactions.find(
-      (t) => t.type === "OUTFLOW" && t.amount === rescheduleAmount && (t.description?.includes("Packaging") ?? false)
-    );
-    const packagingTxId = packagingTx ? packagingTx.id : "";
-
-    // Matched on type and status as well as description. Description alone
-    // picked up a FAILED outflow — a payment that already did not happen, so no
-    // saving is available — and would have picked an INFLOW described as a
-    // "recurring payment" too, offering money coming IN as an expense to stop.
-    const saasTx = transactions.find(isPausableExpense);
-    const pauseAmount = saasTx ? saasTx.amount : 0;
-    const saasTxId = saasTx ? saasTx.id : "";
+    // One definition, shared with the settlement email's health assessment.
+    // Both used to select candidates independently and the email's copy had
+    // none of these rules.
+    const { library: actionLibrary, unaddressedFailures } = buildActionLibrary({
+      transactions,
+      invoices,
+      payouts,
+      handledTransactionIds: alreadyHandled,
+    });
 
     // 2. Generate baseline forecast
     const safetyReq = await calculateLiquiditySafetyRequirement(business.id, prisma, today);
@@ -229,16 +184,7 @@ export async function POST() {
     }));
 
     // 3. Generate and score strategies using the deterministic engine
-    const strategies = generateStrategies(business.currentCash, baseMovements, {
-      recoverFailedPayments: failedAmount,
-      prioritizeCollections: overdueAmount,
-      reschedulePayout: rescheduleAmount,
-      pauseExpense: pauseAmount,
-      recoverFailedPaymentsId: failedTxId,
-      reschedulePayoutId: packagingPayoutId,
-      rescheduleTransactionId: packagingTxId,
-      pauseExpenseId: saasTxId,
-    }, today, requiredBuffer);
+    const strategies = generateStrategies(business.currentCash, baseMovements, actionLibrary, today, requiredBuffer);
 
     const obligations = extractObligations(payouts, transactions, today);
     const scored = scoreAllStrategies(strategies, requiredBuffer, obligations, baseMovements);
@@ -377,12 +323,12 @@ export async function POST() {
                 let targetPayoutId: string | null = null;
 
                 if (a.type === "RECOVER_FAILED_PAYMENTS") {
-                  targetTransactionId = failedTxId;
+                  targetTransactionId = actionLibrary.recoverFailedPaymentsId;
                 } else if (a.type === "RESCHEDULE_PAYOUT") {
-                  targetPayoutId = packagingPayoutId;
-                  targetTransactionId = packagingTxId;
+                  targetPayoutId = actionLibrary.reschedulePayoutId;
+                  targetTransactionId = actionLibrary.rescheduleTransactionId;
                 } else if (a.type === "PAUSE_EXPENSE") {
-                  targetTransactionId = saasTxId;
+                  targetTransactionId = actionLibrary.pauseExpenseId;
                 }
 
                 return {
@@ -491,20 +437,20 @@ export async function POST() {
           let effectiveDate = today;
 
           if (a.type === "RECOVER_FAILED_PAYMENTS") {
-            sourceEntityId = failedTxId;
+            sourceEntityId = actionLibrary.recoverFailedPaymentsId;
             effectiveDate = addDays(today, 2);
           } else if (a.type === "PRIORITIZE_COLLECTIONS") {
             sourceEntityId = "invoice-overdue-list";
             effectiveDate = addDays(today, 1);
           } else if (a.type === "RESCHEDULE_PAYOUT") {
-            sourceEntityId = packagingPayoutId;
+            sourceEntityId = actionLibrary.reschedulePayoutId;
             // The date the EXECUTOR will actually write, from the shared
             // constant. This said 15 with a comment claiming "a week", while
             // the executor moved the payout 20 days out - so the approval
             // screen showed the operator a date the system would not honour.
             effectiveDate = addDays(today, FINANCIAL_CONFIG.RESCHEDULE_DELAY_DAYS);
           } else if (a.type === "PAUSE_EXPENSE") {
-            sourceEntityId = saasTxId;
+            sourceEntityId = actionLibrary.pauseExpenseId;
             effectiveDate = today;
           }
 

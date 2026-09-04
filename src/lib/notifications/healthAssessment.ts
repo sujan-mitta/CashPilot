@@ -15,6 +15,9 @@ import {
   calculateTemporalRequiredLiquidity,
 } from "@/lib/engine/liquiditySafety";
 import { generateStrategies } from "@/lib/engine/strategyEngine";
+import { scoreAllStrategies } from "@/lib/engine/scorer";
+import { buildActionLibrary } from "@/lib/engine/actionLibrary";
+import { HANDLED_RECOVERY_STATUSES } from "@/lib/engine/actionEligibility";
 import { FINANCIAL_CONFIG } from "@/lib/engine/financialConfig";
 import type {
   AlertSeverity,
@@ -173,27 +176,51 @@ export async function assessBusinessHealth(
   // 6. Find AI Recommended Strategy
   let recommendedStrategy: RecommendedStrategySummary | null = null;
   try {
-    const recoverableFailures = transactions.filter((t) => t.status === "FAILED" && t.type === "INFLOW");
-    const failedAmount = recoverableFailures[0]?.amount ?? 0;
-    const overdueAmount = invoices
-      .filter((i) => i.status === "OVERDUE" || (i.status !== "PAID" && new Date(i.dueDate) < now))
-      .reduce((sum, i) => sum + i.amount, 0);
-    const packagingPayout = payouts.find((p) => p.vendor === "Packaging Co") || payouts[0];
-    const pauseTx = transactions.find((t) => t.description?.includes("SaaS") && t.type === "OUTFLOW");
+    // The same selection the app plans with.
+    //
+    // This built its own library and had none of the app's rules: it offered
+    // debts already recovered, any payout in any status, an expense with no
+    // status check, and invoices at face value. An operator could therefore be
+    // emailed a recommendation to collect money that had just arrived — the
+    // very event that triggered the email.
+    //
+    // handledTransactionIds is read here too, so a recovery already settled or
+    // in flight is not proposed again.
+    let handledTransactionIds = new Set<string>();
+    try {
+      const handled = await prisma.paymentRecovery.findMany({
+        where: {
+          transaction: { businessId: business.id },
+          status: { in: [...HANDLED_RECOVERY_STATUSES] },
+        },
+        select: { transactionId: true },
+      });
+      handledTransactionIds = new Set(handled.map((r) => r.transactionId));
+    } catch {
+      // Same asymmetry the planner reasons about: offering an already-settled
+      // debt is recoverable, producing no recommendation at all is not.
+    }
 
-    const library = {
-      recoverFailedPayments: failedAmount,
-      prioritizeCollections: overdueAmount,
-      reschedulePayout: packagingPayout?.amount ?? 0,
-      pauseExpense: pauseTx?.amount ?? 0,
-      recoverFailedPaymentsId: recoverableFailures[0]?.id,
-      reschedulePayoutId: packagingPayout?.id,
-      pauseExpenseId: pauseTx?.id,
-    };
+    const { library } = buildActionLibrary({
+      transactions,
+      invoices,
+      payouts,
+      handledTransactionIds,
+    });
 
     const scoredStrategies = generateStrategies(business.currentCash, movements, library, now, requiredBuffer);
     if (scoredStrategies.length > 0) {
-      const topStrategy = scoredStrategies.find((s) => s.actions.length > 0) || scoredStrategies[0];
+      // Scored, not "the first one with actions".
+      //
+      // Picking the first non-empty plan meant the email could name a different
+      // strategy from the one the app recommends for the same ledger — and did
+      // so without any scoring, so it could name a plan that leaves the
+      // business below its safety floor while the app recommends one that does
+      // not.
+      const ranked = scoreAllStrategies(scoredStrategies, requiredBuffer, [], movements);
+      const topStrategyName = ranked.find((s) => s.recommended)?.name ?? ranked[0]?.name;
+      const topStrategy =
+        scoredStrategies.find((s) => s.name === topStrategyName) ?? scoredStrategies[0];
       const stratRunwayDays = topStrategy.runway?.firstDayBelowSafety ?? FINANCIAL_CONFIG.FORECAST_HORIZON_DAYS;
       recommendedStrategy = {
         id: `strategy_${topStrategy.name.toLowerCase()}`,
