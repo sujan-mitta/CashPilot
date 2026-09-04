@@ -82,8 +82,7 @@ See **C-14**. The config-version trap that used to sit here is now handled autom
 ### A-1 ✅ **CLOSED 2026-08-30** — the seven migrations are applied
 
 `npx prisma migrate status` against the configured database reports **12
-migrations found, "Database schema is up to date!"**, on Neon
-(`ep-still-base-axwyd206…`). Every item below that was gated on A-1 is
+migrations found, "Database schema is up to date!"**, on the configured Neon instance. Every item below that was gated on A-1 is
 therefore unblocked. The original text is kept for the record:
 
 > ~~Seven migrations have never been applied~~

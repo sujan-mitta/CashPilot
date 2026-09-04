@@ -48,17 +48,17 @@ All financial figures are processed as integers in **paise** to prevent precisio
 
 ## 📂 Project Directory Mapping
 
-* [`/prisma/schema.prisma`](file:///c:/Users/mitta/OneDrive/Desktop/cashPilot/prisma/schema.prisma) — Database layout and the `PaymentRecovery` state machine.
-* [`/src/lib/engine/`](file:///c:/Users/mitta/OneDrive/Desktop/cashPilot/src/lib/engine) — Deterministic engines:
-  * [`forecast.ts`](file:///c:/Users/mitta/OneDrive/Desktop/cashPilot/src/lib/engine/forecast.ts) (Runway timelines)
-  * [`riskDetector.ts`](file:///c:/Users/mitta/OneDrive/Desktop/cashPilot/src/lib/engine/riskDetector.ts) (Categorizations)
-  * [`rootCause.ts`](file:///c:/Users/mitta/OneDrive/Desktop/cashPilot/src/lib/engine/rootCause.ts) (Ledger diagnostics)
-  * [`strategyEngine.ts`](file:///c:/Users/mitta/OneDrive/Desktop/cashPilot/src/lib/engine/strategyEngine.ts) (Simulations)
-  * [`scorer.ts`](file:///c:/Users/mitta/OneDrive/Desktop/cashPilot/src/lib/engine/scorer.ts) (Dynamic Multi-Factor Scorer)
-* [`/src/lib/ai/`](file:///c:/Users/mitta/OneDrive/Desktop/cashPilot/src/lib/ai) — Groq client connections and prompts enforcing the **Golden Rule** (AI cannot calculate math).
-* [`/src/lib/razorpay/client.ts`](file:///c:/Users/mitta/OneDrive/Desktop/cashPilot/src/lib/razorpay/client.ts) — Gateway link creator with mock checkouts.
-* [`/src/app/api/`](file:///c:/Users/mitta/OneDrive/Desktop/cashPilot/src/app/api) — API route handlers managing ledger requests.
-* [`/src/app/`](file:///c:/Users/mitta/OneDrive/Desktop/cashPilot/src/app) — Stepper screens:
+* [`/prisma/schema.prisma`](prisma/schema.prisma) — Database layout and the `PaymentRecovery` state machine.
+* [`/src/lib/engine/`](src/lib/engine) — Deterministic engines:
+  * [`forecast.ts`](src/lib/engine/forecast.ts) (Runway timelines)
+  * [`riskDetector.ts`](src/lib/engine/riskDetector.ts) (Categorizations)
+  * [`rootCause.ts`](src/lib/engine/rootCause.ts) (Ledger diagnostics)
+  * [`strategyEngine.ts`](src/lib/engine/strategyEngine.ts) (Simulations)
+  * [`scorer.ts`](src/lib/engine/scorer.ts) (Dynamic Multi-Factor Scorer)
+* [`/src/lib/ai/`](src/lib/ai) — Groq client connections and prompts enforcing the **Golden Rule** (AI cannot calculate math).
+* [`/src/lib/razorpay/client.ts`](src/lib/razorpay/client.ts) — Gateway link creator with mock checkouts.
+* [`/src/app/api/`](src/app/api) — API route handlers managing ledger requests.
+* [`/src/app/`](src/app) — Stepper screens:
   1. **Dashboard** (`/dashboard`)
   2. **Ledger Investigation** (`/investigation`)
   3. **Intervention Simulator** (`/strategies`)
@@ -83,10 +83,10 @@ npx prisma db seed
 ```
 
 ### 2. Configure Credentials
-Add your api credentials in the [`/cashPilot/.env`](file:///c:/Users/mitta/OneDrive/Desktop/cashPilot/.env) file:
+Add your API credentials to a `.env` file in the project root:
 ```env
-DATABASE_URL="postgres://postgres:postgres@localhost:51214/postgres?sslmode=disable&pgbouncer=true"
-DIRECT_URL="postgres://postgres:postgres@localhost:51214/postgres?sslmode=disable&pgbouncer=true"
+DATABASE_URL="postgres://USER:PASSWORD@localhost:5432/cashpilot?sslmode=disable&pgbouncer=true"
+DIRECT_URL="postgres://USER:PASSWORD@localhost:5432/cashpilot?sslmode=disable&pgbouncer=true"
 GROQ_API_KEY="your_groq_api_key"
 RAZORPAY_KEY_ID="your_razorpay_test_key_id"
 RAZORPAY_KEY_SECRET="your_razorpay_test_key_secret"
