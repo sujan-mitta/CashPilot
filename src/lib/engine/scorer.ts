@@ -560,13 +560,55 @@ export function scoreAllStrategies(
     };
   });
 
+  /**
+   * Whether this plan actually leaves the business above its safety floor.
+   *
+   * Tier and safety are two different questions and the scoring keeps them
+   * apart on purpose: Tier I means the deficit is resolved — solvent — while
+   * safetyStatus says whether the floor the business set for itself is met.
+   * A plan can be Tier I and BELOW_SAFETY_BUFFER, and that combination is not
+   * a contradiction.
+   *
+   * It became one at the point of RECOMMENDATION. Ranking on score alone put a
+   * plan reaching Rs 2,60,000 (score 90) above the only plan reaching the
+   * Rs 4,28,571 floor (score 75), because the safe plan carried three actions
+   * and a deferred obligation and was penalised for the disruption. So the
+   * engine recommended, and the operator approved and executed, a plan the very
+   * next screen correctly described as Rs 1,68,571 short.
+   *
+   * Disruption is the right thing to weigh between plans that both get you
+   * home. It is not a reason to prefer one that does not.
+   *
+   * MEASURED AGAINST THE FLOOR THE PRODUCT REPORTS
+   *
+   * Deliberately `minimumBalance >= safetyThreshold` and not `safetyStatus`.
+   * The two are different floors: safetyStatus compares each day against the
+   * TEMPORAL required liquidity for that day, which is stricter and is a better
+   * diagnostic, while safetyThreshold is the single figure every screen shows
+   * as "safe minimum to hold" and the one describeSafetyProgress subtracts to
+   * say how short you are.
+   *
+   * Ranking against the temporal measure while reporting the flat one would
+   * rebuild the same mismatch in a subtler place: a plan that clears the floor
+   * the operator is shown would still be ranked behind one that does not,
+   * because of a threshold nothing on screen mentions. safetyStatus keeps its
+   * meaning and is left untouched.
+   */
+  const clearsSafetyFloor = (s: ScoredStrategy) =>
+    s.runway.minimumBalance >= safetyThreshold;
+
   // Sort and assign rank/recommendation with strict deterministic tie-breaking:
-  // 1. Higher final score
-  // 2. Higher minimum balance
-  // 3. Fewer deficit days
-  // 4. Lower disruption penalty
-  // 5. Strategy Name alphabetical order (stable fallback)
+  // 1. Reaches the safety floor
+  // 2. Higher final score
+  // 3. Higher minimum balance
+  // 4. Fewer deficit days
+  // 5. Lower disruption penalty
+  // 6. Strategy Name alphabetical order (stable fallback)
   const sorted = [...scored].sort((a, b) => {
+    const aClears = clearsSafetyFloor(a);
+    const bClears = clearsSafetyFloor(b);
+    if (aClears !== bClears) return aClears ? -1 : 1;
+
     if (b.score !== a.score) return b.score - a.score;
     if (b.runway.minimumBalance !== a.runway.minimumBalance) return b.runway.minimumBalance - a.runway.minimumBalance;
     

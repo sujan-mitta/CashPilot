@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { scoreAllStrategies } from "../scorer";
+import { scoreAllStrategies, SCORING_CONFIG } from "../scorer";
 import { StrategyResult } from "../strategyEngine";
 import { ForecastDay } from "../forecast";
 
@@ -132,12 +132,54 @@ describe("scoring invariants (property-based)", () => {
     }
   });
 
-  it("the recommended strategy's score is >= every other score (top of the order)", () => {
+  /**
+   * The recommendation is the best plan that GETS YOU HOME, which is not always
+   * the highest-scoring one.
+   *
+   * This asserted the recommended strategy had the top score outright. That was
+   * a true description of the old ordering and a wrong description of what the
+   * engine is for: score weighs disruption, and a plan carrying three actions
+   * and a deferred obligation can score below a gentler plan that leaves the
+   * business under its safety floor. Recommending the gentler one is how an
+   * operator came to approve and execute a plan the next screen described as
+   * Rs 1,68,571 short.
+   *
+   * So the invariant is stated per safety class, which is stricter than the
+   * original within each class and no longer wrong across them.
+   */
+  // The floor the product reports and the engine now ranks against — not the
+  // per-day temporal requirement behind safetyStatus.
+  const clears = (s: ReturnType<typeof scoreAllStrategies>[number]) =>
+    s.runway.minimumBalance >= SCORING_CONFIG.SAFETY_THRESHOLD;
+
+  it("the recommended strategy is the best of its safety class", () => {
     for (let seed = 1; seed <= 1000; seed++) {
       const scored = scoreAllStrategies(randomStrategies(mulberry32(seed)));
       const rec = scored.find((s) => s.recommended)!;
-      for (const s of scored) expect(rec.score, `seed ${seed}`).toBeGreaterThanOrEqual(s.score);
+
+      // Nothing in the same class may beat it on score.
+      for (const s of scored) {
+        if (clears(s) === clears(rec)) {
+          expect(rec.score, `seed ${seed}`).toBeGreaterThanOrEqual(s.score);
+        }
+      }
     }
+  });
+
+  it("never recommends a plan short of the floor when one reaches it", () => {
+    // The property that was actually broken. Without it the engine can rank a
+    // safe plan second and call an unsafe one the recommendation.
+    let sawBothClasses = false;
+    for (let seed = 1; seed <= 1000; seed++) {
+      const scored = scoreAllStrategies(randomStrategies(mulberry32(seed)));
+      const rec = scored.find((s) => s.recommended)!;
+      const anyClears = scored.some(clears);
+      if (anyClears && scored.some((s) => !clears(s))) sawBothClasses = true;
+      if (anyClears) expect(clears(rec), `seed ${seed}`).toBe(true);
+    }
+    // Guards the guard: a generator producing only one class would make the
+    // assertion above vacuous.
+    expect(sawBothClasses).toBe(true);
   });
 });
 
