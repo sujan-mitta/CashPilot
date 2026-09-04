@@ -85,9 +85,17 @@ describe("Counterfactual Simulation Engine (Tests 1-24)", () => {
   });
 
   // Test 4: No-op intervention is detected
+  //
+  // This used to build its no-op by giving every action an amount of 0 and then
+  // checking FULL_INTERVENTION was scored NO_MATERIAL_IMPROVEMENT. The engine
+  // no longer offers that plan at all: an action worth nothing is dropped, and
+  // a template left with no actions is DO_NOTHING under another name.
+  //
+  // That is a stronger outcome than labelling the no-op, so the test asserts it
+  // — and still checks the classification, on the plan that genuinely is one.
   it("Test 4: No-op intervention is detected", () => {
     const baseMovements = [
-      makeMovement("payout_1", 0, "Packaging Co", 3), // zero amount rescheduling
+      makeMovement("payout_1", 0, "Packaging Co", 3), // nothing to reschedule
     ];
     const library = {
       recoverFailedPayments: 0,
@@ -97,8 +105,13 @@ describe("Counterfactual Simulation Engine (Tests 1-24)", () => {
     };
     const strategies = generateStrategies(500000, baseMovements, library, today, 500000);
     const scored = scoreAllStrategies(strategies, 500000, [], baseMovements);
-    const full = scored.find(s => s.name === "FULL_INTERVENTION")!;
-    expect(full.scoring.counterfactual?.effectiveness).toBe("NO_MATERIAL_IMPROVEMENT");
+
+    // Not offered: there is no intervention to make, so none is proposed.
+    expect(scored.map(s => s.name)).toEqual(["DO_NOTHING"]);
+
+    // Still classified: doing nothing improves nothing, and the scorer says so
+    // rather than leaving the field unset.
+    expect(scored[0].scoring.counterfactual?.effectiveness).toBe("NO_MATERIAL_IMPROVEMENT");
   });
 
   // Test 5: Missing target produces INVALID

@@ -2,6 +2,7 @@ import { addDays } from "date-fns";
 import { buildForecast, DailyMovement, calculateRunway, ForecastDay, RunwayMetrics } from "./forecast";
 import { calculateRisk, RiskLevel } from "./riskDetector";
 import { FINANCIAL_CONFIG } from "./financialConfig";
+import { isExecutableAction } from "./actionEligibility";
 
 /**
  * The canonical strategy names. Single source of truth (PART 37): anything that
@@ -217,7 +218,46 @@ export function generateStrategies(
     },
   ];
 
-  return strategies.map((s) => {
+  // Drop actions that move no money, then drop plans that became duplicates.
+  //
+  // The templates above name their actions unconditionally, so a library value
+  // of 0 — every failed payment already recovered, no pausable subscription —
+  // still produced an action worth nothing. Execution refused the ENTIRE plan
+  // as a tampered parameter, taking the plan's real actions down with it: a
+  // Rs 4,40,000 collection that could not be run because it shared a plan with
+  // a recovery worth nothing.
+  //
+  // Removing those actions then leaves templates that are no longer distinct.
+  // With nothing to recover, RECOVER_ONLY and RECOVER_AND_COLLECT and
+  // FULL_INTERVENTION can all reduce to the same single collection, and a
+  // template reduced to no actions at all is DO_NOTHING under another name.
+  // Offering those separately asks the operator to choose between identical
+  // futures, and makes which one "wins" a matter of tie-breaking rather than
+  // merit.
+  //
+  // So identical action sets collapse to their first appearance. The templates
+  // are ordered least to most disruptive, which means the surviving name is the
+  // most conservative one that produces that outcome. DO_NOTHING is first, so
+  // it is the plan an emptied template collapses into.
+  const seen = new Set<string>();
+  const offered = strategies
+    .map((s) => ({ ...s, actions: s.actions.filter(isExecutableAction) }))
+    .filter((s) => {
+      const shape = JSON.stringify(
+        s.actions.map((a) => [
+          a.type,
+          a.amount,
+          a.targetPayoutId ?? null,
+          a.targetTransactionId ?? null,
+          a.rescheduleDelayDays ?? null,
+        ])
+      );
+      if (seen.has(shape)) return false;
+      seen.add(shape);
+      return true;
+    });
+
+  return offered.map((s) => {
     try {
       const simulatedMovements = applyActionsToMovements(baseMovements, s.actions, startDate);
       const forecast = buildForecast(

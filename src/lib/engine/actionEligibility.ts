@@ -20,6 +20,13 @@
  *     PENDING one. A failed outflow is not a subscription that can be paused;
  *     it is a payment that already did not happen.
  *
+ *   · It proposed recovering ZERO rupees. Once the only failed payment had been
+ *     recovered there was nothing left to chase, so the amount computed to 0 —
+ *     but the action was still emitted, because the strategy templates list
+ *     their actions unconditionally. Execution refused the whole plan with
+ *     "Action amount must be greater than zero", so a plan whose OTHER action
+ *     was a perfectly good Rs 4,40,000 collection could not be run at all.
+ *
  * Every one produced the same experience: a plan presented as approved whose
  * action could never run, with the operator told only after pressing the button.
  *
@@ -85,4 +92,20 @@ export function isPausableExpense(tx: TransactionLike): boolean {
   if (!(PAUSABLE_TRANSACTION_STATUSES as readonly string[]).includes(tx.status)) return false;
   const d = tx.description?.toLowerCase() ?? "";
   return d.includes("saas") || d.includes("recurring");
+}
+
+/**
+ * Whether an action moves enough money to be worth executing.
+ *
+ * Zero is not a small amount, it is the absence of one. An action to recover
+ * nothing has no target, produces no payment link and improves no forecast; the
+ * executor rejects it as a tampered parameter, which is right — it cannot tell
+ * a planner that computed zero from a request body edited down to zero.
+ *
+ * So the planner must not emit it. Negative is rejected for the same reason and
+ * a stronger one: an action that moves money backwards would score as an
+ * improvement while making the position worse.
+ */
+export function isExecutableAction(action: { amount: number }): boolean {
+  return action.amount > 0;
 }

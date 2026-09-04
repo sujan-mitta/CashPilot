@@ -29,7 +29,10 @@ import { errorMessage, parseJsonBody } from "@/lib/errors";
  * execution attempt, not the action, whose own status is authoritative and
  * untouched.
  */
-export const STEP_NOT_STARTED = "NOT_STARTED";
+// Not exported: a route file may only export handlers and route config, and
+// Next's generated types reject anything else. Nothing outside this module used
+// it anyway — the export was reflex, not a requirement.
+const STEP_NOT_STARTED = "NOT_STARTED";
 
 export interface ExecutedStep {
   id: string;
