@@ -7,6 +7,7 @@ import { settlePayment, reconcileDecisionForStrategy } from "@/lib/razorpay/sett
 import { readProviderPaidAmount } from "@/lib/razorpay/amounts";
 import { validateActionTransition } from "@/lib/engine/stateTransitions";
 import { logger } from "@/lib/observability";
+import { syncAfterSettlement } from "@/lib/brain/afterSettlement";
 import { errorMessage } from "@/lib/errors";
 
 export async function GET(req: Request) {
@@ -179,6 +180,15 @@ export async function GET(req: Request) {
     // 2. If status is paid and action is resolved, update database values
     if (status === "paid" && action) {
       await settlePayment(paymentLinkId, business.id, observedPaidAmount, undefined, "POLL");
+
+      // The settlement entrance that actually runs in local development.
+      //
+      // Razorpay will not deliver a webhook to localhost, so the sandbox
+      // checkout settles through here instead. Wiring the brain sync into the
+      // webhook alone therefore covered the one path a developer never
+      // exercises, and every locally settled payment still skipped entity
+      // resolution.
+      await syncAfterSettlement(business.id, { trigger: "POLL", paymentLinkId });
     } else if (status === "cancelled" || status === "expired") {
       if (action && validateActionTransition(action.status, ActionStatus.FAILED)) {
         const auditEntry = {
@@ -287,7 +297,21 @@ export async function GET(req: Request) {
       const recovery = await prisma.paymentRecovery.findFirst({
         where: {
           paymentLinkId,
-          transaction: { businessId: callerBusinessId ?? " -no-business" },
+          // A sentinel that cannot be a real id, so an absent caller business
+          // matches nothing rather than matching anything.
+          //
+          // The sentinel here used to begin with a literal NUL byte, which was
+          // worse than useless twice over.
+          //
+          // Postgres text cannot hold a NUL, so this query did not match
+          // nothing — it THREW, and the throw was swallowed by the catch below,
+          // quietly disabling the concurrent-completion check whenever there
+          // was no caller business.
+          //
+          // And one NUL makes the whole file binary to grep, so every content
+          // search across the repo silently skipped this route. That is how it
+          // survived: the file was invisible to the tools used to look for it.
+          transaction: { businessId: callerBusinessId ?? "__no_business__" },
         },
       });
       if (recovery && recovery.status === RecoveryStatus.RECOVERED) {

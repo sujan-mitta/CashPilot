@@ -20,7 +20,7 @@ import {
   UNMATCHED_RETRY_ATTEMPTS,
 } from "@/lib/razorpay/webhookDelivery";
 import { webhookSecretForToken } from "@/lib/razorpay/connection";
-import { syncFinancialBrain } from "@/lib/brain/sync";
+import { syncAfterSettlement } from "@/lib/brain/afterSettlement";
 import { notifySettlement } from "@/lib/notifications/settlementNotice";
 
 /**
@@ -398,26 +398,9 @@ export const POST = withCorrelationId(async (req: Request) => {
 
       // Fold the payment into the brain, so the NEXT forecast knows about it.
       //
-      // A settlement is the one moment new payment history exists: an invoice
-      // just gained a paidAt, which is the only input the behaviour model has
-      // for "how late does this customer actually pay?". Until now nothing on
-      // the settlement path resolved entities or refreshed the state snapshot,
-      // so that history accumulated without ever being attributed to anyone and
-      // the behavioural forecast could not use a single day of it.
-      //
-      // Wrapped, and deliberately last. The money is already settled, recorded
-      // and emailed; throwing here would fail the webhook and Razorpay would
-      // retry a payment that has ALREADY been applied. A stale brain is a worse
-      // forecast. A retried settlement is a corrupted ledger.
-      try {
-        await syncFinancialBrain(prisma, businessId);
-      } catch (syncError) {
-        logger.error("Settled the payment, but the brain sync failed", {
-          businessId,
-          paymentLinkId,
-          error: errorMessage(syncError),
-        });
-      }
+      // Deliberately last, and via a helper shared with every other settlement
+      // entrance — see afterSettlement.ts for why it can never throw here.
+      await syncAfterSettlement(businessId, { trigger: "WEBHOOK", paymentLinkId });
 
       return NextResponse.json({ status: finalStatus });
      } catch (settleError) {
