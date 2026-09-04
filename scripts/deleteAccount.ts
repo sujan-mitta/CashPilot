@@ -48,6 +48,10 @@ async function findDanglingRows(): Promise<Record<string, number>> {
   const liveBiz = (await prisma.business.findMany({ select: { id: true } })).map((b) => b.id);
   const liveUsers = (await prisma.user.findMany({ select: { id: true } })).map((u) => u.id);
 
+  // An empty list is not a special case to guard against. When the last account
+  // goes, `notIn: []` is always true and every remaining row that names a
+  // business IS dangling, which is exactly the answer wanted.
+
   const found: Record<string, number> = {};
   const check = async (name: string, fn: () => Promise<number>) => {
     const n = await fn();
@@ -68,7 +72,22 @@ async function findDanglingRows(): Promise<Record<string, number>> {
   await check("evidence", () => prisma.evidence.count({ where: { businessId: { notIn: liveBiz } } }));
   await check("counterparty", () => prisma.counterparty.count({ where: { businessId: { notIn: liveBiz } } }));
   await check("counterpartyAlias", () => prisma.counterpartyAlias.count({ where: { businessId: { notIn: liveBiz } } }));
-  await check("webhookDeliveryAttempt", () => prisma.webhookDeliveryAttempt.count({ where: { businessId: { notIn: liveBiz } } }));
+  // `not: null` matters, and only here.
+  //
+  // WebhookDeliveryAttempt is the one table whose businessId is nullable, on
+  // purpose: a delivery rejected for a bad signature or an unknown token has no
+  // business to attribute it to, and the row is the audit trail of that
+  // rejection. Those rows reference nothing, so they cannot dangle — but
+  // `notIn` matched them anyway and the script reported "LEFTOVERS FOUND - this
+  // is a bug in the deletion order" over a deletion that was completely clean.
+  //
+  // Observed: deleting the last account left 50 of them, every one with a NULL
+  // businessId, and the script exited non-zero. A verifier that cries wolf is
+  // worse than none, because the real leftover it exists to catch would be read
+  // as the same false alarm and waved through.
+  await check("webhookDeliveryAttempt", () =>
+    prisma.webhookDeliveryAttempt.count({ where: { businessId: { not: null, notIn: liveBiz } } })
+  );
   await check("notificationPreference", () => prisma.notificationPreference.count({ where: { businessId: { notIn: liveBiz } } }));
   await check("notificationAlertRecord", () => prisma.notificationAlertRecord.count({ where: { businessId: { notIn: liveBiz } } }));
   await check("notificationDeliveryAudit", () => prisma.notificationDeliveryAudit.count({ where: { businessId: { notIn: liveBiz } } }));
