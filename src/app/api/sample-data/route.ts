@@ -5,6 +5,7 @@ import { getSession } from "@/lib/auth";
 import { resolveDeploymentTier } from "@/lib/config/productionConfig";
 import { errorMessage } from "@/lib/errors";
 import { logger } from "@/lib/observability";
+import { syncFinancialBrain } from "@/lib/brain/sync";
 import {
   TransactionType,
   TransactionStatus,
@@ -229,6 +230,40 @@ export async function POST() {
       // in another region, and Prisma's 5s default assumes a local one.
       { timeout: 30_000, maxWait: 15_000 }
     );
+
+    // Resolve the ledger we just wrote into entities and a state snapshot.
+    //
+    // WHY HERE
+    //
+    // Entity resolution is what fills Transaction.counterpartyId, and the
+    // behavioural forecast keys on exactly that: without it a counterparty's
+    // observed payment delay can never reach a projection, however much history
+    // the ledger holds. Nothing on the operator's path used to run it — the
+    // only callers were the alert dispatcher and a manual script — so a new
+    // account began with every counterpartyId null and the behavioural forecast
+    // permanently inert.
+    //
+    // The sync runs where the LEDGER CHANGES rather than where it is read. Doing
+    // it on the dashboard would repeat the same work on every page load; doing
+    // it here happens once, on data that was just created.
+    //
+    // Best-effort on purpose. The rows are committed and the seed succeeded; a
+    // failure to derive entities from them is a degraded forecast, not a failed
+    // request, and reporting it as one would strand an operator whose data is
+    // actually fine.
+    try {
+      const brain = await syncFinancialBrain(prisma, businessId);
+      logger.info("Seeded ledger synced", {
+        businessId,
+        customersLinked: brain.entities?.customersLinked ?? 0,
+        stateVersion: brain.state?.stateVersion ?? null,
+      });
+    } catch (error) {
+      logger.error("Seeded ledger, but the brain sync failed", {
+        businessId,
+        error: errorMessage(error),
+      });
+    }
 
     return NextResponse.json({ status: "SEEDED", businessId, businessName: business.name });
   } catch (error) {
